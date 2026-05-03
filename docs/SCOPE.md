@@ -68,6 +68,7 @@ This file is the source of truth for *whether* a feature belongs in MVP at all.
 - Telemetry / crash reporting.
 - Search engine integration (`qmd` or equivalent) for wikis at >100 sources.
 - WebSocket UI bridge from MCP server to frontend (for "open this file", "highlight", etc.).
+- Agent multi-plexing, allow for multiple experiment/brainstorm tabs to be open at the same time in a different git worktree.
 
 ---
 
