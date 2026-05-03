@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { WikiFile } from "./types";
+import type { ChatMode, StreamEvent, WikiFile } from "./types";
 
 export type BinaryStatus =
   | { kind: "found"; path: string; version: string | null }
@@ -29,6 +29,10 @@ export const ipc = {
     invoke("save_notes", { content }),
   saveIdeas: (content: string): Promise<void> =>
     invoke("save_ideas", { content }),
+  chatSend: (message: string, mode: ChatMode): Promise<void> =>
+    invoke("chat_send", { message, mode }),
+  chatCancel: (): Promise<void> => invoke("chat_cancel"),
+  chatResetSession: (): Promise<void> => invoke("chat_reset_session"),
 };
 
 export function onWikiChanged(
@@ -37,6 +41,12 @@ export function onWikiChanged(
   return listen<{ path: string }>("wiki-changed", (event) =>
     cb(event.payload)
   );
+}
+
+export function onChatStream(
+  cb: (event: StreamEvent) => void
+): Promise<() => void> {
+  return listen<StreamEvent>("chat-stream", (event) => cb(event.payload));
 }
 
 export async function pickDirectory(title: string): Promise<string | null> {
