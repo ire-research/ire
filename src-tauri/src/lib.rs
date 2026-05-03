@@ -1,7 +1,10 @@
 mod cc;
 mod commands;
+mod db;
+mod wiki;
 mod workspace;
 
+use commands::wiki::{read_wiki_file, save_ideas, save_notes};
 use commands::workspace::{
     close_workspace, init_workspace, open_workspace, setup_status,
 };
@@ -25,6 +28,9 @@ pub fn run() {
             open_workspace,
             init_workspace,
             close_workspace,
+            read_wiki_file,
+            save_notes,
+            save_ideas,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

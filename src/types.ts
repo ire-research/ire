@@ -5,3 +5,8 @@ export interface ChatMessage {
   role: "user" | "assistant";
   text: string;
 }
+
+export interface WikiFile {
+  content: string;
+  frontmatter: Record<string, string> | null;
+}
