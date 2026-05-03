@@ -386,3 +386,108 @@ h3 {
 .composer button {
   align-self: flex-end;
 }
+
+/* === Setup screen === */
+
+.app-loading {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  color: #888;
+}
+
+.setup {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+}
+
+.setup__card {
+  width: 100%;
+  max-width: 560px;
+  background: #fff;
+  border: 1px solid #e3e3e3;
+  border-radius: 8px;
+  padding: 28px 32px;
+}
+
+.setup__card h1 {
+  margin: 0 0 24px;
+  font-size: 20px;
+}
+
+.setup__step {
+  margin-top: 20px;
+}
+
+.setup__step h2 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #555;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.setup__ok code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: #f3f3f3;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.setup__hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #888;
+}
+
+.setup__warn {
+  background: #fff7e6;
+  border: 1px solid #ffd591;
+  border-radius: 4px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.setup__warn p {
+  margin: 4px 0;
+}
+
+.setup__warn code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: #fff;
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+
+.setup__actions {
+  display: flex;
+  gap: 8px;
+}
+
+.setup__error {
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: #fff1f0;
+  border: 1px solid #ffa39e;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #a8071a;
+  white-space: pre-wrap;
+}
+
+.topbar__path {
+  font-size: 11px;
+  color: #888;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 50ch;
+}
