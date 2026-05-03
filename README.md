@@ -1,11 +1,17 @@
 # Integrated Research Environment (IRE)
 First MVP for a general-purpose Integrated Research Environment (IRE).
 
-## Deliverable Product
-Cross-platform app with one-click download and one-click startup.
+## Quick Start
+Run the local dev server:
+```
+npm run dev
+```
+Also build the binaries and launch the application:
+```
+npm run tauri dev
+```
 
-## Tech Stack (tentative)
-- [Tauri](https://v2.tauri.app/start/create-project/) as the cross-platform app framework (Rust backend, frontend-agnostic). It automatically integrates:
-    - React frontend with TypeScript
-    - Rust backend
-    - development mode with file watching and an auto-updated binary (`npm run tauri dev` tested)
+## Development
+The implementation found can be found at `docs/SDD.md`.
+
+The `docs/blueprints/` directory contains reference blueprints to implement features.
