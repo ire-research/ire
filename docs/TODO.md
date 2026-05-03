@@ -1,0 +1,12 @@
+- [x] ~Implement Phase 0 of `docs/SDD.md`~
+- [x] ~Implement Phase 1 of `docs/SDD.md`~
+- [ ] Implement Phase 2 of `docs/SDD.md`
+- [ ] Implement Phase 3 of `docs/SDD.md`
+- [ ] Implement Phase 4 of `docs/SDD.md`
+- [ ] Implement Phase 5 of `docs/SDD.md`
+- [ ] Implement Phase 6 of `docs/SDD.md`
+- [ ] Implement Phase 7 of `docs/SDD.md`
+- [ ] Implement Phase 8 of `docs/SDD.md`
+- [ ] Implement Phase 9 of `docs/SDD.md`
+- [ ] Feature: dark theme by default and add toggle for light
+- [ ] Feature: onboarding pipeline when creating new workspace (ask questions to populate pulse etc.)
