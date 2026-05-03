@@ -1,5 +1,6 @@
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { useWorkspace } from "../state/workspace";
+import { ipc } from "../ipc";
 import { FocusBanner } from "./FocusBanner";
 import { MarkdownPane } from "./MarkdownPane";
 import { ResourceInput } from "./ResourceInput";
@@ -25,13 +26,25 @@ const SEED_IDEAS = `- Try a hybrid RoPE+ALiBi where heads vote
 `;
 
 export function Layout() {
-  const workspaceName = useWorkspace((s) => s.workspaceName);
+  const phase = useWorkspace((s) => s.phase);
+  const setPhase = useWorkspace((s) => s.setPhase);
+  const workspace = phase.kind === "ready" ? phase.workspace : null;
+
+  const handleClose = async () => {
+    await ipc.closeWorkspace();
+    const status = await ipc.setupStatus();
+    setPhase({ kind: "setup", status });
+  };
 
   return (
     <div className="layout">
       <header className="topbar">
-        <div className="topbar__name">{workspaceName}</div>
+        <div className="topbar__name">{workspace?.name ?? "workspace"}</div>
+        <div className="topbar__path" title={workspace?.path}>
+          {workspace?.path}
+        </div>
         <div className="topbar__spacer" />
+        <button onClick={handleClose}>Close</button>
         <button className="topbar__settings" aria-label="Settings">
           ⚙
         </button>
