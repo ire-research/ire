@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 interface MarkdownPaneProps {
   title: string;
-  initialContent: string;
+  content: string;
   showSubmit?: boolean;
   onSubmit?: (content: string) => void;
 }
@@ -13,20 +13,32 @@ type Mode = "preview" | "edit";
 
 export function MarkdownPane({
   title,
-  initialContent,
+  content,
   showSubmit,
   onSubmit,
 }: MarkdownPaneProps) {
   const [mode, setMode] = useState<Mode>("preview");
-  const [draft, setDraft] = useState(initialContent);
+  const [draft, setDraft] = useState(content);
+
+  // Sync draft when persisted content changes (e.g. after save or wiki-changed event)
+  useEffect(() => {
+    if (mode === "preview") {
+      setDraft(content);
+    }
+  }, [content]);
 
   const handleToggle = (next: Mode) => {
-    if (next === "preview" && draft !== initialContent) {
+    if (next === "preview" && draft !== content) {
       const ok = window.confirm("Discard unsaved edits?");
       if (!ok) return;
-      setDraft(initialContent);
+      setDraft(content);
     }
     setMode(next);
+  };
+
+  const handleSubmit = () => {
+    onSubmit?.(draft);
+    setMode("preview");
   };
 
   return (
@@ -63,7 +75,7 @@ export function MarkdownPane({
       </div>
       {showSubmit && mode === "edit" && (
         <footer className="md-pane__footer">
-          <button onClick={() => onSubmit?.(draft)}>Submit</button>
+          <button onClick={handleSubmit}>Submit</button>
         </footer>
       )}
     </section>

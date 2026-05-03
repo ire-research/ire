@@ -4,6 +4,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::cc::discovery::{find_claude_binary, DiscoveryError};
+use crate::db::migrations;
 use crate::workspace::init as ws_init;
 use crate::workspace::lock::{LockError, WorkspaceLock};
 use crate::workspace::state::{ActiveWorkspace, WorkspaceHandle, WorkspaceState};
@@ -79,6 +80,7 @@ fn attach(
         }
         LockError::Io(io) => io.to_string(),
     })?;
+    migrations::run(&ire).map_err(|e| e.to_string())?;
     let state = WorkspaceState::from_path(path);
     let mut guard = active.0.lock().map_err(|e| e.to_string())?;
     *guard = Some(WorkspaceHandle::new(state.clone(), lock));
