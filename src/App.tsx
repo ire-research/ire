@@ -9,8 +9,16 @@ export default function App() {
   const setPhase = useWorkspace((s) => s.setPhase);
 
   const refreshSetup = useCallback(async () => {
-    const status = await ipc.setupStatus();
-    setPhase({ kind: "setup", status });
+    try {
+      const status = await ipc.setupStatus();
+      setPhase({ kind: "setup", status });
+    } catch (e) {
+      // Not running inside a Tauri window (e.g. plain browser dev).
+      setPhase({
+        kind: "setup",
+        status: { binary: { kind: "missing" } },
+      });
+    }
   }, [setPhase]);
 
   useEffect(() => {
