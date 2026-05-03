@@ -11,3 +11,4 @@
 - [x] ~Feat: dark theme by default and add toggle for light~
 - [ ] Feat: onboarding pipeline when creating new workspace (ask questions to populate pulse etc.)
 - [ ] Feat: run without CC (all CC-related features return a pop up message "requires CC installed" upon interaction)
+- [ ] Feat: instrument the code with comprehensive logging for debug session (I should be able to see from the terminal everything that is happening)
