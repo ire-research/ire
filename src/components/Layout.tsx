@@ -1,30 +1,17 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
+import { ipc, onWikiChanged } from "../ipc";
 import { useWorkspace } from "../state/workspace";
-import { ipc } from "../ipc";
+import { ChatPane } from "./chat/ChatPane";
 import { FocusBanner } from "./FocusBanner";
 import { MarkdownPane } from "./MarkdownPane";
 import { ResourceInput } from "./ResourceInput";
 import { ResourcesList } from "./ResourcesList";
-import { ChatPane } from "./chat/ChatPane";
 
-const SEED_PULSE = `# Pulse
-
-**Question:** What inductive bias makes self-attention generalize past training-length sequences?
-
-**Blocker:** Need a clean ablation comparing RoPE vs ALiBi at extrapolation.
-
-**Focus:** Reproduce ALiBi's headline result on a small transformer.
-`;
-
-const SEED_NOTES = `- Talked to V. about positional encoding choices
-- Reread the ALiBi paper, sections 3-4
-- TODO: write the eval harness
-`;
-
-const SEED_IDEAS = `- Try a hybrid RoPE+ALiBi where heads vote
-- Ablate by sequence length, not just by metric
-`;
+function parseFocus(pulse: string): string {
+  const match = pulse.match(/\*\*Focus:\*\*\s*(.+)/);
+  return match ? match[1].trim() : "";
+}
 
 export function Layout() {
   const phase = useWorkspace((s) => s.phase);
@@ -32,6 +19,42 @@ export function Layout() {
   const theme = useWorkspace((s) => s.theme);
   const toggleTheme = useWorkspace((s) => s.toggleTheme);
   const workspace = phase.kind === "ready" ? phase.workspace : null;
+
+  const [pulseContent, setPulseContent] = useState("");
+  const [notesContent, setNotesContent] = useState("");
+  const [ideasContent, setIdeasContent] = useState("");
+
+  // Load wiki files when workspace becomes ready
+  useEffect(() => {
+    if (phase.kind !== "ready") return;
+    Promise.all([
+      ipc.readWikiFile("status/pulse.md"),
+      ipc.readWikiFile("notes.md"),
+      ipc.readWikiFile("ideas.md"),
+    ])
+      .then(([pulse, notes, ideas]) => {
+        setPulseContent(pulse.content);
+        setNotesContent(notes.content);
+        setIdeasContent(ideas.content);
+      })
+      .catch((e) => console.error("failed to load wiki files", e));
+  }, [phase.kind]);
+
+  // Re-read affected file on wiki-changed events
+  useEffect(() => {
+    const unlisten = onWikiChanged(({ path }) => {
+      if (path === "status/pulse.md") {
+        ipc.readWikiFile("status/pulse.md").then((f) => setPulseContent(f.content));
+      } else if (path === "notes.md") {
+        ipc.readWikiFile("notes.md").then((f) => setNotesContent(f.content));
+      } else if (path === "ideas.md") {
+        ipc.readWikiFile("ideas.md").then((f) => setIdeasContent(f.content));
+      }
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
 
   useEffect(() => {
     if (theme === "light") {
@@ -45,6 +68,14 @@ export function Layout() {
     await ipc.closeWorkspace();
     const status = await ipc.setupStatus();
     setPhase({ kind: "setup", status });
+  };
+
+  const handleSaveNotes = async (content: string) => {
+    await ipc.saveNotes(content).catch((e) => console.error("save notes:", e));
+  };
+
+  const handleSaveIdeas = async (content: string) => {
+    await ipc.saveIdeas(content).catch((e) => console.error("save ideas:", e));
   };
 
   return (
@@ -71,10 +102,10 @@ export function Layout() {
           collapsible
           className="column column--left"
         >
-          <FocusBanner focus="Reproduce ALiBi's headline result on a small transformer." />
+          <FocusBanner focus={parseFocus(pulseContent)} />
           <Group orientation="vertical" className="column__inner">
             <Panel defaultSize="55%" minSize="20%">
-              <MarkdownPane title="pulse.md" initialContent={SEED_PULSE} />
+              <MarkdownPane title="pulse.md" content={pulseContent} />
             </Panel>
             <Separator className="resize-handle resize-handle--v" />
             <Panel defaultSize="45%" minSize="20%">
@@ -101,16 +132,18 @@ export function Layout() {
             <Panel defaultSize="40%" minSize="15%">
               <MarkdownPane
                 title="notes.md"
-                initialContent={SEED_NOTES}
+                content={notesContent}
                 showSubmit
+                onSubmit={handleSaveNotes}
               />
             </Panel>
             <Separator className="resize-handle resize-handle--v" />
             <Panel defaultSize="40%" minSize="15%">
               <MarkdownPane
                 title="ideas.md"
-                initialContent={SEED_IDEAS}
+                content={ideasContent}
                 showSubmit
+                onSubmit={handleSaveIdeas}
               />
             </Panel>
             <Separator className="resize-handle resize-handle--v" />

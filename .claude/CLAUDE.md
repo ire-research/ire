@@ -51,3 +51,14 @@ For multi-step tasks, state a brief plan:
 2. [Step] → verify: [check]
 3. [Step] → verify: [check]
 ```
+
+### 5. Build Verification
+
+**After every change, verify the build passes.**
+
+Run before reporting work as done:
+```
+npm run tauri dev
+```
+
+This compiles both Rust and TypeScript. It must succeed with zero errors and zero warnings. Warnings are bugs — dead code and unused fields mean speculative code crept in (see §2).

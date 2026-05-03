@@ -1,6 +1,6 @@
 - [x] ~Implement Phase 0 of `docs/SDD.md`~
 - [x] ~Implement Phase 1 of `docs/SDD.md`~
-- [ ] Implement Phase 2 of `docs/SDD.md`
+- [x] ~Implement Phase 2 of `docs/SDD.md`~
 - [ ] Implement Phase 3 of `docs/SDD.md`
 - [ ] Implement Phase 4 of `docs/SDD.md`
 - [ ] Implement Phase 5 of `docs/SDD.md`
