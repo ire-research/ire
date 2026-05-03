@@ -1,16 +1,15 @@
 - [x] ~Implement Phase 0 of `docs/SDD.md`~
 - [x] ~Implement Phase 1 of `docs/SDD.md`~
 - [x] ~Implement Phase 2 of `docs/SDD.md`~
-- [ ] Implement Phase 3 of `docs/SDD.md`
+- [x] ~Implement Phase 3 of `docs/SDD.md`~
 - [ ] Implement Phase 4 of `docs/SDD.md`
 - [ ] Implement Phase 5 of `docs/SDD.md`
 - [ ] Implement Phase 6 of `docs/SDD.md`
 - [ ] Implement Phase 7 of `docs/SDD.md`
-- [ ] Implement Phase 8 of `docs/SDD.md`
-- [ ] Implement Phase 9 of `docs/SDD.md`
 - [x] ~Feat: dark theme by default and add toggle for light~
+- [x] ~Feat: restart button in chat with classic arrow icon~
 - [ ] Feat: onboarding pipeline when creating new workspace (ask questions to populate pulse etc.)
 - [ ] Feat: run without CC (all CC-related features return a pop up message "requires CC installed" upon interaction)
 - [ ] Feat: instrument the code with comprehensive logging for debug session (I should be able to see from the terminal everything that is happening)
-- [ ] Feat: restart button in chat with classic arrow icon
 - [ ] Feat: claude code option menu in user UI (model, thinking, effort)
+- [ ] Feat: standard config file in `~/.config/ire/config` to save user preferences (e.g., theme selected, last opened workspace etc.).

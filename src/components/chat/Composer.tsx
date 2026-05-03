@@ -2,14 +2,15 @@ import { useState } from "react";
 
 interface ComposerProps {
   onSend?: (text: string) => void;
+  disabled?: boolean;
 }
 
-export function Composer({ onSend }: ComposerProps) {
+export function Composer({ onSend, disabled }: ComposerProps) {
   const [text, setText] = useState("");
 
   const handleSend = () => {
     const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!trimmed || disabled) return;
     onSend?.(trimmed);
     setText("");
   };
@@ -28,8 +29,9 @@ export function Composer({ onSend }: ComposerProps) {
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
+        disabled={disabled}
       />
-      <button onClick={handleSend} disabled={!text.trim()}>
+      <button onClick={handleSend} disabled={!text.trim() || disabled}>
         Send
       </button>
     </div>

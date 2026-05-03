@@ -409,7 +409,6 @@ User types in central pane → Send
         --tools "<allowlist for mode>"
         --append-system-prompt "<composed per §7.4 + mode suffix>"
         --resume <session_id_if_any>
-        --no-session-persistence
   → Rust parses NDJSON line-by-line, emits chat-stream events
   → on `system.init`: capture session_id, persist to workspace.json
   → on `result`: turn complete, frontend re-enables input
@@ -468,6 +467,7 @@ T6  CC reads result files, calls wiki.write for any new findings,
 ### 9.3 Cancellation
 
 - **User cancels CC turn**: kill the CC subprocess; emit `chat-cancelled`. Session id is retained, so the next message can `--resume`.
+- **User resets session**: `chat_reset_session` clears the stored `session_id` in `ChatSession`. The frontend simultaneously clears the message list via the chat store. The next send starts a fresh CC session with no `--resume` flag.
 - **User cancels experiment**: SIGTERM the process group; on next monitor tick, mark `status=cancelled` and fire the wake-up with that fact.
 
 ---

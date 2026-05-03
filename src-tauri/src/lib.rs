@@ -4,6 +4,8 @@ mod db;
 mod wiki;
 mod workspace;
 
+use cc::session::ChatSession;
+use commands::chat::{chat_cancel, chat_reset_session, chat_send};
 use commands::wiki::{read_wiki_file, save_ideas, save_notes};
 use commands::workspace::{
     close_workspace, init_workspace, open_workspace, setup_status,
@@ -23,6 +25,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(ActiveWorkspace::default())
+        .manage(ChatSession::default())
         .invoke_handler(tauri::generate_handler![
             setup_status,
             open_workspace,
@@ -31,6 +34,9 @@ pub fn run() {
             read_wiki_file,
             save_notes,
             save_ideas,
+            chat_send,
+            chat_cancel,
+            chat_reset_session,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
