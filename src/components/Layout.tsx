@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { useWorkspace } from "../state/workspace";
 import { ipc } from "../ipc";
@@ -28,7 +29,17 @@ const SEED_IDEAS = `- Try a hybrid RoPE+ALiBi where heads vote
 export function Layout() {
   const phase = useWorkspace((s) => s.phase);
   const setPhase = useWorkspace((s) => s.setPhase);
+  const theme = useWorkspace((s) => s.theme);
+  const toggleTheme = useWorkspace((s) => s.toggleTheme);
   const workspace = phase.kind === "ready" ? phase.workspace : null;
+
+  useEffect(() => {
+    if (theme === "light") {
+      document.documentElement.dataset.theme = "light";
+    } else {
+      delete document.documentElement.dataset.theme;
+    }
+  }, [theme]);
 
   const handleClose = async () => {
     await ipc.closeWorkspace();
@@ -45,6 +56,9 @@ export function Layout() {
         </div>
         <div className="topbar__spacer" />
         <button onClick={handleClose}>Close</button>
+        <button onClick={toggleTheme}>
+          {theme === "dark" ? "Light" : "Dark"}
+        </button>
         <button className="topbar__settings" aria-label="Settings">
           ⚙
         </button>
