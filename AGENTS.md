@@ -63,3 +63,12 @@ npm run dev:tauri # if running from snap-installed VSCode
 ```
 
 This compiles both Rust and TypeScript. It must succeed with zero errors and zero warnings. Warnings are bugs — dead code and unused fields mean speculative code crept in (see §2).
+
+### 6. Documentation Synchronization
+
+**Keep SDD and code in lockstep. Every implementation divergence requires a doc update.**
+
+- When code diverges from `docs/SDD.md` (flags removed, flow changed, commands altered, new features added), update the SDD **immediately** in the same commit.
+- The SDD is the architectural source of truth — it must reflect the current implementation to the detail level (exact CLI flags, event names, field names, etc.).
+- If a SDD section describes the old behavior, update it to match the new behavior.
+- When unsure whether the SDD needs updating, err on the side of caution: stale architecture docs are worse than missing ones.
