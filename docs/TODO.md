@@ -8,5 +8,6 @@
 - [ ] Implement Phase 7 of `docs/SDD.md`
 - [ ] Implement Phase 8 of `docs/SDD.md`
 - [ ] Implement Phase 9 of `docs/SDD.md`
-- [ ] Feature: dark theme by default and add toggle for light
-- [ ] Feature: onboarding pipeline when creating new workspace (ask questions to populate pulse etc.)
+- [x] ~Feat: dark theme by default and add toggle for light~
+- [ ] Feat: onboarding pipeline when creating new workspace (ask questions to populate pulse etc.)
+- [ ] Feat: run without CC (all CC-related features return a pop up message "requires CC installed" upon interaction)
