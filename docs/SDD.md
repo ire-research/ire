@@ -669,7 +669,16 @@ The Resources list distinguishes three states:
 - **Pending review** (`status=summarized`, file uncommitted): visually marked, with `[Index]` and `[Discard]` buttons inline.
 - **Pending fetch / pending summary**: spinner with the URL.
 
-### 13.5 Workspace state (`workspace.json`)
+### 13.5 Theming
+
+The UI supports dark and light themes. Dark is the default. A toggle button in the topbar switches between them.
+
+- All colors are defined as CSS custom properties in `:root` (dark values). `[data-theme="light"]` overrides them with light values.
+- Theme state lives in the Zustand workspace store (`theme: "dark" | "light"`). A `toggleTheme` action flips it.
+- `Layout` syncs `document.documentElement.dataset.theme` to the store value via `useEffect` — setting the attribute to `"light"` or removing it to revert to the dark `:root` defaults.
+- Theme preference is not persisted across sessions (deferred to Phase 7 alongside other `workspace.json` state).
+
+### 13.6 Workspace state (`workspace.json`)
 
 ```json
 {
@@ -848,7 +857,7 @@ ire/
 
 Each phase ends with a demoable milestone.
 
-**Phase 0 — Skeleton.** Replace the default `greet` Tauri example with the five-pane layout (static content). Add zustand, `react-resizable-panels`, types. No backend logic. *Milestone:* layout renders; panes resize/collapse.
+**Phase 0 — Skeleton.** Replace the default `greet` Tauri example with the five-pane layout (static content). Add zustand, `react-resizable-panels`, types. No backend logic. Dark/light theme toggle in the topbar; dark is the default. *Milestone:* layout renders; panes resize/collapse; theme toggles between dark and light.
 
 **Phase 1 — Workspace lifecycle.** Implement setup screen, binary discovery, `init_workspace`, `open_workspace`, `.lock`, `close_workspace`. Scaffold `.ire/` with seed wiki. *Milestone:* user can pick or init a workspace; `.ire/` materialises; lock works across restarts.
 
