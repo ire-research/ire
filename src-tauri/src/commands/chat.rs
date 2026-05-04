@@ -100,13 +100,21 @@ pub fn chat_reset_session(session: State<'_, ChatSession>) -> Result<(), String>
 fn build_system_prompt(workspace_root: &Path, mode: &str) -> String {
     let wiki_root = workspace_root.join(".ire/wiki");
 
+    let mut parts: Vec<String> = Vec::new();
+
+    // Static IRE framework context — always first.
+    if let Ok(content) = fs::read_to_string(wiki_root.join("_SYSTEM.md")) {
+        if !content.trim().is_empty() {
+            parts.push(content);
+        }
+    }
+
     let preamble = if mode == "experiment" {
         "You are IRE's experiment-mode assistant. You have access to wiki, memory, pulse, and experiment MCP tools as well as Bash, Edit, Write, and Read. After every experiment, update the wiki and pulse."
     } else {
         "You are IRE's brainstorm-mode assistant. You have access to wiki, memory, and pulse MCP tools. Use them to maintain persistent project knowledge across sessions."
     };
-
-    let mut parts = vec![preamble.to_string()];
+    parts.push(preamble.to_string());
 
     for rel in &[
         "_schema.md",

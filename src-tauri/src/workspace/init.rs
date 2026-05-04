@@ -6,6 +6,7 @@ use std::process::Command;
 use anyhow::{anyhow, Context, Result};
 use chrono::Local;
 
+const SYSTEM_MD: &str = include_str!("../../assets/seed/_SYSTEM.md");
 const SCHEMA_MD: &str = include_str!("../../assets/seed/_schema.md");
 const PULSE_MD: &str = include_str!("../../assets/seed/pulse.md");
 const LONG_TERM_MD: &str = include_str!("../../assets/seed/long-term.md");
@@ -62,6 +63,7 @@ pub fn initialize(path: &Path) -> Result<()> {
         fs::create_dir_all(d).with_context(|| format!("create {}", d.display()))?;
     }
 
+    write_if_absent(&wiki.join("_SYSTEM.md"), SYSTEM_MD)?;
     write_if_absent(&wiki.join("_schema.md"), SCHEMA_MD)?;
     write_if_absent(&wiki.join("notes.md"), "")?;
     write_if_absent(&wiki.join("ideas.md"), "")?;
@@ -93,7 +95,8 @@ fn log_seed() -> String {
 }
 
 fn index_seed() -> String {
-    "- [_schema.md](./_schema.md) — wiki conventions for the agent\n\
+    "- [_SYSTEM.md](./_SYSTEM.md) — IRE framework context for the agent\n\
+     - [_schema.md](./_schema.md) — wiki conventions for the agent\n\
      - [notes.md](./notes.md) — running user notes\n\
      - [ideas.md](./ideas.md) — running user ideas\n\
      - [log.md](./log.md) — append-only operation log\n\
@@ -191,6 +194,7 @@ mod tests {
 
         for rel in [
             ".git",
+            ".ire/wiki/_SYSTEM.md",
             ".ire/wiki/_schema.md",
             ".ire/wiki/_index.md",
             ".ire/wiki/notes.md",
