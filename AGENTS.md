@@ -66,9 +66,15 @@ This compiles both Rust and TypeScript. It must succeed with zero errors and zer
 
 ### 6. Documentation Synchronization
 
-**Keep SDD and code in lockstep. Every implementation divergence requires a doc update.**
+**Keep SDD, `_SYSTEM.md`, and code in lockstep. Every implementation divergence requires a doc update.**
 
 - When code diverges from `docs/SDD.md` (flags removed, flow changed, commands altered, new features added), update the SDD **immediately** in the same commit.
 - The SDD is the architectural source of truth — it must reflect the current implementation to the detail level (exact CLI flags, event names, field names, etc.).
 - If a SDD section describes the old behavior, update it to match the new behavior.
 - When unsure whether the SDD needs updating, err on the side of caution: stale architecture docs are worse than missing ones.
+
+`src-tauri/assets/seed/_SYSTEM.md` is the runtime system prompt injected into every CC turn. It must stay accurate:
+- When MCP tools are added, removed, or renamed, update the tools table in `_SYSTEM.md`.
+- When the wiki layout changes (new files, renamed paths, restructured dirs), update the layout block.
+- When behavioral rules change (new agent expectations, updated conventions), update the rules list.
+- `_SYSTEM.md` describes what CC *can actually do right now* — not aspirational features. Never document an MCP tool or wiki path that doesn't exist in the current implementation.

@@ -130,6 +130,7 @@ my_research_project/
 │   │       ├── plan.md
 │   │       └── result.md
 │   └── wiki/                        # ALL TRACKED IN GIT
+│       ├── _SYSTEM.md               # IRE framework context — injected first into every CC turn
 │       ├── _index.md                # Master index (path → one-line summary)
 │       ├── _schema.md               # Conventions for CC
 │       ├── notes.md                 # User notes (cleaned by ingestion)
@@ -198,7 +199,7 @@ See [§16](#16-source-tree-layout).
 2. Backend:
    - `git init` if no `.git/`.
    - Scaffold `.ire/` per [§4](#4-directory-layout).
-   - Write seed files: empty `notes.md`, empty `ideas.md`, `pulse.md` with placeholders, `_schema.md` (canned), `_index.md` (auto-built from the seed).
+   - Write seed files: empty `notes.md`, empty `ideas.md`, `pulse.md` with placeholders, `_schema.md` (canned), `_SYSTEM.md` (canned), `_index.md` (auto-built from the seed).
    - Append IRE entries to `.gitignore` (create if missing).
    - `git add .ire/wiki .gitignore && git commit -m "Initialize IRE workspace"`.
 3. Continue from step 3 of [§5.2](#52-open-existing).
@@ -315,13 +316,14 @@ Always injected into CC's context as a "do-not-propose" anchor. This directly ad
 
 When IRE spawns a CC turn, the system prompt is composed of:
 
-1. The static IRE preamble (mode-specific: brainstorm vs. experiment).
-2. `wiki/_schema.md` (conventions).
-3. `wiki/_index.md` (catalog).
-4. `wiki/status/pulse.md` (focus + blocker).
-5. `wiki/status/long-term.md` (full).
-6. `wiki/status/failures.md` (full).
-7. The two most recent `short-term/YYYY-MM-DD.md` files.
+1. `wiki/_SYSTEM.md` — static IRE framework context (what IRE is, wiki layout, behavioral rules). MCP tool descriptions are received automatically via `tools/list` and are not duplicated here. Seeded from `assets/seed/_SYSTEM.md` on workspace init; always injected first.
+2. The mode-specific preamble (brainstorm vs. experiment; hardcoded one-liner).
+3. `wiki/_schema.md` (conventions).
+4. `wiki/_index.md` (catalog).
+5. `wiki/status/pulse.md` (focus + blocker).
+6. `wiki/status/long-term.md` (full).
+7. `wiki/status/failures.md` (full).
+8. The two most recent `short-term/YYYY-MM-DD.md` files.
 
 This is added via `--append-system-prompt`. Wiki/notes/resources are read on-demand by CC through MCP tools; they are not pre-injected.
 

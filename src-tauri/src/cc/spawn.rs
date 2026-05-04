@@ -15,6 +15,8 @@ pub fn build_command(args: &SpawnArgs<'_>) -> Command {
 
     cmd.arg("-p")
         .arg(args.message)
+        .arg("--model")
+        .arg("claude-haiku-4-5-20251001")
         .arg("--output-format")
         .arg("stream-json")
         .arg("--verbose")

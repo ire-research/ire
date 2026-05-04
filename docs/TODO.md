@@ -12,9 +12,9 @@
 
 - [x] ~Implement Phase 4 of `docs/SDD.md`~
 
-- [ ] Feat: instrument the code with comprehensive logging for debug session (I should be able to see from the terminal everything that is happening)
+- [x] ~Feat: IRE system prompt in `_SYSTEM.md` with explanation of everything and how to use the `.ire/` folder~
 
-- [ ] Feat: IRE system prompt in `_SYSTEM.md` with explanation of everything and how to use the `.ire/` folder
+- [ ] Feat: instrument the code with comprehensive logging for debug session (I should be able to see from the terminal everything that is happening)
 
 - [ ] Feat: IRE opens in full screen by default
 
@@ -23,6 +23,8 @@
 - [ ] Implement Phase 6 of `docs/SDD.md`
 
 - [ ] Implement Phase 7 of `docs/SDD.md`
+
+- [ ] Feat: remove `log.md` and use `short-term/` to track daily changes. Clearly explain in `_SYSTEM.md` how memory should be handled.
 
 - [ ] Feat: onboarding pipeline when creating new workspace (ask questions to populate pulse etc.)
 
