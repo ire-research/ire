@@ -87,8 +87,14 @@ export function Layout() {
         </div>
         <div className="topbar__spacer" />
         <button onClick={handleClose}>Close</button>
-        <button onClick={toggleTheme}>
-          {theme === "dark" ? "Light" : "Dark"}
+        <button
+          className={`theme-toggle theme-toggle--${theme}`}
+          onClick={toggleTheme}
+          aria-label="Toggle theme"
+        >
+          <span className="theme-toggle__knob">
+            {theme === "dark" ? "☽" : "☀"}
+          </span>
         </button>
         <button className="topbar__settings" aria-label="Settings">
           ⚙
