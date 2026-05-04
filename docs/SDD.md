@@ -865,7 +865,7 @@ Each phase ends with a demoable milestone.
 
 **Phase 3 — CC subprocess layer.** Binary discovery + spawn + NDJSON parser + session management. A debug "Send" button next to the chat pane that sends a raw message and renders streaming text only (no tool cards yet). No MCP yet. *Milestone:* user can chat with CC inside the central pane, multi-turn via `--resume`.
 
-**Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. CC config wired up via `--mcp-config`. Implement `wiki.*`, `memory.*`, `pulse.update` first. *Milestone:* in chat, user can ask "save this insight to long-term memory" and CC actually does it.
+**Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. CC config wired up via `--mcp-config`. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` extended with `workspace_root`, git auto-commit for auto-tracked paths, and a `rename` method. System prompt composed from wiki context files on every CC turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and CC actually does it.
 
 **Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML extractors. *Milestone:* paste an arXiv URL → resource summary appears in the right pane.
 
