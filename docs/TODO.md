@@ -33,3 +33,7 @@
 - [ ] Feat: standard config file in `~/.config/ire/config` to save user preferences (e.g., theme selected, last opened workspace etc.).
 
 - [ ] Feat: separate review (LLM call pipeline) and submit (persist to disk and commit) button for notes / ideas.
+
+- [ ] Feat: rendering of html/latex/markdown in chat
+
+- [ ] Feat: subagent to verify a resource when one is uploaded and also summrize them in wiki
