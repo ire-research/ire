@@ -20,7 +20,7 @@
 
 - [x] ~Feat: refactor the frontend style from `docs/blueprints/frontend-style.md` to mimic Conductor and Linear minimal style.~
 
-- [ ] Feat: instrument the code with comprehensive logging for debug session (I should be able to see from the terminal everything that is happening)
+- [x] ~Feat: instrument the code with comprehensive logging for debug session (I should be able to see from the terminal everything that is happening)~
 
 - [ ] Implement Phase 5 of `docs/SDD.md`
 

@@ -5,6 +5,11 @@ use std::path::Path;
 use tauri::{Emitter, State};
 
 use crate::cc::discovery::find_claude_binary;
+
+fn trunc(s: &str) -> &str {
+    let end = s.char_indices().nth(80).map(|(i, _)| i).unwrap_or(s.len());
+    &s[..end]
+}
 use crate::cc::session::SessionManager;
 use crate::cc::spawn::{build_command, SpawnArgs};
 use crate::cc::stream::{dispatch, StreamEvent, StreamState};
@@ -36,8 +41,11 @@ pub async fn chat_send(
 
     // Clone the SessionManager handle (cheap Arc clone) so it can move into spawn_blocking.
     let session_clone = (*session).clone();
+    let tab_id_outer = tab_id.clone();
 
-    tokio::task::spawn_blocking(move || {
+    tracing::info!(tab_id = %tab_id, mode = %mode, msg = %trunc(&message), "chat_send");
+
+    let result = tokio::task::spawn_blocking(move || {
         let mut cmd = build_command(&SpawnArgs {
             bin: &bin,
             workspace: &workspace_path,
@@ -48,7 +56,9 @@ pub async fn chat_send(
         });
 
         let mut child = cmd.spawn().map_err(|e| e.to_string())?;
-        session_clone.set_pid(&tab_id, child.id());
+        let pid = child.id();
+        session_clone.set_pid(&tab_id, pid);
+        tracing::info!(tab_id = %tab_id, pid = pid, resume = ?resume_id, "claude subprocess spawned");
 
         let stdout = child.stdout.take().ok_or("no stdout")?;
         let mut state = StreamState::default();
@@ -59,6 +69,10 @@ pub async fn chat_send(
                     dispatch(&json, &mut state, &mut |event| {
                         if let StreamEvent::Init { ref session_id } = event {
                             session_clone.set_session_id(&tab_id, session_id.clone());
+                            tracing::debug!(tab_id = %tab_id, session_id = %session_id, "stream session init");
+                        }
+                        if let StreamEvent::Error { message: ref errmsg } = event {
+                            tracing::warn!(tab_id = %tab_id, error = %errmsg, "claude stream error");
                         }
                         let _ = app_handle.emit(
                             "chat-stream",
@@ -71,6 +85,7 @@ pub async fn chat_send(
 
         let _ = child.wait();
         session_clone.clear_pid(&tab_id);
+        tracing::info!(tab_id = %tab_id, "chat_send complete");
 
         let _ = app_handle.emit(
             "chat-stream",
@@ -79,12 +94,19 @@ pub async fn chat_send(
         Ok::<(), String>(())
     })
     .await
-    .map_err(|e| format!("task error: {e}"))?
+    .map_err(|e| format!("task error: {e}"))?;
+
+    if let Err(ref e) = result {
+        tracing::warn!(tab_id = %tab_id_outer, error = %e, "chat_send failed");
+    }
+    result
 }
 
 #[tauri::command]
 pub fn chat_cancel(session: State<'_, SessionManager>, tab_id: String) -> Result<(), String> {
+    tracing::debug!(tab_id = %tab_id, "chat_cancel");
     if let Some(pid) = session.get_pid(&tab_id) {
+        tracing::info!(tab_id = %tab_id, pid = pid, "cancelling claude subprocess");
         kill_process(pid);
     }
     Ok(())
@@ -92,6 +114,7 @@ pub fn chat_cancel(session: State<'_, SessionManager>, tab_id: String) -> Result
 
 #[tauri::command]
 pub fn chat_reset_session(session: State<'_, SessionManager>, tab_id: String) -> Result<(), String> {
+    tracing::info!(tab_id = %tab_id, "chat_reset_session");
     session.reset(&tab_id);
     Ok(())
 }
