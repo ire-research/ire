@@ -25,15 +25,18 @@ export function Composer({ onSend, disabled }: ComposerProps) {
   return (
     <div className="composer">
       <textarea
-        placeholder="Message Claude…  (⌘/Ctrl+Enter to send)"
+        placeholder="Message Claude…"
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
         disabled={disabled}
       />
-      <button onClick={handleSend} disabled={!text.trim() || disabled}>
-        Send
-      </button>
+      <div className="composer__footer">
+        <span className="composer__hint">⌘↵ to send</span>
+        <button onClick={handleSend} disabled={!text.trim() || disabled}>
+          Send
+        </button>
+      </div>
     </div>
   );
 }
