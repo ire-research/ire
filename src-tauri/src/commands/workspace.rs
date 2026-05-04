@@ -24,9 +24,16 @@ pub struct SetupStatus {
 
 #[tauri::command]
 pub fn setup_status() -> SetupStatus {
+    tracing::debug!("setup_status");
     let binary = match find_claude_binary() {
-        Ok(b) => BinaryStatus::Found { path: b.path, version: b.version },
-        Err(DiscoveryError::NotFound) => BinaryStatus::Missing,
+        Ok(b) => {
+            tracing::debug!(path = ?b.path, version = ?b.version, "claude binary found");
+            BinaryStatus::Found { path: b.path, version: b.version }
+        }
+        Err(DiscoveryError::NotFound) => {
+            tracing::debug!("claude binary not found");
+            BinaryStatus::Missing
+        }
         Err(DiscoveryError::NotExecutable(_)) => BinaryStatus::Missing,
         Err(DiscoveryError::Io(e)) => {
             tracing::warn!(error = %e, "binary discovery io error");
@@ -43,9 +50,15 @@ pub fn open_workspace(
     mcp: State<'_, McpState>,
     app: tauri::AppHandle,
 ) -> Result<WorkspaceState, String> {
+    tracing::info!(path = %path, "open_workspace");
     let path = PathBuf::from(path);
     ws_init::validate_existing(&path).map_err(|e| e.to_string())?;
-    attach(&active, &mcp, path, app)
+    let result = attach(&active, &mcp, path, app);
+    match &result {
+        Ok(s) => tracing::info!(name = %s.name, path = ?s.path, "workspace opened"),
+        Err(e) => tracing::warn!(error = %e, "open_workspace failed"),
+    }
+    result
 }
 
 #[tauri::command]
@@ -55,9 +68,15 @@ pub fn init_workspace(
     mcp: State<'_, McpState>,
     app: tauri::AppHandle,
 ) -> Result<WorkspaceState, String> {
+    tracing::info!(path = %path, "init_workspace");
     let path = PathBuf::from(path);
     ws_init::initialize(&path).map_err(|e| e.to_string())?;
-    attach(&active, &mcp, path, app)
+    let result = attach(&active, &mcp, path, app);
+    match &result {
+        Ok(s) => tracing::info!(name = %s.name, path = ?s.path, "workspace initialized"),
+        Err(e) => tracing::warn!(error = %e, "init_workspace failed"),
+    }
+    result
 }
 
 #[tauri::command]
@@ -65,6 +84,7 @@ pub fn close_workspace(
     active: State<'_, ActiveWorkspace>,
     mcp: State<'_, McpState>,
 ) -> Result<(), String> {
+    tracing::info!("close_workspace");
     // Stop MCP server first (Drop impl aborts task + removes socket file).
     mcp.0.lock().map_err(|e| e.to_string())?.take();
 
@@ -72,7 +92,9 @@ pub fn close_workspace(
     let prev = guard.take();
     drop(guard);
     if let Some(h) = prev {
-        tracing::info!(path = ?h.state.path, "closed workspace");
+        tracing::info!(path = ?h.state.path, "workspace closed");
+    } else {
+        tracing::debug!("close_workspace: no workspace was open");
     }
     Ok(())
 }
