@@ -1,12 +1,11 @@
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::sync::Arc;
 
 use tauri::{Emitter, State};
 
 use crate::cc::discovery::find_claude_binary;
-use crate::cc::session::ChatSession;
+use crate::cc::session::SessionManager;
 use crate::cc::spawn::{build_command, SpawnArgs};
 use crate::cc::stream::{dispatch, StreamEvent, StreamState};
 use crate::workspace::state::ActiveWorkspace;
@@ -15,7 +14,8 @@ use crate::workspace::state::ActiveWorkspace;
 pub async fn chat_send(
     app_handle: tauri::AppHandle,
     active: State<'_, ActiveWorkspace>,
-    session: State<'_, ChatSession>,
+    session: State<'_, SessionManager>,
+    tab_id: String,
     message: String,
     mode: String,
 ) -> Result<(), String> {
@@ -25,12 +25,7 @@ pub async fn chat_send(
     };
 
     let bin = find_claude_binary().map_err(|e| e.to_string())?.path;
-
-    let resume_id = session
-        .session_id
-        .lock()
-        .map_err(|e| e.to_string())?
-        .clone();
+    let resume_id = session.get_session_id(&tab_id);
 
     let mcp_config = {
         let p = workspace_path.join(".ire/mcp.json");
@@ -39,8 +34,8 @@ pub async fn chat_send(
 
     let system_prompt = build_system_prompt(&workspace_path, &mode);
 
-    let pid_arc = Arc::clone(&session.running_pid);
-    let sid_arc = Arc::clone(&session.session_id);
+    // Clone the SessionManager handle (cheap Arc clone) so it can move into spawn_blocking.
+    let session_clone = (*session).clone();
 
     tokio::task::spawn_blocking(move || {
         let mut cmd = build_command(&SpawnArgs {
@@ -53,7 +48,7 @@ pub async fn chat_send(
         });
 
         let mut child = cmd.spawn().map_err(|e| e.to_string())?;
-        *pid_arc.lock().unwrap() = Some(child.id());
+        session_clone.set_pid(&tab_id, child.id());
 
         let stdout = child.stdout.take().ok_or("no stdout")?;
         let mut state = StreamState::default();
@@ -63,18 +58,24 @@ pub async fn chat_send(
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
                     dispatch(&json, &mut state, &mut |event| {
                         if let StreamEvent::Init { ref session_id } = event {
-                            *sid_arc.lock().unwrap() = Some(session_id.clone());
+                            session_clone.set_session_id(&tab_id, session_id.clone());
                         }
-                        let _ = app_handle.emit("chat-stream", &event);
+                        let _ = app_handle.emit(
+                            "chat-stream",
+                            serde_json::json!({ "tab_id": &tab_id, "event": &event }),
+                        );
                     });
                 }
             }
         }
 
         let _ = child.wait();
-        *pid_arc.lock().unwrap() = None;
+        session_clone.clear_pid(&tab_id);
 
-        let _ = app_handle.emit("chat-stream", &StreamEvent::Done);
+        let _ = app_handle.emit(
+            "chat-stream",
+            serde_json::json!({ "tab_id": &tab_id, "event": &StreamEvent::Done }),
+        );
         Ok::<(), String>(())
     })
     .await
@@ -82,17 +83,16 @@ pub async fn chat_send(
 }
 
 #[tauri::command]
-pub fn chat_cancel(session: State<'_, ChatSession>) -> Result<(), String> {
-    let pid = *session.running_pid.lock().map_err(|e| e.to_string())?;
-    if let Some(pid) = pid {
+pub fn chat_cancel(session: State<'_, SessionManager>, tab_id: String) -> Result<(), String> {
+    if let Some(pid) = session.get_pid(&tab_id) {
         kill_process(pid);
     }
     Ok(())
 }
 
 #[tauri::command]
-pub fn chat_reset_session(session: State<'_, ChatSession>) -> Result<(), String> {
-    *session.session_id.lock().map_err(|e| e.to_string())? = None;
+pub fn chat_reset_session(session: State<'_, SessionManager>, tab_id: String) -> Result<(), String> {
+    session.reset(&tab_id);
     Ok(())
 }
 
@@ -140,7 +140,9 @@ fn build_system_prompt(workspace_root: &Path, mode: &str) -> String {
         names.sort();
         names.reverse();
         for name in names.iter().take(2) {
-            if let Ok(content) = fs::read_to_string(wiki_root.join("status/short-term").join(name)) {
+            if let Ok(content) =
+                fs::read_to_string(wiki_root.join("status/short-term").join(name))
+            {
                 if !content.trim().is_empty() {
                     parts.push(format!("### status/short-term/{name}\n\n{content}"));
                 }

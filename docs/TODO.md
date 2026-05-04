@@ -14,9 +14,11 @@
 
 - [x] ~Feat: IRE system prompt in `_SYSTEM.md` with explanation of everything and how to use the `.ire/` folder~
 
-- [ ] Feat: instrument the code with comprehensive logging for debug session (I should be able to see from the terminal everything that is happening)
+- [x] ~Feat: IRE opens in full screen by default~
 
-- [ ] Feat: IRE opens in full screen by default
+- [x] ~Feat: multi tabs chat~
+
+- [ ] Feat: instrument the code with comprehensive logging for debug session (I should be able to see from the terminal everything that is happening)
 
 - [ ] Implement Phase 5 of `docs/SDD.md`
 
@@ -30,7 +32,7 @@
 
 - [ ] Feat: run without CC (all CC-related features return a pop up message "requires CC installed" upon interaction)
 
-- [ ] Feat: claude code option menu in user UI (model, thinking, effort)
+- [ ] Feat: claude code options menu in user UI (model, thinking, effort)
 
 - [ ] Feat: standard config file in `~/.config/ire/config` to save user preferences (e.g., theme selected, last opened workspace etc.).
 
@@ -38,4 +40,4 @@
 
 - [ ] Feat: rendering of html/latex/markdown in chat
 
-- [ ] Feat: subagent to verify a resource when one is uploaded and also summrize them in wiki
+- [ ] Feat: prompt engineering on `_SYSTEM.md` to obfuscate claude code personality and force IRE persona.

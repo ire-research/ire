@@ -32,3 +32,31 @@ export interface WikiFile {
   content: string;
   frontmatter: Record<string, string> | null;
 }
+
+export type TabKind = "chat" | "resource";
+export type ResourceStatus = "summarizing" | "ready" | "confirmed";
+
+export interface Tab {
+  id: string;
+  label: string;
+  messages: ChatMessage[];
+  isStreaming: boolean;
+  isPinned: boolean;
+  kind: TabKind;
+  resourceId?: string;
+  resourceStatus?: ResourceStatus;
+}
+
+/** Payload for the "chat-stream" Tauri event. */
+export interface TabStreamPayload {
+  tab_id: string;
+  event: StreamEvent;
+}
+
+/** Payload for the "tab-created" Tauri event (backend-initiated tabs). */
+export interface TabCreatedPayload {
+  tab_id: string;
+  label: string;
+  kind: TabKind;
+  resource_id?: string;
+}

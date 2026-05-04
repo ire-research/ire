@@ -5,7 +5,7 @@ mod mcp;
 mod wiki;
 mod workspace;
 
-use cc::session::ChatSession;
+use cc::session::SessionManager;
 use commands::chat::{chat_cancel, chat_reset_session, chat_send};
 use commands::wiki::{read_wiki_file, save_ideas, save_notes};
 use commands::workspace::{
@@ -27,7 +27,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(ActiveWorkspace::default())
-        .manage(ChatSession::default())
+        .manage(SessionManager::default())
         .manage(McpState::default())
         .invoke_handler(tauri::generate_handler![
             setup_status,
