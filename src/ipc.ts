@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { ChatMode, StreamEvent, WikiFile } from "./types";
+import type { ChatMode, TabCreatedPayload, TabStreamPayload, WikiFile } from "./types";
 
 export type BinaryStatus =
   | { kind: "found"; path: string; version: string | null }
@@ -29,10 +29,12 @@ export const ipc = {
     invoke("save_notes", { content }),
   saveIdeas: (content: string): Promise<void> =>
     invoke("save_ideas", { content }),
-  chatSend: (message: string, mode: ChatMode): Promise<void> =>
-    invoke("chat_send", { message, mode }),
-  chatCancel: (): Promise<void> => invoke("chat_cancel"),
-  chatResetSession: (): Promise<void> => invoke("chat_reset_session"),
+  chatSend: (tabId: string, message: string, mode: ChatMode): Promise<void> =>
+    invoke("chat_send", { tabId, message, mode }),
+  chatCancel: (tabId: string): Promise<void> =>
+    invoke("chat_cancel", { tabId }),
+  chatResetSession: (tabId: string): Promise<void> =>
+    invoke("chat_reset_session", { tabId }),
 };
 
 export function onWikiChanged(
@@ -44,9 +46,15 @@ export function onWikiChanged(
 }
 
 export function onChatStream(
-  cb: (event: StreamEvent) => void
+  cb: (payload: TabStreamPayload) => void
 ): Promise<() => void> {
-  return listen<StreamEvent>("chat-stream", (event) => cb(event.payload));
+  return listen<TabStreamPayload>("chat-stream", (event) => cb(event.payload));
+}
+
+export function onTabCreated(
+  cb: (payload: TabCreatedPayload) => void
+): Promise<() => void> {
+  return listen<TabCreatedPayload>("tab-created", (event) => cb(event.payload));
 }
 
 export async function pickDirectory(title: string): Promise<string | null> {

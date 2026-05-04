@@ -624,3 +624,145 @@ h3 {
   white-space: nowrap;
   max-width: 50ch;
 }
+
+/* === Tab bar === */
+
+.tab-bar {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  height: 34px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tab-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.tab-bar__tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 12px;
+  min-width: 80px;
+  max-width: 180px;
+  border-right: 1px solid var(--border-subtle);
+  cursor: pointer;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--bg);
+  position: relative;
+  user-select: none;
+  transition: background 0.1s, color 0.1s;
+}
+
+.tab-bar__tab:hover {
+  background: var(--subtle);
+  color: var(--fg);
+}
+
+.tab-bar__tab--active {
+  background: var(--surface);
+  color: var(--fg);
+  /* merge with content area below by covering the tab-bar's bottom border */
+  border-bottom: 1px solid var(--surface);
+  margin-bottom: -1px;
+  z-index: 1;
+}
+
+/* top accent line on active tab */
+.tab-bar__tab--active::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--focus-accent);
+}
+
+.tab-bar__label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tab-bar__label span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tab-bar__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  border-radius: 3px;
+  color: var(--text-muted);
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s;
+}
+
+.tab-bar__tab:hover .tab-bar__close,
+.tab-bar__tab--active .tab-bar__close {
+  opacity: 1;
+}
+
+.tab-bar__close:hover {
+  background: var(--border);
+  color: var(--fg);
+  border-color: transparent;
+}
+
+.tab-bar__new {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  margin: 0 4px;
+  font-size: 16px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+
+.tab-bar__new:hover {
+  background: var(--subtle);
+  color: var(--fg);
+  border-color: transparent;
+}
+
+.tab-bar__spinner {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  border-top-color: var(--focus-accent);
+  animation: tab-spin 0.8s linear infinite;
+}
+
+@keyframes tab-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
