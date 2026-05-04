@@ -278,7 +278,7 @@ The `WikiStore` exposes `write(path, content, ...)` which classifies internally;
 
 **User commit implementation.** Notes/ideas Submit and resource approval each flow through a `wiki::commit_user_changes(scope)` helper that stages the scoped paths + index and commits with a user-supplied or templated message (e.g. `notes: <first 50 chars of pane>`, `resources: add <slug>`).
 
-**Resource approval.** The resource ingestion pipeline ([§8.3](#83-resource-ingestion)) writes the summary to disk and SQLite marks it `summarized` — but the file stays uncommitted until the user clicks "Index this resource" in the resources pane. At that point we commit `resources/<slug>.md + _index.md`. If the user clicks "Discard", the file is deleted and the SQLite row is marked `rejected`.
+**Resource approval.** The resource ingestion pipeline ([§8.3](#83-resource-ingestion)) presents an executive summary to the user via a dedicated chat tab before writing anything to the wiki. Only on **Confirm** does CC write `resources/<slug>.md` via `wiki.write` (user-tracked). The Confirm flow also commits `resources/<slug>.md + _index.md` to git. On **Discard**, the cache file is deleted and the DB row is marked `rejected`; no wiki file is ever written.
 
 ---
 
@@ -334,24 +334,19 @@ This is added via `--append-system-prompt`. Wiki/notes/resources are read on-dem
 ### 8.1 Notes ingestion
 
 ```
-User edits notes pane (raw text)
+User edits the notes pane (raw text)
   → clicks Submit
   → save_notes(content) Tauri command
     → Rust writes content to .ire/wiki/notes.md (atomic)
-    → kicks a CC turn with prompt:
-      "Clean and dedupe notes.md. Promote concrete decisions to the right wiki
-       pages. Leave residual ephemeral content. Use MCP tools."
-    → CC reads notes.md, calls wiki.write/notes.md with the cleaned version,
-      optionally calls memory.write_long_term for big-picture items, and
-      appends a log.md entry.
+    → commits notes.md + _index.md to git
   → wiki-changed event causes the notes pane to re-render.
 ```
 
-The CC turn for ingestion runs in a **separate session** from the brainstorm/experiment chat — it should not pollute the user-visible conversation. The session is one-shot (no resume).
+No CC turn is triggered. CC reads `notes.md` only if the user explicitly requests it, or if the context warrants it; it is never injected into the system prompt by default.
 
 ### 8.2 Ideas ingestion
 
-Identical to notes ingestion, target `wiki/ideas.md`.
+Identical to notes ingestion ([§8.1](#81-notes-ingestion)), target `wiki/ideas.md`. No CC turn is triggered.
 
 ### 8.3 Resource ingestion
 
@@ -359,27 +354,25 @@ Identical to notes ingestion, target `wiki/ideas.md`.
 User pastes URL → Submit
   → submit_resource(url) Tauri command
   → Rust:
-      1. fetch URL with reqwest (10s timeout, follow redirects)
+      1. fetch URL with reqwest (10 s timeout, follow redirects)
       2. detect content-type:
            pdf  → pdf-extract crate → plain text
            html → readability extraction → plain text
-      3. write extracted text to .ire/cache/<url-sha256>.txt (transient)
+      3. write extracted text to .ire/cache/<url-sha256>.txt
       4. insert resource row in SQLite (status=pending_summary)
-  → kick a CC turn (separate session) with prompt:
-      "Summarize this source for our research wiki. Path: <cache file>.
-       URL: <url>. Use the project context to assess relevance, novelty,
-       and links to existing wiki pages. Save the summary via
-       wiki.write to resources/<slug>.md."
-  → CC writes wiki/resources/<slug>.md (UNCOMMITTED — see §6.4),
-    updates SQLite resource row to status=summarized,
-    optionally calls memory.write_short_term (auto-committed).
-  → wiki-changed event renders the new file as "pending review" in the
-    resources pane.
-  → User reviews, then clicks "Index" (commits resources/<slug>.md + _index.md)
-    or "Discard" (deletes the file, marks row=rejected).
+      5. open a new resource chat tab (see §9.4), labelled by URL hostname
+      6. kick a CC turn in that tab with prompt:
+           "Read .ire/cache/<sha256>.txt (source: <url>). Provide an executive
+            summary — what this resource is, what is relevant to this project,
+            why it matters, and how it could be used. Use bullet points.
+            Do NOT write to the wiki yet."
 ```
 
-The cache file lives at `.ire/cache/` and is deleted after summarisation succeeds.
+CC streams the summary into the resource tab. When the turn ends, **Confirm** and **Discard** buttons appear.
+
+**Confirm**: triggers a second CC turn in the same tab with the instruction to write the summary to `resources/<slug>.md` via the `wiki.write` MCP tool (frontmatter: `url`, `date`; body: the summary). The tab auto-closes when this second CC turn ends. The written file is user-tracked (not auto-committed — see §6.4); it is committed to git as part of the Confirm flow.
+
+**Discard**: deletes `.ire/cache/<sha256>.txt`, marks the DB row `status=rejected`, closes the tab immediately. No wiki file is written.
 
 ---
 
@@ -469,8 +462,57 @@ T6  CC reads result files, calls wiki.write for any new findings,
 ### 9.3 Cancellation
 
 - **User cancels CC turn**: kill the CC subprocess; emit `chat-cancelled`. Session id is retained, so the next message can `--resume`.
-- **User resets session**: `chat_reset_session` clears the stored `session_id` in `ChatSession`. The frontend simultaneously clears the message list via the chat store. The next send starts a fresh CC session with no `--resume` flag.
+- **User resets session**: `chat_reset_session(tab_id)` clears the stored `session_id` for that tab. The frontend simultaneously clears the tab's message list. The next send starts a fresh CC session with no `--resume` flag.
 - **User cancels experiment**: SIGTERM the process group; on next monitor tick, mark `status=cancelled` and fire the wake-up with that fact.
+
+### 9.4 Multi-tab chat
+
+IRE supports multiple independent chat tabs in the central pane.
+
+**Tab types**
+
+| Type | Created by | Closeable | Description |
+|---|---|---|---|
+| Main | On workspace open (id `"main"`) | No (pinned) | Hosts the Brainstorm / Experiment mode selector. The primary research conversation. |
+| Chat | User clicks + button | Yes | Fresh CC session, independent conversation history. |
+| Resource | Backend resource ingestion (§8.3) | Auto-closes on Confirm/Discard | Dedicated to reviewing a single resource summary; shows Confirm / Discard instead of a free-form Composer when CC finishes. |
+
+**Session isolation.** Each tab carries its own `tab_id` (UUID for dynamically created tabs; `"main"` for the pinned tab). The backend `SessionManager` maintains a `HashMap<tab_id, PerTabSession>` where `PerTabSession` holds `{ session_id: Option<String>, running_pid: Option<u32> }`. This replaces the old single `ChatSession` global.
+
+**Event routing.** `chat-stream` events are wrapped as `{ tab_id, event }` before being emitted to the frontend. The frontend maintains a single global listener that routes each event to the correct tab's message list using the `tab_id` field. A `tab-created` event (payload: `{ tab_id, label, kind, resource_id? }`) is emitted by the backend whenever a new tab is opened programmatically (e.g. during resource ingestion).
+
+**User-initiated turn (any tab)**
+
+```
+User types → handleSend(tabId)
+  → beginAssistantMessage(tabId)
+  → ipc.chatSend(tabId, text, mode)
+  → Rust: resume CC for tabId with --resume <session_id>
+  → events emitted as { tab_id, event }
+  → frontend routes to tabId's messages
+  → Done → finishMessage(tabId)
+```
+
+**Backend-initiated turn (resource tab)**
+
+```
+submit_resource() kicks CC with a new tab_id
+  → emits tab-created { tab_id, label, kind: "resource" }
+  → frontend adds resource tab, switches to it
+  → CC emits { tab_id, Init } → frontend begins assistant message
+  → CC streams summary → Done → resourceStatus = "ready"
+  → Confirm / Discard buttons appear in the tab
+```
+
+**IPC changes from single-session baseline**
+
+| Command / Event | Old signature | New signature |
+|---|---|---|
+| `chat_send` | `{ mode, message }` | `{ tab_id, mode, message }` |
+| `chat_cancel` | `{}` | `{ tab_id }` |
+| `chat_reset_session` | `{}` | `{ tab_id }` |
+| `chat-stream` event | `StreamEvent` | `{ tab_id, event: StreamEvent }` |
+| `tab-created` event | — | `{ tab_id, label, kind, resource_id? }` |
 
 ---
 
@@ -520,7 +562,15 @@ Deduplicate `Result.text` against streamed `TextDelta`s using an `emitted_text: 
 
 ### 10.4 Session management
 
-`session_id` is captured from the first `Init` event and persisted to `workspace.json`. Subsequent `chat_send` calls pass `--resume <session_id>`. Reset (new conversation) is a UI button that clears the stored id.
+Each chat tab (see §9.4) has its own `session_id`, stored inside `SessionManager`:
+
+```rust
+// cc/session.rs
+struct PerTabSession { session_id: Option<String>, running_pid: Option<u32> }
+pub struct SessionManager(Arc<Mutex<HashMap<String, PerTabSession>>>);
+```
+
+`session_id` is captured from the first `Init` event for a given `tab_id` and stored in the map. Subsequent `chat_send` calls for that tab pass `--resume <session_id>`. Reset clears the `session_id` entry for the tab; the next send starts a fresh session with no `--resume` flag.
 
 ---
 
@@ -652,7 +702,16 @@ No table for chat messages — the CC session is the source of truth, and `--res
 
 ### 13.2 Chat rendering
 
-- Text is streamed character-by-character into the latest assistant bubble.
+**Tab bar.** The chat pane opens with a standard Tabbed Document Interface (TDI) bar at the top — the same pattern as Chrome or the VS Code editor. Each tab is a horizontal button in a single row:
+
+- The active tab has its background set to match the content area (`--surface`) and its bottom border removed so it visually merges with the content below. A 2 px gold accent line (`--focus-accent`) runs along the top edge of the active tab.
+- Inactive tabs have a dimmer foreground (`--text-dim`) and a darker background (`--bg`). Hovering brightens them.
+- The close button (×) is hidden until the tab is hovered or active. Pinned tabs (Main) have no close button.
+- A + button at the right end of the bar opens a new chat tab.
+- If there are more tabs than fit the bar width the row scrolls horizontally (scrollbar hidden).
+- A spinning indicator inside the tab label signals a resource tab that is still being summarised.
+
+**Messages.** Text is streamed character-by-character into the latest assistant bubble.
 - Thinking blocks render as a collapsed-by-default accordion ("Thinking…").
 - Tool calls render as cards: `[Read] path/to/file ▸ output preview`. Clicking expands the full output.
 - Experiment cards are special: status pill (Running / Completed / Failed), live log tail (last 10 lines), and a "view full logs" button.
@@ -714,9 +773,9 @@ Saved on close and on layout change (debounced 1s).
 | `submit_resource` | `{ url }` | `{ resource_id }` |
 | `index_resource` | `{ resource_id }` | `{}` (commits `resources/<slug>.md` + `_index.md`) |
 | `discard_resource` | `{ resource_id }` | `{}` (deletes file, marks rejected) |
-| `chat_send` | `{ mode, message }` | `{}` (events follow) |
-| `chat_cancel` | — | `{}` |
-| `chat_reset_session` | — | `{}` (forgets session id) |
+| `chat_send` | `{ tab_id, mode, message }` | `{}` (events follow) |
+| `chat_cancel` | `{ tab_id }` | `{}` |
+| `chat_reset_session` | `{ tab_id }` | `{}` (forgets session id for that tab) |
 | `experiment_list` | `{ limit? }` | `[ExperimentRow]` |
 | `experiment_logs` | `{ uuid, kb? }` | `{ stdout, stderr }` |
 | `experiment_cancel` | `{ uuid }` | `{}` |
@@ -726,8 +785,9 @@ Saved on close and on layout change (debounced 1s).
 
 | Event | Payload |
 |---|---|
-| `chat-stream` | `StreamEvent` (see [§10.3](#103-ndjson-parser-ccstream)) |
-| `chat-cancelled` | `{}` |
+| `chat-stream` | `{ tab_id: string, event: StreamEvent }` (see [§10.3](#103-ndjson-parser-ccstream) and [§9.4](#94-multi-tab-chat)) |
+| `tab-created` | `{ tab_id: string, label: string, kind: "chat"\|"resource", resource_id?: string }` |
+| `chat-cancelled` | `{ tab_id: string }` |
 | `experiment-status` | `{ uuid, status, exit_code? }` |
 | `experiment-log-line` | `{ uuid, stream: "stdout"\|"stderr", line }` |
 | `wiki-changed` | `{ path }` |
