@@ -111,8 +111,9 @@ fn dispatch(
     workspace_root: &Path,
     app: &AppHandle,
 ) -> Result<serde_json::Value> {
+    tracing::debug!(method = %method, "mcp dispatch");
     let wiki = WikiStore::new(workspace_root.to_path_buf());
-    match method {
+    let result = match method {
         "wiki.read" => wiki_read(params, &wiki),
         "wiki.write" => wiki_write(params, &wiki, app),
         "wiki.append" => wiki_append(params, &wiki, app),
@@ -123,7 +124,12 @@ fn dispatch(
         "memory.record_failure" => memory_record_failure(params, &wiki, app),
         "pulse.update" => pulse_update(params, &wiki, app),
         _ => Err(anyhow!("unknown method: {method}")),
+    };
+    match &result {
+        Ok(_) => tracing::debug!(method = %method, "mcp dispatch ok"),
+        Err(e) => tracing::warn!(method = %method, error = %e, "mcp dispatch failed"),
     }
+    result
 }
 
 fn wiki_read(params: &serde_json::Value, wiki: &WikiStore) -> Result<serde_json::Value> {
