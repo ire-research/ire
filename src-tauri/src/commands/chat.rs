@@ -1,4 +1,6 @@
+use std::fs;
 use std::io::{BufRead, BufReader};
+use std::path::Path;
 use std::sync::Arc;
 
 use tauri::{Emitter, State};
@@ -30,6 +32,13 @@ pub async fn chat_send(
         .map_err(|e| e.to_string())?
         .clone();
 
+    let mcp_config = {
+        let p = workspace_path.join(".ire/mcp.json");
+        if p.exists() { Some(p) } else { None }
+    };
+
+    let system_prompt = build_system_prompt(&workspace_path, &mode);
+
     let pid_arc = Arc::clone(&session.running_pid);
     let sid_arc = Arc::clone(&session.session_id);
 
@@ -38,8 +47,9 @@ pub async fn chat_send(
             bin: &bin,
             workspace: &workspace_path,
             message: &message,
-            mode: &mode,
             resume_id: resume_id.as_deref(),
+            mcp_config: mcp_config.as_deref(),
+            system_prompt: Some(&system_prompt),
         });
 
         let mut child = cmd.spawn().map_err(|e| e.to_string())?;
@@ -64,11 +74,7 @@ pub async fn chat_send(
         let _ = child.wait();
         *pid_arc.lock().unwrap() = None;
 
-        // Safety net: if the process exited without emitting a result/error line
-        // (e.g. `--resume` failed, binary crashed), the frontend still needs to know
-        // the stream is over. A duplicate Done is handled idempotently on the frontend.
         let _ = app_handle.emit("chat-stream", &StreamEvent::Done);
-
         Ok::<(), String>(())
     })
     .await
@@ -90,11 +96,56 @@ pub fn chat_reset_session(session: State<'_, ChatSession>) -> Result<(), String>
     Ok(())
 }
 
+/// Compose the system prompt from wiki context files per §7.4.
+fn build_system_prompt(workspace_root: &Path, mode: &str) -> String {
+    let wiki_root = workspace_root.join(".ire/wiki");
+
+    let preamble = if mode == "experiment" {
+        "You are IRE's experiment-mode assistant. You have access to wiki, memory, pulse, and experiment MCP tools as well as Bash, Edit, Write, and Read. After every experiment, update the wiki and pulse."
+    } else {
+        "You are IRE's brainstorm-mode assistant. You have access to wiki, memory, and pulse MCP tools. Use them to maintain persistent project knowledge across sessions."
+    };
+
+    let mut parts = vec![preamble.to_string()];
+
+    for rel in &[
+        "_schema.md",
+        "_index.md",
+        "status/pulse.md",
+        "status/long-term.md",
+        "status/failures.md",
+    ] {
+        if let Ok(content) = fs::read_to_string(wiki_root.join(rel)) {
+            if !content.trim().is_empty() {
+                parts.push(format!("### {rel}\n\n{content}"));
+            }
+        }
+    }
+
+    // Inject the two most recent short-term day files.
+    if let Ok(entries) = fs::read_dir(wiki_root.join("status/short-term")) {
+        let mut names: Vec<String> = entries
+            .flatten()
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|n| n.ends_with(".md"))
+            .collect();
+        names.sort();
+        names.reverse();
+        for name in names.iter().take(2) {
+            if let Ok(content) = fs::read_to_string(wiki_root.join("status/short-term").join(name)) {
+                if !content.trim().is_empty() {
+                    parts.push(format!("### status/short-term/{name}\n\n{content}"));
+                }
+            }
+        }
+    }
+
+    parts.join("\n\n---\n\n")
+}
+
 #[cfg(unix)]
 fn kill_process(pid: u32) {
-    unsafe {
-        libc::kill(pid as libc::pid_t, libc::SIGTERM);
-    }
+    unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
 }
 
 #[cfg(windows)]
@@ -103,3 +154,7 @@ fn kill_process(pid: u32) {
         .args(["/F", "/PID", &pid.to_string()])
         .output();
 }
+
+// Suppress dead-code lint for platforms where neither cfg applies.
+#[cfg(not(any(unix, windows)))]
+fn kill_process(_pid: u32) {}

@@ -1,0 +1,1 @@
+Hello, let's get everything set up in the IRE workspace. I am working on diffusion language models, specifically I want to understand if they natively encode output length information in their latent space without explicit training. I am trying to set up LLADA 8B to run locally now.
