@@ -2,7 +2,7 @@
 
 The Integrated Research Environment (IRE) is a local desktop application that streamlines machine-learning research workflows. It wraps Claude-Code (CC) inside a Tauri desktop app and gives it well-organised research context — literature, experiment logs, project state — by maintaining a persistent **LLM Wiki** on disk. IRE runs entirely locally and is project-centric: each workspace maps one-to-one to a directory containing both the user's source code and an `.ire/` data directory.
 
-This document describes the MVP architecture in enough detail to implement. The MVP feature cut, deferred items, and non-goals live in [SCOPE.md](./SCOPE.md).
+This document describes the MVP architecture in enough detail to implement. The MVP feature non-goals live in [SCOPE.md](./SCOPE.md).
 
 ---
 
@@ -916,19 +916,19 @@ ire/
 
 Each phase ends with a demoable milestone.
 
-**Phase 0 — Skeleton.** Replace the default `greet` Tauri example with the five-pane layout (static content). Add zustand, `react-resizable-panels`, types. No backend logic. Dark/light theme toggle in the topbar; dark is the default. *Milestone:* layout renders; panes resize/collapse; theme toggles between dark and light.
+**Phase 0 — Skeleton.** Replace the default `greet` Tauri example with the five-pane layout (static content). Add zustand, `react-resizable-panels`, types. No backend logic. Dark/light theme toggle in the topbar; dark is the default. *Milestone:* layout renders; panes resize/collapse; theme toggles between dark and light. ✅
 
-**Phase 1 — Workspace lifecycle.** Implement setup screen, binary discovery, `init_workspace`, `open_workspace`, `.lock`, `close_workspace`. Scaffold `.ire/` with seed wiki. *Milestone:* user can pick or init a workspace; `.ire/` materialises; lock works across restarts.
+**Phase 1 — Workspace lifecycle.** Implement setup screen, binary discovery, `init_workspace`, `open_workspace`, `.lock`, `close_workspace`. Scaffold `.ire/` with seed wiki. *Milestone:* user can pick or init a workspace; `.ire/` materialises; lock works across restarts. ✅
 
-**Phase 2 — Wiki store + memory tools (no CC yet).** `WikiStore` with atomic writes, `_index.md` regeneration, `log.md` append. SQLite migrations. Frontend reads `pulse.md`, `notes.md`, `ideas.md` and renders edit/preview. *Milestone:* user can manually edit notes and see them persisted; `wiki-changed` events propagate.
+**Phase 2 — Wiki store + memory tools (no CC yet).** `WikiStore` with atomic writes, `_index.md` regeneration, `log.md` append. SQLite migrations. Frontend reads `pulse.md`, `notes.md`, `ideas.md` and renders edit/preview. *Milestone:* user can manually edit notes and see them persisted; `wiki-changed` events propagate. ✅
 
-**Phase 3 — CC subprocess layer.** Binary discovery + spawn + NDJSON parser + session management. A debug "Send" button next to the chat pane that sends a raw message and renders streaming text only (no tool cards yet). No MCP yet. *Milestone:* user can chat with CC inside the central pane, multi-turn via `--resume`.
+**Phase 3 — CC subprocess layer.** Binary discovery + spawn + NDJSON parser + session management. A debug "Send" button next to the chat pane that sends a raw message and renders streaming text only (no tool cards yet). No MCP yet. *Milestone:* user can chat with CC inside the central pane, multi-turn via `--resume`. ✅
 
-**Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. CC config wired up via `--mcp-config`. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` extended with `workspace_root`, git auto-commit for auto-tracked paths, and a `rename` method. System prompt composed from wiki context files on every CC turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and CC actually does it.
+**Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. CC config wired up via `--mcp-config`. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` extended with `workspace_root`, git auto-commit for auto-tracked paths, and a `rename` method. System prompt composed from wiki context files on every CC turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and CC actually does it. ✅
 
 **Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML extractors. `submit_resource` fetches a URL, extracts text via `scraper` (HTML) or `pdf-extract` (PDF), writes to `.ire/cache/<sha256>.txt`, inserts a DB row, emits `tab-created`, and kicks a CC summarisation turn. Confirm sends a second CC turn that writes `resources/<slug>.md` via `wiki.write`; when Done fires, `index_resource` scans `wiki/resources/` for the file whose frontmatter `url:` matches, extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), commits, and emits `wiki-changed` to refresh the pane. Discard calls `discard_resource` (deletes cache, marks `rejected`). Notes/ideas Submit commits via `user_commit`. The resources list shows only `summarized` resources with their title; no status label is shown. *Milestone:* paste an arXiv URL → resource summary appears in the right pane. ✅
 
-**Phase 6 — Experiments.** `experiment.start`, detached subprocess, monitor, wake-up turn composition. Experiment cards in chat with live log tail. *Milestone:* CC can run a Python script ablation, tell the user "I'll be back", and resume with results when the script exits.
+**Phase 6 — Experiments.** `experiment.start`, detached subprocess, monitor, wake-up turn composition. Experiment cards in chat with live log tail. *Milestone:* CC can run a Python script ablation, tell the user "I'll be back", and resume with results when the script exits. ✅
 
 **Phase 7 — Polish.** Workspace.json layout persistence, error toasts, cancel buttons, focus-banner editor, end-to-end smoke test on a real research project.
 

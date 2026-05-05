@@ -1,7 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { ChatMode, ResourceItem, TabCreatedPayload, TabStreamPayload, WikiFile } from "./types";
+import type {
+  ChatMode,
+  ExperimentLogLinePayload,
+  ExperimentRow,
+  ExperimentStartingPayload,
+  ExperimentStatusPayload,
+  ResourceItem,
+  TabCreatedPayload,
+  TabStreamPayload,
+  WikiFile,
+} from "./types";
 
 export type BinaryStatus =
   | { kind: "found"; path: string; version: string | null }
@@ -43,6 +53,12 @@ export const ipc = {
     invoke("index_resource", { resourceId }),
   listResources: (): Promise<ResourceItem[]> =>
     invoke("list_resources"),
+  experimentList: (limit?: number): Promise<ExperimentRow[]> =>
+    invoke("experiment_list", { limit }),
+  experimentLogs: (uuid: string, kb?: number): Promise<{ stdout: string; stderr: string }> =>
+    invoke("experiment_logs", { uuid, kb }),
+  experimentCancel: (uuid: string): Promise<void> =>
+    invoke("experiment_cancel", { uuid }),
 };
 
 export function onWikiChanged(
@@ -63,6 +79,24 @@ export function onTabCreated(
   cb: (payload: TabCreatedPayload) => void
 ): Promise<() => void> {
   return listen<TabCreatedPayload>("tab-created", (event) => cb(event.payload));
+}
+
+export function onExperimentStatus(
+  cb: (payload: ExperimentStatusPayload) => void
+): Promise<() => void> {
+  return listen<ExperimentStatusPayload>("experiment-status", (e) => cb(e.payload));
+}
+
+export function onExperimentLogLine(
+  cb: (payload: ExperimentLogLinePayload) => void
+): Promise<() => void> {
+  return listen<ExperimentLogLinePayload>("experiment-log-line", (e) => cb(e.payload));
+}
+
+export function onExperimentStarting(
+  cb: (payload: ExperimentStartingPayload) => void
+): Promise<() => void> {
+  return listen<ExperimentStartingPayload>("experiment-starting", (e) => cb(e.payload));
 }
 
 export async function pickDirectory(title: string): Promise<string | null> {

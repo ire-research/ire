@@ -161,6 +161,54 @@ const TOOLS = [
       },
     },
   },
+  {
+    name: 'experiment.start',
+    description: 'Spawn a detached experiment subprocess. Returns immediately with a uuid. IRE will wake you up via --resume when the process finishes.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Short human-readable experiment name' },
+        plan_md: { type: 'string', description: 'Full experiment plan in markdown' },
+        command: { type: 'string', description: 'Shell command to run (passed to sh -c)' },
+        working_dir: { type: 'string', description: 'Working directory (defaults to workspace root)' },
+        wake_prompt: { type: 'string', description: 'Prompt to send when the experiment finishes' },
+      },
+      required: ['name', 'plan_md', 'command', 'wake_prompt'],
+    },
+  },
+  {
+    name: 'experiment.status',
+    description: 'Get the status of an experiment by uuid.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        uuid: { type: 'string', description: 'Experiment uuid returned by experiment.start' },
+      },
+      required: ['uuid'],
+    },
+  },
+  {
+    name: 'experiment.list',
+    description: 'List recent experiments.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        limit: { type: 'number', description: 'Max results (default 20)' },
+      },
+    },
+  },
+  {
+    name: 'experiment.tail_logs',
+    description: 'Return the tail of stdout and stderr logs for an experiment.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        uuid: { type: 'string', description: 'Experiment uuid' },
+        kb: { type: 'number', description: 'Kilobytes to tail (default 64)' },
+      },
+      required: ['uuid'],
+    },
+  },
 ];
 
 const server = new Server(

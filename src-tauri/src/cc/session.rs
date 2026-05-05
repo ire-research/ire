@@ -50,4 +50,15 @@ impl SessionManager {
             s.session_id = None;
         }
     }
+
+    /// Returns (tab_id, session_id) for the first tab with a running CC subprocess.
+    pub fn get_active_session(&self) -> Option<(String, String)> {
+        let guard = self.0.lock().unwrap();
+        guard
+            .iter()
+            .find(|(_, s)| s.running_pid.is_some())
+            .and_then(|(tab_id, s)| {
+                s.session_id.as_ref().map(|sid| (tab_id.clone(), sid.clone()))
+            })
+    }
 }

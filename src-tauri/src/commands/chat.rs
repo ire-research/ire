@@ -84,7 +84,11 @@ pub async fn chat_send(
         }
 
         let _ = child.wait();
-        session_clone.clear_pid(&tab_id);
+        // Only clear if our PID is still current — fire_wakeup may have already
+        // registered the wake-up CC subprocess under the same tab_id.
+        if session_clone.get_pid(&tab_id) == Some(pid) {
+            session_clone.clear_pid(&tab_id);
+        }
         tracing::info!(tab_id = %tab_id, "chat_send complete");
 
         let _ = app_handle.emit(
@@ -120,7 +124,7 @@ pub fn chat_reset_session(session: State<'_, SessionManager>, tab_id: String) ->
 }
 
 /// Compose the system prompt from wiki context files per §7.4.
-fn build_system_prompt(workspace_root: &Path, mode: &str) -> String {
+pub fn build_system_prompt(workspace_root: &Path, mode: &str) -> String {
     let wiki_root = workspace_root.join(".ire/wiki");
 
     let mut parts: Vec<String> = Vec::new();
@@ -133,7 +137,13 @@ fn build_system_prompt(workspace_root: &Path, mode: &str) -> String {
     }
 
     let preamble = if mode == "experiment" {
-        "You are IRE's experiment-mode assistant. You have access to wiki, memory, pulse, and experiment MCP tools as well as Bash, Edit, Write, and Read. After every experiment, update the wiki and pulse."
+        "You are IRE's experiment-mode assistant. You have access to wiki, memory, pulse, and experiment MCP tools as well as Bash, Edit, Write, and Read.\n\n\
+        ## Experiment workflow\n\n\
+        When asked to run an experiment:\n\
+        1. Plan the run and get user agreement.\n\
+        2. Call `experiment.start` with `name`, `plan_md`, `command`, and a `wake_prompt` that tells IRE what to do when the process finishes.\n\
+        3. End your turn — do **not** wait. IRE resumes you via `--resume` when the process exits.\n\
+        4. On wake-up: read the logs from `wake_prompt` context, update the wiki, pulse, and memory as appropriate."
     } else {
         "You are IRE's brainstorm-mode assistant. You have access to wiki, memory, and pulse MCP tools. Use them to maintain persistent project knowledge across sessions."
     };

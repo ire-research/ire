@@ -1,7 +1,14 @@
 import { useEffect, useRef } from "react";
 import { useWorkspace } from "../../state/workspace";
 import { useChat, MAIN_TAB_ID } from "../../state/chat";
-import { ipc, onChatStream, onTabCreated } from "../../ipc";
+import {
+  ipc,
+  onChatStream,
+  onExperimentLogLine,
+  onExperimentStarting,
+  onExperimentStatus,
+  onTabCreated,
+} from "../../ipc";
 import { MessageList } from "./MessageList";
 import { Composer } from "./Composer";
 import { TabBar } from "./TabBar";
@@ -27,6 +34,11 @@ export function ChatPane() {
     setStreaming,
     setResourceStatus,
     clearMessages,
+    addTool,
+    markToolDone,
+    linkExperimentUuid,
+    updateExperimentStatus,
+    appendExperimentLog,
   } = useChat();
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
@@ -43,10 +55,13 @@ export function ChatPane() {
   // lets the .then() handler unlisten immediately when cleanup already ran.
   useEffect(() => {
     let cancelled = false;
-    let unlistenStream: (() => void) | null = null;
-    let unlistenTabCreated: (() => void) | null = null;
+    const unlisteners: (() => void)[] = [];
 
-    onChatStream(({ tab_id, event }) => {
+    function reg(p: Promise<() => void>) {
+      p.then((u) => { if (cancelled) u(); else unlisteners.push(u); });
+    }
+
+    reg(onChatStream(({ tab_id, event }) => {
       const msgId = assistantIdByTab.current.get(tab_id);
 
       switch (event.kind) {
@@ -70,6 +85,23 @@ export function ChatPane() {
 
         case "ThinkingDelta":
           if (msgId) appendThinking(tab_id, msgId, event.text);
+          break;
+
+        case "ToolStart":
+          if (msgId) {
+            addTool(tab_id, msgId, {
+              tool_id: event.tool_id,
+              tool_name: event.tool_name,
+              input_preview: event.input_preview,
+              output_preview: null,
+              output_full: null,
+              isDone: false,
+            });
+          }
+          break;
+
+        case "ToolDone":
+          markToolDone(tab_id, event.tool_id, event.output_preview, event.output_full);
           break;
 
         case "Result":
@@ -102,9 +134,9 @@ export function ChatPane() {
           break;
         }
       }
-    }).then((u) => { if (cancelled) u(); else unlistenStream = u; });
+    }));
 
-    onTabCreated((payload) => {
+    reg(onTabCreated((payload) => {
       const newTab: Tab = {
         id: payload.tab_id,
         label: payload.label,
@@ -117,12 +149,23 @@ export function ChatPane() {
       };
       addTab(newTab);
       setActiveTab(payload.tab_id);
-    }).then((u) => { if (cancelled) u(); else unlistenTabCreated = u; });
+    }));
+
+    reg(onExperimentStarting(({ tab_id, uuid }) => {
+      linkExperimentUuid(tab_id, uuid);
+    }));
+
+    reg(onExperimentStatus(({ uuid, status, exit_code }) => {
+      updateExperimentStatus(uuid, status as never, exit_code);
+    }));
+
+    reg(onExperimentLogLine(({ uuid, line }) => {
+      appendExperimentLog(uuid, line);
+    }));
 
     return () => {
       cancelled = true;
-      unlistenStream?.();
-      unlistenTabCreated?.();
+      unlisteners.forEach((u) => u());
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
