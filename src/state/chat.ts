@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AssistantMessage, ResourceStatus, Tab } from "../types";
+import type { AssistantMessage, ExperimentStatus, ResourceStatus, Tab, ToolCallState } from "../types";
 
 const MAIN_TAB_ID = "main";
 
@@ -22,6 +22,16 @@ interface ChatStore {
   setStreaming: (tabId: string, v: boolean) => void;
   setResourceStatus: (tabId: string, status: ResourceStatus) => void;
   clearMessages: (tabId: string) => void;
+
+  // Tool call management
+  addTool: (tabId: string, msgId: string, tool: ToolCallState) => void;
+  markToolDone: (tabId: string, toolId: string, outputPreview?: string | null, outputFull?: string | null) => void;
+  /** Link the pending experiment card in tabId to its assigned UUID. */
+  linkExperimentUuid: (tabId: string, uuid: string) => void;
+  /** Update experiment status across all tabs by UUID. */
+  updateExperimentStatus: (uuid: string, status: ExperimentStatus, exitCode?: number) => void;
+  /** Append a log line to the experiment card with the given UUID. */
+  appendExperimentLog: (uuid: string, line: string) => void;
 }
 
 let seq = 0;
@@ -42,6 +52,34 @@ function updateMessage(
       m.id === msgId && m.role === "assistant" ? updater(m as AssistantMessage) : m
     ),
   }));
+}
+
+function updateToolInMessage(
+  msg: AssistantMessage,
+  predicate: (t: ToolCallState) => boolean,
+  updater: (t: ToolCallState) => ToolCallState
+): AssistantMessage {
+  return {
+    ...msg,
+    tools: (msg.tools ?? []).map((t) => (predicate(t) ? updater(t) : t)),
+  };
+}
+
+/** Find the last assistant message in a tab that has a pending experiment card (no UUID yet). */
+function findPendingExperimentMsgId(tabs: Tab[], tabId: string): string | null {
+  const tab = tabs.find((t) => t.id === tabId);
+  if (!tab) return null;
+  for (let i = tab.messages.length - 1; i >= 0; i--) {
+    const m = tab.messages[i];
+    if (m.role === "assistant") {
+      const am = m as AssistantMessage;
+      const pending = am.tools?.find(
+        (t) => t.tool_name === "experiment.start" && !t.experimentUuid
+      );
+      if (pending) return am.id;
+    }
+  }
+  return null;
 }
 
 export const MAIN_TAB: Tab = {
@@ -159,6 +197,101 @@ export const useChat = create<ChatStore>((set) => ({
         isStreaming: false,
       })),
     })),
+
+  addTool: (tabId, msgId, tool) =>
+    set((s) => ({
+      tabs: updateMessage(s.tabs, tabId, msgId, (m) => ({
+        ...m,
+        tools: [...(m.tools ?? []), tool],
+      })),
+    })),
+
+  markToolDone: (tabId, toolId, outputPreview?, outputFull?) =>
+    set((s) => {
+      const tab = s.tabs.find((t) => t.id === tabId);
+      if (!tab) return s;
+      for (const msg of tab.messages) {
+        if (msg.role !== "assistant") continue;
+        const am = msg as AssistantMessage;
+        if (am.tools?.some((t) => t.tool_id === toolId)) {
+          return {
+            tabs: updateMessage(s.tabs, tabId, am.id, (m) =>
+              updateToolInMessage(m, (t) => t.tool_id === toolId, (t) => ({
+                ...t,
+                isDone: true,
+                output_preview: outputPreview ?? null,
+                output_full: outputFull ?? null,
+              }))
+            ),
+          };
+        }
+      }
+      return s;
+    }),
+
+  linkExperimentUuid: (tabId, uuid) =>
+    set((s) => {
+      const msgId = findPendingExperimentMsgId(s.tabs, tabId);
+      if (!msgId) return s;
+      return {
+        tabs: updateMessage(s.tabs, tabId, msgId, (m) =>
+          updateToolInMessage(
+            m,
+            (t) => t.tool_name === "experiment.start" && !t.experimentUuid,
+            (t) => ({ ...t, experimentUuid: uuid, experimentStatus: "running" as ExperimentStatus })
+          )
+        ),
+      };
+    }),
+
+  updateExperimentStatus: (uuid, status, exitCode) =>
+    set((s) => {
+      for (const tab of s.tabs) {
+        for (const msg of tab.messages) {
+          if (msg.role !== "assistant") continue;
+          const am = msg as AssistantMessage;
+          if (am.tools?.some((t) => t.experimentUuid === uuid)) {
+            return {
+              tabs: updateMessage(s.tabs, tab.id, am.id, (m) =>
+                updateToolInMessage(
+                  m,
+                  (t) => t.experimentUuid === uuid,
+                  (t) => ({ ...t, experimentStatus: status, ...(exitCode !== undefined ? { experimentExitCode: exitCode } : {}) })
+                )
+              ),
+            };
+          }
+        }
+      }
+      return s;
+    }),
+
+  appendExperimentLog: (uuid, line) =>
+    set((s) => {
+      for (const tab of s.tabs) {
+        for (const msg of tab.messages) {
+          if (msg.role !== "assistant") continue;
+          const am = msg as AssistantMessage;
+          if (am.tools?.some((t) => t.experimentUuid === uuid)) {
+            return {
+              tabs: updateMessage(s.tabs, tab.id, am.id, (m) =>
+                updateToolInMessage(
+                  m,
+                  (t) => t.experimentUuid === uuid,
+                  (t) => {
+                    const lines = t.logLines ?? [];
+                    // Keep last 50 lines to avoid unbounded growth.
+                    const next = [...lines, line].slice(-50);
+                    return { ...t, logLines: next };
+                  }
+                )
+              ),
+            };
+          }
+        }
+      }
+      return s;
+    }),
 }));
 
 export { MAIN_TAB_ID };

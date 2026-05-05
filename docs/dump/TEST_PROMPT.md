@@ -16,3 +16,16 @@ Run the following to test resource ingestion. If the workspace is initialized as
 https://arxiv.org/pdf/2603.06123
 ```
 CC should read the PDF and provide a summary with relevant information in a new chat tab. You can say confirm to index it.
+
+## Experiment dispatch logic
+Run the following prompt:
+```
+Let's test the experiment workflow. Write a minimal python script to do the following: for each i in range(10), sleep 3 seconds and print (iteration nr. i), then finish.
+```
+
+## Fronted Chat Rendering
+
+Run the following to generate as many tools, thinking and text as possible.
+```
+I am testing IRE's frontend rendering, which wraps your answers with a custom UI. To help, please respond by including some thinking, text and multiple tools usage. Maintain the reponse brief to avoid overspending token, but ensure variety in the content (i.e., use thinking, tools and plain text).
+```

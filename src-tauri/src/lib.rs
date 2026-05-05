@@ -1,6 +1,7 @@
 mod cc;
 mod commands;
 mod db;
+mod experiments;
 mod mcp;
 mod resources;
 mod wiki;
@@ -8,6 +9,7 @@ mod workspace;
 
 use cc::session::SessionManager;
 use commands::chat::{chat_cancel, chat_reset_session, chat_send};
+use commands::experiments::{experiment_cancel, experiment_list, experiment_logs};
 use commands::resources::{discard_resource, index_resource, list_resources, submit_resource};
 use commands::wiki::{read_wiki_file, save_ideas, save_notes};
 use commands::workspace::{close_workspace, init_workspace, open_workspace, setup_status};
@@ -46,6 +48,9 @@ pub fn run() {
             discard_resource,
             index_resource,
             list_resources,
+            experiment_list,
+            experiment_logs,
+            experiment_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

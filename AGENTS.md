@@ -73,8 +73,9 @@ This compiles both Rust and TypeScript. It must succeed with zero errors and zer
 - If a SDD section describes the old behavior, update it to match the new behavior.
 - When unsure whether the SDD needs updating, err on the side of caution: stale architecture docs are worse than missing ones.
 
-`src-tauri/assets/seed/_SYSTEM.md` is the runtime system prompt injected into every CC turn. It must stay accurate:
-- When MCP tools are added, removed, or renamed, update the tools table in `_SYSTEM.md`.
+`src-tauri/assets/seed/_SYSTEM.md` is the general-purpose system prompt injected into every CC turn regardless of mode. Keep it accurate:
+- **Do not document MCP tools here.** Tools are advertised automatically via MCP server handshaking — duplicating them in `_SYSTEM.md` wastes context and gets stale.
+- **Do not add mode-specific guidance here.** Experiment workflow instructions belong in the experiment-mode preamble (`commands/chat.rs`), not in `_SYSTEM.md`.
 - When the wiki layout changes (new files, renamed paths, restructured dirs), update the layout block.
 - When behavioral rules change (new agent expectations, updated conventions), update the rules list.
-- `_SYSTEM.md` describes what CC *can actually do right now* — not aspirational features. Never document an MCP tool or wiki path that doesn't exist in the current implementation.
+- `_SYSTEM.md` contains only: wiki layout reference and universal agent rules.

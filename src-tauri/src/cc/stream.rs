@@ -8,8 +8,7 @@ pub enum StreamEvent {
     TextDelta { text: String },
     ThinkingDelta { text: String },
     ToolStart { tool_id: String, tool_name: String, input_preview: Option<String> },
-    ToolInputDelta { tool_id: String, partial_json: String },
-    ToolDone { tool_id: String, output_preview: Option<String> },
+    ToolDone { tool_id: String, output_preview: Option<String>, output_full: Option<String> },
     Result { text: Option<String>, session_id: String },
     Error { message: String },
     Done,
@@ -18,8 +17,10 @@ pub enum StreamEvent {
 #[derive(Default)]
 pub struct StreamState {
     pub session_id: String,
-    pub current_tool_id: Option<String>,
     pub emitted_text: bool,
+    emitted_text_len: usize,
+    emitted_thinking_len: usize,
+    emitted_tool_ids: Vec<String>,
 }
 
 pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, emit: &mut F) {
@@ -29,7 +30,14 @@ pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, em
             state.session_id = sid.clone();
             emit(StreamEvent::Init { session_id: sid });
         }
-        "stream_event" => dispatch_stream_event(json, state, emit),
+        "assistant" => dispatch_assistant(json, state, emit),
+        "tool_result" => {
+            let id = json["tool_use_id"].as_str().unwrap_or("").to_string();
+            if !id.is_empty() {
+                let (output_preview, output_full) = extract_tool_output(json);
+                emit(StreamEvent::ToolDone { tool_id: id, output_preview, output_full });
+            }
+        }
         "result" => {
             let text = extract_result_text(json, state);
             emit(StreamEvent::Result {
@@ -51,56 +59,45 @@ pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, em
     }
 }
 
-fn dispatch_stream_event<F: FnMut(StreamEvent)>(
+// CC's stream-json format emits `{"type":"assistant","message":{...}}` snapshots.
+// Each snapshot contains the full content array accumulated so far, so we track
+// cursors to emit only the new portion as deltas.
+fn dispatch_assistant<F: FnMut(StreamEvent)>(
     json: &Value,
     state: &mut StreamState,
     emit: &mut F,
 ) {
-    let event = &json["stream_event"];
-    match event["type"].as_str().unwrap_or("") {
-        "content_block_start" => {
-            let block = &event["content_block"];
-            if block["type"].as_str() == Some("tool_use") {
-                let id = block["id"].as_str().unwrap_or("").to_string();
-                let name = block["name"].as_str().unwrap_or("").to_string();
-                state.current_tool_id = Some(id.clone());
-                emit(StreamEvent::ToolStart {
-                    tool_id: id,
-                    tool_name: name,
-                    input_preview: None,
-                });
-            }
-        }
-        "content_block_delta" => {
-            let delta = &event["delta"];
-            match delta["type"].as_str() {
-                Some("text_delta") => {
-                    let text = delta["text"].as_str().unwrap_or("").to_string();
+    let Some(arr) = json["message"]["content"].as_array() else { return };
+    for block in arr {
+        match block["type"].as_str() {
+            Some("text") => {
+                let full = block["text"].as_str().unwrap_or("");
+                if full.len() > state.emitted_text_len {
+                    let delta = full[state.emitted_text_len..].to_string();
+                    state.emitted_text_len = full.len();
                     state.emitted_text = true;
-                    emit(StreamEvent::TextDelta { text });
+                    emit(StreamEvent::TextDelta { text: delta });
                 }
-                Some("thinking_delta") => {
-                    let text = delta["thinking"].as_str().unwrap_or("").to_string();
-                    emit(StreamEvent::ThinkingDelta { text });
-                }
-                Some("input_json_delta") => {
-                    if let Some(id) = &state.current_tool_id {
-                        let partial = delta["partial_json"].as_str().unwrap_or("").to_string();
-                        emit(StreamEvent::ToolInputDelta {
-                            tool_id: id.clone(),
-                            partial_json: partial,
-                        });
-                    }
-                }
-                _ => {}
             }
-        }
-        "content_block_stop" => {
-            if let Some(id) = state.current_tool_id.take() {
-                emit(StreamEvent::ToolDone { tool_id: id, output_preview: None });
+            Some("thinking") => {
+                let full = block["thinking"].as_str().unwrap_or("");
+                if full.len() > state.emitted_thinking_len {
+                    let delta = full[state.emitted_thinking_len..].to_string();
+                    state.emitted_thinking_len = full.len();
+                    emit(StreamEvent::ThinkingDelta { text: delta });
+                }
             }
+            Some("tool_use") => {
+                let id = block["id"].as_str().unwrap_or("").to_string();
+                if !id.is_empty() && !state.emitted_tool_ids.contains(&id) {
+                    let name = block["name"].as_str().unwrap_or("").to_string();
+                    state.emitted_tool_ids.push(id.clone());
+                    let input_preview = extract_input_preview(&block["input"]);
+                    emit(StreamEvent::ToolStart { tool_id: id, tool_name: name, input_preview });
+                }
+            }
+            _ => {}
         }
-        _ => {}
     }
 }
 
@@ -110,4 +107,52 @@ fn extract_result_text(json: &Value, state: &StreamState) -> Option<String> {
         return None;
     }
     json["result"].as_str().map(|s| s.to_string())
+}
+
+fn extract_input_preview(input: &Value) -> Option<String> {
+    if input.is_null() { return None; }
+    if let Some(obj) = input.as_object() {
+        if obj.is_empty() { return None; }
+        // Extract the most descriptive single-line value from known keys
+        for key in &["path", "file_path", "url", "query", "from", "glob", "pattern", "command"] {
+            if let Some(s) = obj.get(*key).and_then(|v| v.as_str()) {
+                if !s.is_empty() { return Some(trunc_chars(s, 80)); }
+            }
+        }
+        // Fall back to first non-empty string value
+        for v in obj.values() {
+            if let Some(s) = v.as_str() {
+                if !s.is_empty() { return Some(trunc_chars(s, 80)); }
+            }
+        }
+    }
+    None
+}
+
+fn extract_tool_output(json: &Value) -> (Option<String>, Option<String>) {
+    let content = if let Some(arr) = json["content"].as_array() {
+        arr.iter()
+            .filter_map(|item| item["text"].as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        json["content"].as_str().unwrap_or("").to_string()
+    };
+
+    if content.is_empty() { return (None, None); }
+
+    let output_full = trunc_chars(&content, 10_000);
+    let first_line = content.lines().next().unwrap_or(&content).trim();
+    let output_preview = trunc_chars(first_line, 80);
+
+    (Some(output_preview), Some(output_full))
+}
+
+fn trunc_chars(s: &str, max: usize) -> String {
+    let count = s.chars().count();
+    if count <= max {
+        s.to_string()
+    } else {
+        s.chars().take(max).collect::<String>() + "…"
+    }
 }

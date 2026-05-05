@@ -4,6 +4,115 @@ use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
 use serde::Serialize;
 
+// ── Experiments ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ExperimentRow {
+    pub uuid: String,
+    pub name: String,
+    pub command: String,
+    pub status: String,
+    pub exit_code: Option<i64>,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub pid: Option<i64>,
+    pub tab_id: String,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn insert_experiment(
+    ire_dir: &Path,
+    uuid: &str,
+    name: &str,
+    command: &str,
+    working_dir: &str,
+    wake_prompt: &str,
+    session_id: &str,
+    tab_id: &str,
+) -> Result<()> {
+    let conn = open(ire_dir)?;
+    let now = chrono::Local::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO experiments (uuid, name, command, working_dir, status, started_at, wake_prompt, session_id, tab_id) \
+         VALUES (?1, ?2, ?3, ?4, 'running', ?5, ?6, ?7, ?8)",
+        params![uuid, name, command, working_dir, now, wake_prompt, session_id, tab_id],
+    )?;
+    Ok(())
+}
+
+pub fn update_experiment_pid(ire_dir: &Path, uuid: &str, pid: u32) -> Result<()> {
+    let conn = open(ire_dir)?;
+    conn.execute(
+        "UPDATE experiments SET pid = ?1 WHERE uuid = ?2",
+        params![pid, uuid],
+    )?;
+    Ok(())
+}
+
+pub fn update_experiment_completed(
+    ire_dir: &Path,
+    uuid: &str,
+    status: &str,
+    exit_code: Option<i32>,
+) -> Result<()> {
+    let conn = open(ire_dir)?;
+    let now = chrono::Local::now().to_rfc3339();
+    conn.execute(
+        "UPDATE experiments SET status = ?1, exit_code = ?2, ended_at = ?3 WHERE uuid = ?4",
+        params![status, exit_code, now, uuid],
+    )?;
+    Ok(())
+}
+
+pub fn get_experiment(ire_dir: &Path, uuid: &str) -> Result<Option<ExperimentRow>> {
+    let conn = open(ire_dir)?;
+    let mut stmt = conn.prepare(
+        "SELECT uuid, name, command, status, exit_code, started_at, ended_at, pid, tab_id \
+         FROM experiments WHERE uuid = ?1",
+    )?;
+    let mut rows = stmt.query(params![uuid])?;
+    rows.next()?
+        .map(|r| {
+            Ok::<ExperimentRow, rusqlite::Error>(ExperimentRow {
+                uuid: r.get(0)?,
+                name: r.get(1)?,
+                command: r.get(2)?,
+                status: r.get(3)?,
+                exit_code: r.get(4)?,
+                started_at: r.get(5)?,
+                ended_at: r.get(6)?,
+                pid: r.get(7)?,
+                tab_id: r.get(8)?,
+            })
+        })
+        .transpose()
+        .context("get_experiment")
+}
+
+pub fn list_experiments(ire_dir: &Path, limit: usize) -> Result<Vec<ExperimentRow>> {
+    let conn = open(ire_dir)?;
+    let mut stmt = conn.prepare(
+        "SELECT uuid, name, command, status, exit_code, started_at, ended_at, pid, tab_id \
+         FROM experiments ORDER BY started_at DESC LIMIT ?1",
+    )?;
+    let rows = stmt.query_map(params![limit as i64], |r| {
+        Ok(ExperimentRow {
+            uuid: r.get(0)?,
+            name: r.get(1)?,
+            command: r.get(2)?,
+            status: r.get(3)?,
+            exit_code: r.get(4)?,
+            started_at: r.get(5)?,
+            ended_at: r.get(6)?,
+            pid: r.get(7)?,
+            tab_id: r.get(8)?,
+        })
+    })?;
+    rows.map(|r| r.context("experiment row")).collect()
+}
+
+// ── Resources ─────────────────────────────────────────────────────────────────
+
 #[derive(Debug, Serialize, Clone)]
 pub struct ResourceRow {
     pub url_sha256: String,

@@ -4,6 +4,7 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::cc::discovery::{find_claude_binary, DiscoveryError};
+use crate::cc::session::SessionManager;
 use crate::db::migrations;
 use crate::mcp::{McpHandle, McpState};
 use crate::workspace::init as ws_init;
@@ -48,12 +49,14 @@ pub fn open_workspace(
     path: String,
     active: State<'_, ActiveWorkspace>,
     mcp: State<'_, McpState>,
+    session: State<'_, SessionManager>,
     app: tauri::AppHandle,
 ) -> Result<WorkspaceState, String> {
     tracing::info!(path = %path, "open_workspace");
     let path = PathBuf::from(path);
     ws_init::validate_existing(&path).map_err(|e| e.to_string())?;
-    let result = attach(&active, &mcp, path, app);
+    let sm = (*session).clone();
+    let result = attach(&active, &mcp, sm, path, app);
     match &result {
         Ok(s) => tracing::info!(name = %s.name, path = ?s.path, "workspace opened"),
         Err(e) => tracing::warn!(error = %e, "open_workspace failed"),
@@ -66,12 +69,14 @@ pub fn init_workspace(
     path: String,
     active: State<'_, ActiveWorkspace>,
     mcp: State<'_, McpState>,
+    session: State<'_, SessionManager>,
     app: tauri::AppHandle,
 ) -> Result<WorkspaceState, String> {
     tracing::info!(path = %path, "init_workspace");
     let path = PathBuf::from(path);
     ws_init::initialize(&path).map_err(|e| e.to_string())?;
-    let result = attach(&active, &mcp, path, app);
+    let sm = (*session).clone();
+    let result = attach(&active, &mcp, sm, path, app);
     match &result {
         Ok(s) => tracing::info!(name = %s.name, path = ?s.path, "workspace initialized"),
         Err(e) => tracing::warn!(error = %e, "init_workspace failed"),
@@ -102,6 +107,7 @@ pub fn close_workspace(
 fn attach(
     active: &State<'_, ActiveWorkspace>,
     mcp: &State<'_, McpState>,
+    session_manager: SessionManager,
     path: PathBuf,
     app: tauri::AppHandle,
 ) -> Result<WorkspaceState, String> {
@@ -118,7 +124,7 @@ fn attach(
 
     // Start the MCP RPC server and write the mcp.json config for CC.
     let socket = crate::mcp::rpc::socket_path(&ire);
-    let task = crate::mcp::rpc::start(socket.clone(), path.clone(), app);
+    let task = crate::mcp::rpc::start(socket.clone(), path.clone(), session_manager, app);
     crate::mcp::config::write_mcp_config(&ire, &socket).map_err(|e| e.to_string())?;
     *mcp.0.lock().map_err(|e| e.to_string())? = Some(McpHandle { task, socket_path: socket });
 

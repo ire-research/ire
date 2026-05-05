@@ -28,7 +28,7 @@ This document collects the next step required in the implementation of IRE. Soul
 
 - [x] ~Implement Phase 5 of `docs/SDD.md`~
 
-- [ ] Implement Phase 6 of `docs/SDD.md`
+- [x] ~Implement Phase 6 of `docs/SDD.md`~
 
 - [ ] Implement Phase 7 of `docs/SDD.md`
 

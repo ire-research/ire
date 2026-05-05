@@ -1,9 +1,24 @@
 export type ChatMode = "brainstorm" | "experiment";
 
+export type ExperimentStatus = "starting" | "running" | "completed" | "failed" | "cancelled";
+
 export interface UserMessage {
   id: string;
   role: "user";
   text: string;
+}
+
+export interface ToolCallState {
+  tool_id: string;
+  tool_name: string;
+  input_preview: string | null;
+  output_preview: string | null;
+  output_full: string | null;
+  isDone: boolean;
+  experimentUuid?: string;
+  experimentStatus?: ExperimentStatus;
+  experimentExitCode?: number;
+  logLines?: string[];
 }
 
 export interface AssistantMessage {
@@ -13,6 +28,7 @@ export interface AssistantMessage {
   thinking?: string;
   isStreaming: boolean;
   error?: string;
+  tools?: ToolCallState[];
 }
 
 export type ChatMessage = UserMessage | AssistantMessage;
@@ -22,8 +38,7 @@ export type StreamEvent =
   | { kind: "TextDelta"; text: string }
   | { kind: "ThinkingDelta"; text: string }
   | { kind: "ToolStart"; tool_id: string; tool_name: string; input_preview: string | null }
-  | { kind: "ToolInputDelta"; tool_id: string; partial_json: string }
-  | { kind: "ToolDone"; tool_id: string; output_preview: string | null }
+  | { kind: "ToolDone"; tool_id: string; output_preview: string | null; output_full: string | null }
   | { kind: "Result"; text: string | null; session_id: string }
   | { kind: "Error"; message: string }
   | { kind: "Done" };
@@ -67,4 +82,36 @@ export interface ResourceItem {
   url: string;
   title: string | null;
   wiki_path: string | null;
+}
+
+/** An experiment row returned by experiment_list. */
+export interface ExperimentRow {
+  uuid: string;
+  name: string;
+  command: string;
+  status: string;
+  exit_code: number | null;
+  started_at: string;
+  ended_at: string | null;
+  tab_id: string;
+}
+
+/** Payload for "experiment-status" Tauri event. */
+export interface ExperimentStatusPayload {
+  uuid: string;
+  status: string;
+  exit_code?: number;
+}
+
+/** Payload for "experiment-log-line" Tauri event. */
+export interface ExperimentLogLinePayload {
+  uuid: string;
+  stream: "stdout" | "stderr";
+  line: string;
+}
+
+/** Payload for "experiment-starting" Tauri event (links UUID to pending card). */
+export interface ExperimentStartingPayload {
+  tab_id: string;
+  uuid: string;
 }
