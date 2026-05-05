@@ -92,6 +92,10 @@ export function ChatPane() {
             if (currentTab.resourceStatus === "summarizing") {
               setResourceStatus(tab_id, "ready");
             } else if (currentTab.resourceStatus === "confirmed") {
+              // CC has written the wiki file — commit it then close the tab
+              if (currentTab.resourceId) {
+                ipc.indexResource(currentTab.resourceId).catch(console.error);
+              }
               closeTab(tab_id);
             }
           }
@@ -165,7 +169,7 @@ export function ChatPane() {
     setStreaming(activeTabId, true);
     ipc.chatSend(
       activeTabId,
-      "The user approved this resource. Write a wiki page to resources/ using the wiki.write MCP tool. Frontmatter: url, date. Body: the summary from your previous response.",
+      "The user approved this resource. Write a wiki page to resources/ using the wiki.write MCP tool. Frontmatter must include: title (the human-readable paper or article title), url, date. Start the body with a # heading that matches the title, then the summary from your previous response.",
       mode
     ).catch((err) => {
       const msgId = assistantIdByTab.current.get(activeTabId);
@@ -175,6 +179,9 @@ export function ChatPane() {
   };
 
   const handleDiscardResource = () => {
+    if (activeTab.resourceId) {
+      ipc.discardResource(activeTab.resourceId).catch(console.error);
+    }
     closeTab(activeTabId);
   };
 

@@ -1,31 +1,35 @@
-interface SeedResource {
-  slug: string;
-  title: string;
-  status: "indexed" | "pending_review" | "pending_summary";
+import type { ResourceItem } from "../types";
+
+interface Props {
+  resources: ResourceItem[];
 }
 
-const SEED: SeedResource[] = [
-  {
-    slug: "attention-is-all-you-need",
-    title: "Vaswani et al. (2017) — Attention Is All You Need",
-    status: "indexed",
-  },
-  {
-    slug: "lora",
-    title: "Hu et al. (2021) — LoRA: Low-Rank Adaptation",
-    status: "pending_review",
-  },
-];
+function displayTitle(r: ResourceItem): string {
+  if (r.title) return r.title;
+  try {
+    return new URL(r.url).hostname;
+  } catch {
+    return r.url;
+  }
+}
 
-export function ResourcesList() {
+export function ResourcesList({ resources }: Props) {
+  if (resources.length === 0) {
+    return (
+      <section className="resources-list">
+        <h3>Resources</h3>
+        <p className="resources-list__empty">No resources yet</p>
+      </section>
+    );
+  }
+
   return (
     <section className="resources-list">
       <h3>Resources</h3>
       <ul>
-        {SEED.map((r) => (
-          <li key={r.slug} className={`resource resource--${r.status}`}>
-            <span className="resource__title">{r.title}</span>
-            <span className="resource__status">{r.status}</span>
+        {resources.map((r) => (
+          <li key={r.resource_id} className="resource" title={r.url}>
+            <span className="resource__title">{displayTitle(r)}</span>
           </li>
         ))}
       </ul>

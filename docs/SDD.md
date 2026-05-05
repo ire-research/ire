@@ -723,12 +723,9 @@ No table for chat messages — the CC session is the source of truth, and `--res
 - Switching back to Preview without Submit **discards** local edits (with a confirm if dirty).
 - Submit runs the corresponding ingestion pipeline ([§8](#8-pipelines)) **and commits** the cleaned `notes.md` / `ideas.md` (+ index) to git with a templated message.
 
-### 13.4 Resource pending review
+### 13.4 Resource list
 
-The Resources list distinguishes three states:
-- **Indexed** (committed): rendered normally.
-- **Pending review** (`status=summarized`, file uncommitted): visually marked, with `[Index]` and `[Discard]` buttons inline.
-- **Pending fetch / pending summary**: spinner with the URL.
+The Resources list shows only confirmed (indexed) resources — those where the user clicked Confirm and the wiki file was written and committed. Each entry shows the extracted title (frontmatter `title:` → first `#` heading → filename stem). No status label is shown. Resources in progress (being fetched or summarised) do not appear in the list; they are visible only in the open resource chat tab.
 
 ### 13.5 Theming
 
@@ -929,7 +926,7 @@ Each phase ends with a demoable milestone.
 
 **Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. CC config wired up via `--mcp-config`. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` extended with `workspace_root`, git auto-commit for auto-tracked paths, and a `rename` method. System prompt composed from wiki context files on every CC turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and CC actually does it.
 
-**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML extractors. *Milestone:* paste an arXiv URL → resource summary appears in the right pane.
+**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML extractors. `submit_resource` fetches a URL, extracts text via `scraper` (HTML) or `pdf-extract` (PDF), writes to `.ire/cache/<sha256>.txt`, inserts a DB row, emits `tab-created`, and kicks a CC summarisation turn. Confirm sends a second CC turn that writes `resources/<slug>.md` via `wiki.write`; when Done fires, `index_resource` scans `wiki/resources/` for the file whose frontmatter `url:` matches, extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), commits, and emits `wiki-changed` to refresh the pane. Discard calls `discard_resource` (deletes cache, marks `rejected`). Notes/ideas Submit commits via `user_commit`. The resources list shows only `summarized` resources with their title; no status label is shown. *Milestone:* paste an arXiv URL → resource summary appears in the right pane. ✅
 
 **Phase 6 — Experiments.** `experiment.start`, detached subprocess, monitor, wake-up turn composition. Experiment cards in chat with live log tail. *Milestone:* CC can run a Python script ablation, tell the user "I'll be back", and resume with results when the script exits.
 

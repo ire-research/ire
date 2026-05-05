@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { ChatMode, TabCreatedPayload, TabStreamPayload, WikiFile } from "./types";
+import type { ChatMode, ResourceItem, TabCreatedPayload, TabStreamPayload, WikiFile } from "./types";
 
 export type BinaryStatus =
   | { kind: "found"; path: string; version: string | null }
@@ -35,6 +35,14 @@ export const ipc = {
     invoke("chat_cancel", { tabId }),
   chatResetSession: (tabId: string): Promise<void> =>
     invoke("chat_reset_session", { tabId }),
+  submitResource: (url: string): Promise<string> =>
+    invoke("submit_resource", { url }),
+  discardResource: (resourceId: string): Promise<void> =>
+    invoke("discard_resource", { resourceId }),
+  indexResource: (resourceId: string): Promise<void> =>
+    invoke("index_resource", { resourceId }),
+  listResources: (): Promise<ResourceItem[]> =>
+    invoke("list_resources"),
 };
 
 export function onWikiChanged(

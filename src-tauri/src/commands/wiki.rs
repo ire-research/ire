@@ -12,11 +12,6 @@ pub struct WikiFileResult {
     pub frontmatter: Option<HashMap<String, String>>,
 }
 
-fn trunc(s: &str) -> &str {
-    let end = s.char_indices().nth(80).map(|(i, _)| i).unwrap_or(s.len());
-    &s[..end]
-}
-
 fn wiki_store(active: &State<'_, ActiveWorkspace>) -> Result<WikiStore, String> {
     let guard = active.0.lock().map_err(|e| e.to_string())?;
     let handle = guard.as_ref().ok_or("no workspace open")?;
@@ -44,14 +39,13 @@ pub fn save_notes(
     active: State<'_, ActiveWorkspace>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    tracing::info!(bytes = content.len(), preview = %trunc(&content), "save_notes");
+    tracing::info!(bytes = content.len(), "save_notes");
     let store = wiki_store(&active)?;
-    let result = store.write("notes.md", &content, &app).map_err(|e| e.to_string());
-    match &result {
-        Ok(_) => tracing::info!("notes.md saved"),
-        Err(e) => tracing::warn!(error = %e, "save_notes failed"),
-    }
-    result
+    store.write("notes.md", &content, &app).map_err(|e| e.to_string())?;
+    let first_50: String = content.chars().take(50).collect();
+    store.user_commit(&["notes.md"], &format!("notes: {}", first_50.trim()));
+    tracing::info!("notes.md saved and committed");
+    Ok(())
 }
 
 #[tauri::command]
@@ -60,12 +54,11 @@ pub fn save_ideas(
     active: State<'_, ActiveWorkspace>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    tracing::info!(bytes = content.len(), preview = %trunc(&content), "save_ideas");
+    tracing::info!(bytes = content.len(), "save_ideas");
     let store = wiki_store(&active)?;
-    let result = store.write("ideas.md", &content, &app).map_err(|e| e.to_string());
-    match &result {
-        Ok(_) => tracing::info!("ideas.md saved"),
-        Err(e) => tracing::warn!(error = %e, "save_ideas failed"),
-    }
-    result
+    store.write("ideas.md", &content, &app).map_err(|e| e.to_string())?;
+    let first_50: String = content.chars().take(50).collect();
+    store.user_commit(&["ideas.md"], &format!("ideas: {}", first_50.trim()));
+    tracing::info!("ideas.md saved and committed");
+    Ok(())
 }
