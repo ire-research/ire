@@ -1,3 +1,7 @@
+# TODOs
+
+This document collects the next step required in the implementation of IRE. Sould be followed exactly.
+
 - [x] ~Implement Phase 0 of `docs/SDD.md`~
 
 - [x] ~Implement Phase 1 of `docs/SDD.md`~
