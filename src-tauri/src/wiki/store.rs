@@ -82,6 +82,84 @@ impl WikiStore {
         Ok(())
     }
 
+    /// Commit user-tracked paths (notes.md, ideas.md) alongside `_index.md`.
+    /// Failures are logged but not propagated.
+    pub fn user_commit(&self, rel_wiki_paths: &[&str], message: &str) {
+        let prefix = ".ire/wiki/";
+        let mut add = Command::new("git");
+        add.current_dir(&self.workspace_root).arg("add");
+        for p in rel_wiki_paths {
+            add.arg(format!("{prefix}{p}"));
+        }
+        add.arg(format!("{prefix}_index.md"));
+        match add.output() {
+            Ok(out) if !out.status.success() => {
+                tracing::warn!(
+                    stderr = %String::from_utf8_lossy(&out.stderr),
+                    "git add failed (user commit)"
+                );
+                return;
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "git add error (user commit)");
+                return;
+            }
+            _ => {}
+        }
+
+        let commit_out = Command::new("git")
+            .current_dir(&self.workspace_root)
+            .args(["commit", "-m", message, "--quiet"])
+            .output();
+        match commit_out {
+            Ok(out) if !out.status.success() => {
+                tracing::warn!(
+                    stderr = %String::from_utf8_lossy(&out.stderr),
+                    "git user commit failed (nothing staged?)"
+                );
+            }
+            Err(e) => tracing::warn!(error = %e, "git user commit error"),
+            _ => {}
+        }
+    }
+
+    /// Stage all files under `resources/` + `_index.md` and commit.
+    /// Called after the Confirm flow writes a resource wiki page.
+    pub fn commit_resource_files(&self) {
+        let mut add = Command::new("git");
+        add.current_dir(&self.workspace_root)
+            .args(["add", ".ire/wiki/resources/", ".ire/wiki/_index.md"]);
+        match add.output() {
+            Ok(out) if !out.status.success() => {
+                tracing::warn!(
+                    stderr = %String::from_utf8_lossy(&out.stderr),
+                    "git add resources failed"
+                );
+                return;
+            }
+            Err(e) => {
+                tracing::warn!(error = %e, "git add resources error");
+                return;
+            }
+            _ => {}
+        }
+
+        let commit_out = Command::new("git")
+            .current_dir(&self.workspace_root)
+            .args(["commit", "-m", "resources: add summary", "--quiet"])
+            .output();
+        match commit_out {
+            Ok(out) if !out.status.success() => {
+                tracing::warn!(
+                    stderr = %String::from_utf8_lossy(&out.stderr),
+                    "git commit resources failed (nothing staged?)"
+                );
+            }
+            Err(e) => tracing::warn!(error = %e, "git commit resources error"),
+            _ => {}
+        }
+    }
+
     /// Stage `rel_paths` (relative to wiki root) and commit. Failures are
     /// logged but do not propagate — the files are on disk and the next
     /// write will re-stage them.

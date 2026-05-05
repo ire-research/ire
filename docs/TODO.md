@@ -22,13 +22,21 @@
 
 - [x] ~Feat: instrument the code with comprehensive logging for debug session (I should be able to see from the terminal everything that is happening)~
 
-- [ ] Implement Phase 5 of `docs/SDD.md`
+- [x] ~Implement Phase 5 of `docs/SDD.md`~
 
 - [ ] Implement Phase 6 of `docs/SDD.md`
 
 - [ ] Implement Phase 7 of `docs/SDD.md`
 
+- [ ] Feat: fetch latex source directly instead of parsing pdf if arXiv link
+
+- [ ] Feat: viewer for the sources (user clicks on the bottom left and it opens in the central panel as markdown editor/preview).
+
 - [ ] Feat: remove `log.md` and use `short-term/` to track daily changes. Clearly explain in `_SYSTEM.md` how memory should be handled.
+
+- [ ] Refactor: centralize all prompts in a single folder for visibility and maintenance (now some are hardcoded)
+
+- [ ] Feat: change assistant name from CLAUDE to IRE everywhere 
 
 - [ ] Feat: onboarding pipeline when creating new workspace (ask questions to populate pulse etc.)
 
