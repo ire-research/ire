@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { ipc, onWikiChanged } from "../ipc";
 import { useWorkspace } from "../state/workspace";
+import type { ResourceItem } from "../types";
 import { ChatPane } from "./chat/ChatPane";
 import { FocusBanner } from "./FocusBanner";
 import { MarkdownPane } from "./MarkdownPane";
@@ -23,8 +24,9 @@ export function Layout() {
   const [pulseContent, setPulseContent] = useState("");
   const [notesContent, setNotesContent] = useState("");
   const [ideasContent, setIdeasContent] = useState("");
+  const [resources, setResources] = useState<ResourceItem[]>([]);
 
-  // Load wiki files when workspace becomes ready
+  // Load wiki files and resources when workspace becomes ready
   useEffect(() => {
     if (phase.kind !== "ready") return;
     Promise.all([
@@ -38,6 +40,10 @@ export function Layout() {
         setIdeasContent(ideas.content);
       })
       .catch((e) => console.error("failed to load wiki files", e));
+
+    ipc.listResources()
+      .then(setResources)
+      .catch((e) => console.error("failed to load resources", e));
   }, [phase.kind]);
 
   // Re-read affected file on wiki-changed events
@@ -49,6 +55,8 @@ export function Layout() {
         ipc.readWikiFile("notes.md").then((f) => setNotesContent(f.content));
       } else if (path === "ideas.md") {
         ipc.readWikiFile("ideas.md").then((f) => setIdeasContent(f.content));
+      } else if (path.startsWith("resources/")) {
+        ipc.listResources().then(setResources).catch(console.error);
       }
     });
     return () => {
@@ -115,7 +123,7 @@ export function Layout() {
             </Panel>
             <Separator className="resize-handle resize-handle--v" />
             <Panel defaultSize="45%" minSize="20%">
-              <ResourcesList />
+              <ResourcesList resources={resources} />
             </Panel>
           </Group>
         </Panel>

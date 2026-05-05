@@ -60,3 +60,11 @@ export interface TabCreatedPayload {
   kind: TabKind;
   resource_id?: string;
 }
+
+/** A resource row returned by list_resources. */
+export interface ResourceItem {
+  resource_id: string;
+  url: string;
+  title: string | null;
+  wiki_path: string | null;
+}

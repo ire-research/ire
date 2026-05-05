@@ -2,15 +2,15 @@ mod cc;
 mod commands;
 mod db;
 mod mcp;
+mod resources;
 mod wiki;
 mod workspace;
 
 use cc::session::SessionManager;
 use commands::chat::{chat_cancel, chat_reset_session, chat_send};
+use commands::resources::{discard_resource, index_resource, list_resources, submit_resource};
 use commands::wiki::{read_wiki_file, save_ideas, save_notes};
-use commands::workspace::{
-    close_workspace, init_workspace, open_workspace, setup_status,
-};
+use commands::workspace::{close_workspace, init_workspace, open_workspace, setup_status};
 use mcp::McpState;
 use workspace::ActiveWorkspace;
 
@@ -42,6 +42,10 @@ pub fn run() {
             chat_send,
             chat_cancel,
             chat_reset_session,
+            submit_resource,
+            discard_resource,
+            index_resource,
+            list_resources,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
