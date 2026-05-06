@@ -213,7 +213,7 @@ export function ChatPane() {
     setStreaming(activeTabId, true);
     ipc.chatSend(
       activeTabId,
-      "The user approved this resource. Write a wiki page to resources/ using the wiki.write MCP tool. Frontmatter must include: title (the human-readable paper or article title), url, date. Start the body with a # heading that matches the title, then the summary from your previous response.",
+      "The user approved this resource. Write a wiki page to resources/ using the wiki.write MCP tool. Frontmatter must follow .ire/wiki/_schema.md: `title` (human-readable paper/article title), `type: summary`, `sources: [<the original URL>]`, `updated: YYYY-MM-DD` (today). Start the body with a # heading matching the title, then the summary from your previous response.",
       mode
     ).catch((err) => {
       const msgId = assistantIdByTab.current.get(activeTabId);
