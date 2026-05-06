@@ -204,22 +204,20 @@ export function ChatPane() {
     closeTab(tabId);
   };
 
-  const handleConfirmResource = () => {
+  const handleConfirmResource = async () => {
     if (!activeTab.resourceId) return;
     setResourceStatus(activeTabId, "confirmed");
-    // Kick a follow-up CC turn to write the wiki file.
     const aid = beginAssistantMessage(activeTabId);
     assistantIdByTab.current.set(activeTabId, aid);
     setStreaming(activeTabId, true);
-    ipc.chatSend(
-      activeTabId,
-      "The user approved this resource. Write a wiki page to resources/ using the wiki.write MCP tool. Frontmatter must follow .ire/wiki/_schema.md: `title` (human-readable paper/article title), `type: summary`, `sources: [<the original URL>]`, `updated: YYYY-MM-DD` (today). Start the body with a # heading matching the title, then the summary from your previous response.",
-      mode
-    ).catch((err) => {
+    try {
+      const prompt = await ipc.getResourceConfirmPrompt();
+      await ipc.chatSend(activeTabId, prompt, mode);
+    } catch (err) {
       const msgId = assistantIdByTab.current.get(activeTabId);
       if (msgId) setMessageError(activeTabId, msgId, String(err));
       setStreaming(activeTabId, false);
-    });
+    }
   };
 
   const handleDiscardResource = () => {
