@@ -3,6 +3,7 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { ipc, onWikiChanged } from "../ipc";
 import { useChat } from "../state/chat";
 import { useWorkspace } from "../state/workspace";
+import { useChatOptions } from "../state/chatOptions";
 import { toastError } from "../state/toasts";
 import type { ResourceItem } from "../types";
 import { ChatPane } from "./chat/ChatPane";
@@ -27,6 +28,7 @@ export function Layout() {
   const setGroupLayout = useWorkspace((s) => s.setGroupLayout);
   const toPersisted = useWorkspace((s) => s.toPersisted);
   const recentWorkspaces = useWorkspace((s) => s.recentWorkspaces);
+  const effort = useChatOptions((s) => s.effort);
   const workspace = phase.kind === "ready" ? phase.workspace : null;
 
   const groups = panelLayout.groups ?? {};
@@ -105,6 +107,21 @@ export function Layout() {
     }, 1000);
     return () => clearTimeout(handle);
   }, [theme, recentWorkspaces]);
+
+  // Debounced persistence of effort to .ire/workspace.json.
+  const skipInitialEffortSave = useRef(true);
+  useEffect(() => {
+    if (skipInitialEffortSave.current) {
+      skipInitialEffortSave.current = false;
+      return;
+    }
+    const handle = setTimeout(() => {
+      ipc.saveWorkspaceState({ ...toPersisted(), effort }).catch((e) =>
+        toastError("save effort", e),
+      );
+    }, 1000);
+    return () => clearTimeout(handle);
+  }, [effort, toPersisted]);
 
   const handleClose = async () => {
     await ipc.closeWorkspace();

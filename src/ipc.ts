@@ -31,6 +31,7 @@ export interface PersistedWorkspace {
   version: number;
   panel_layout?: PanelLayouts | null;
   last_opened?: string | null;
+  effort?: string | null;
 }
 
 export interface UserConfig {
