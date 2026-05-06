@@ -48,7 +48,7 @@ export interface WikiFile {
   frontmatter: Record<string, string> | null;
 }
 
-export type TabKind = "chat" | "resource";
+export type TabKind = "chat" | "resource" | "preview";
 export type ResourceStatus = "summarizing" | "ready" | "confirmed";
 
 export interface Tab {
@@ -60,6 +60,7 @@ export interface Tab {
   kind: TabKind;
   resourceId?: string;
   resourceStatus?: ResourceStatus;
+  wikiPath?: string;
 }
 
 /** Payload for the "chat-stream" Tauri event. */

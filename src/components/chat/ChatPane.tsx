@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useWorkspace } from "../../state/workspace";
 import { useChat, MAIN_TAB_ID } from "../../state/chat";
 import { toastError } from "../../state/toasts";
@@ -13,6 +13,7 @@ import {
 import { MessageList } from "./MessageList";
 import { Composer } from "./Composer";
 import { TabBar } from "./TabBar";
+import { MarkdownPane } from "../MarkdownPane";
 import type { Tab } from "../../types";
 
 export function ChatPane() {
@@ -43,6 +44,13 @@ export function ChatPane() {
   } = useChat();
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
+
+  const [previewContent, setPreviewContent] = useState("");
+
+  useEffect(() => {
+    if (activeTab?.kind !== "preview" || !activeTab.wikiPath) return;
+    ipc.readWikiFile(activeTab.wikiPath).then((f) => setPreviewContent(f.content));
+  }, [activeTab?.id]);
 
   // Maps tab_id → in-flight assistant message id.
   const assistantIdByTab = useRef<Map<string, string>>(new Map());
@@ -240,55 +248,70 @@ export function ChatPane() {
         onClose={handleCloseTab}
         onNew={handleNewTab}
       />
-      <header className="chat-pane__header">
-        {isMainTab && (
-          <div className="chat-pane__mode">
-            <button
-              className={mode === "brainstorm" ? "active" : ""}
-              onClick={() => setMode("brainstorm")}
-            >
-              Brainstorm
-            </button>
-            <button
-              className={mode === "experiment" ? "active" : ""}
-              onClick={() => setMode("experiment")}
-            >
-              Experiment
-            </button>
-          </div>
-        )}
-        <div className="topbar__spacer" />
-        <div className="chat-pane__actions">
-          {activeTab.isStreaming && (
-            <button onClick={() => ipc.chatCancel(activeTabId)}>Cancel</button>
+      {activeTab.kind === "preview" ? (
+        <MarkdownPane
+          title={activeTab.label}
+          content={previewContent}
+          showSubmit
+          onSubmit={(content) =>
+            ipc.saveWikiFile(activeTab.wikiPath!, content).catch((e) =>
+              toastError("save wiki file", e)
+            )
+          }
+        />
+      ) : (
+        <>
+          <header className="chat-pane__header">
+            {isMainTab && (
+              <div className="chat-pane__mode">
+                <button
+                  className={mode === "brainstorm" ? "active" : ""}
+                  onClick={() => setMode("brainstorm")}
+                >
+                  Brainstorm
+                </button>
+                <button
+                  className={mode === "experiment" ? "active" : ""}
+                  onClick={() => setMode("experiment")}
+                >
+                  Experiment
+                </button>
+              </div>
+            )}
+            <div className="topbar__spacer" />
+            <div className="chat-pane__actions">
+              {activeTab.isStreaming && (
+                <button onClick={() => ipc.chatCancel(activeTabId)}>Cancel</button>
+              )}
+              {!activeTab.isStreaming && (
+                <button
+                  className="chat-pane__reset"
+                  title="Reset conversation"
+                  onClick={() => {
+                    clearMessages(activeTabId);
+                    ipc.chatResetSession(activeTabId);
+                  }}
+                >
+                  ↺
+                </button>
+              )}
+            </div>
+          </header>
+          <MessageList messages={activeTab.messages} />
+          {showResourceBar && (
+            <div className="chat-pane__resource-bar">
+              <button className="chat-pane__confirm" onClick={handleConfirmResource}>
+                Confirm — save to wiki
+              </button>
+              <button className="chat-pane__discard" onClick={handleDiscardResource}>
+                Discard
+              </button>
+            </div>
           )}
-          {!activeTab.isStreaming && (
-            <button
-              className="chat-pane__reset"
-              title="Reset conversation"
-              onClick={() => {
-                clearMessages(activeTabId);
-                ipc.chatResetSession(activeTabId);
-              }}
-            >
-              ↺
-            </button>
+          {!showResourceBar && (
+            <Composer onSend={handleSend} disabled={activeTab.isStreaming} />
           )}
-        </div>
-      </header>
-      <MessageList messages={activeTab.messages} />
-      {showResourceBar && (
-        <div className="chat-pane__resource-bar">
-          <button className="chat-pane__confirm" onClick={handleConfirmResource}>
-            Confirm — save to wiki
-          </button>
-          <button className="chat-pane__discard" onClick={handleDiscardResource}>
-            Discard
-          </button>
-        </div>
-      )}
-      {!showResourceBar && (
-        <Composer onSend={handleSend} disabled={activeTab.isStreaming} />
+        </>
       )}
     </section>
   );

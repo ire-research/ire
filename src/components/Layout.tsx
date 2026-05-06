@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { ipc, onWikiChanged } from "../ipc";
+import { useChat } from "../state/chat";
 import { useWorkspace } from "../state/workspace";
 import { toastError } from "../state/toasts";
 import type { ResourceItem } from "../types";
@@ -17,6 +18,7 @@ function parseFocus(pulse: string): string {
 
 
 export function Layout() {
+  const openPreviewTab = useChat((s) => s.openPreviewTab);
   const phase = useWorkspace((s) => s.phase);
   const setPhase = useWorkspace((s) => s.setPhase);
   const theme = useWorkspace((s) => s.theme);
@@ -159,7 +161,10 @@ export function Layout() {
             </Panel>
             <Separator className="resize-handle resize-handle--v" />
             <Panel id="resources" defaultSize="45%" minSize="20%">
-              <ResourcesList resources={resources} />
+              <ResourcesList
+                resources={resources}
+                onResourceClick={(r) => openPreviewTab(r.title ?? r.url, r.wiki_path!)}
+              />
             </Panel>
           </Group>
         </Panel>

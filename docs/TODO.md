@@ -32,17 +32,19 @@ This document collects the next step required in the implementation of IRE. Soul
 
 - [x] ~Add `docs/DECISIONS.md` and `docs/CHANGELOG.md` to record non-obvious design changes and visible changes~
 
-- [ ] Feat: seed-prompt update prompt on workspace open. Detect when the bundled seed `_SYSTEM.md` (and `_schema.md`) is newer than the workspace copy and offer to update via a modal. Use a **version marker** strategy: embed `<!-- ire-system-version: N -->` in the seed and bump on every change. On `workspace-ready`, parse the marker from both bundled (`include_str!`) and `.ire/wiki/_SYSTEM.md`; if `disk_version < bundled_version`, fire a modal with the diff and Update / Keep mine buttons. Update writes through `WikiStore::write` so it picks up index regen, `wiki-changed`, and git auto-commit for free. Detect drift (user edits) via a separate hash and warn before overwriting. Tauri commands: `check_seed_updates()`, `apply_seed_update({ path })`.
-
 - [x] ~Implement Phase 7 of `docs/SDD.md`~
 
-- [ ] Feat: fetch latex source directly instead of parsing pdf if arXiv link
+- [x] ~Feat: rendering of html/latex/markdown in chat~
 
-- [ ] Feat: viewer for the sources (user clicks on the bottom left and it opens in the central panel as markdown editor/preview).
+- [x] ~Feat: viewer for the sources (user clicks on the bottom left and it opens in the central panel as markdown editor/preview).~
 
 - [x] ~Feat: remove `log.md` and use `short-term/` to track daily changes. Clearly explain in `_SYSTEM.md` how memory should be handled.~
 
 - [x] ~Refactor: centralize all prompts in a single folder for visibility and maintenance (now some are hardcoded)~
+
+- [ ] Feat: seed-prompt update prompt on workspace open. Detect when the bundled seed `_SYSTEM.md` (and `_schema.md`) is newer than the workspace copy and offer to update via a modal. Use a **version marker** strategy: embed `<!-- ire-system-version: N -->` in the seed and bump on every change. On `workspace-ready`, parse the marker from both bundled (`include_str!`) and `.ire/wiki/_SYSTEM.md`; if `disk_version < bundled_version`, fire a modal with the diff and Update / Keep mine buttons. Update writes through `WikiStore::write` so it picks up index regen, `wiki-changed`, and git auto-commit for free. Detect drift (user edits) via a separate hash and warn before overwriting. Tauri commands: `check_seed_updates()`, `apply_seed_update({ path })`.
+
+- [ ] Feat: fetch latex source directly instead of parsing pdf if arXiv link
 
 - [ ] Feat: change assistant name from CLAUDE to IRE everywhere 
 
@@ -55,7 +57,5 @@ This document collects the next step required in the implementation of IRE. Soul
 - [ ] Feat: standard config file in `~/.config/ire/config` to save user preferences (e.g., theme selected, last opened workspace etc.).
 
 - [ ] Feat: separate review (LLM call pipeline) and submit (persist to disk and commit) button for notes / ideas.
-
-- [x] ~Feat: rendering of html/latex/markdown in chat~
 
 - [ ] Feat: prompt engineering on `_SYSTEM.md` to obfuscate claude code personality and force IRE persona.

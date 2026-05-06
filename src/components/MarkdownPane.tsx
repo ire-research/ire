@@ -11,6 +11,13 @@ interface MarkdownPaneProps {
 
 type Mode = "preview" | "edit";
 
+function stripFrontmatter(content: string): string {
+  if (!content.startsWith("---")) return content;
+  const end = content.indexOf("\n---", 3);
+  if (end === -1) return content;
+  return content.slice(end + 4).replace(/^\n/, "");
+}
+
 export function MarkdownPane({
   title,
   content,
@@ -63,7 +70,7 @@ export function MarkdownPane({
       <div className="md-pane__body">
         {mode === "preview" ? (
           <div className="md-pane__preview">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{draft}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripFrontmatter(draft)}</ReactMarkdown>
           </div>
         ) : (
           <textarea
