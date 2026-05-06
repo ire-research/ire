@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { ipc, pickDirectory, type SetupStatus } from "../../ipc";
 import { useWorkspace } from "../../state/workspace";
+import { useChatOptions, EFFORT_LEVELS } from "../../state/chatOptions";
+import type { EffortLevel } from "../../types";
 
 interface Props {
   status: SetupStatus;
@@ -12,8 +14,16 @@ export function SetupScreen({ status, onRefresh }: Props) {
   const hydrateFromPersisted = useWorkspace((s) => s.hydrateFromPersisted);
   const pushRecentWorkspace = useWorkspace((s) => s.pushRecentWorkspace);
   const recentWorkspaces = useWorkspace((s) => s.recentWorkspaces);
+  const setEffort = useChatOptions((s) => s.setEffort);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const applyPersisted = (persisted: Parameters<typeof hydrateFromPersisted>[0]) => {
+    hydrateFromPersisted(persisted);
+    if (persisted.effort && EFFORT_LEVELS.some((e) => e.value === persisted.effort)) {
+      setEffort(persisted.effort as EffortLevel);
+    }
+  };
 
   const binaryFound = status.binary.kind === "found";
 
@@ -24,7 +34,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
       const workspace = await ipc.openWorkspace(path);
       pushRecentWorkspace(path);
       const persisted = await ipc.readWorkspaceState().catch(() => null);
-      if (persisted) hydrateFromPersisted(persisted);
+      if (persisted) applyPersisted(persisted);
       setPhase({ kind: "ready", workspace });
     } catch (e) {
       setError(String(e));
@@ -45,7 +55,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
         kind === "open" ? await ipc.openWorkspace(path) : await ipc.initWorkspace(path);
       pushRecentWorkspace(path);
       const persisted = await ipc.readWorkspaceState().catch(() => null);
-      if (persisted) hydrateFromPersisted(persisted);
+      if (persisted) applyPersisted(persisted);
       setPhase({ kind: "ready", workspace });
     } catch (e) {
       setError(String(e));
