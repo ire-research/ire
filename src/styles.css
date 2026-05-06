@@ -1183,17 +1183,41 @@ h3 {
   color: var(--text-primary);
 }
 
+.tool-card__chevron {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
 .tool-card__expanded {
-  margin: 0;
   padding: 6px 10px;
   background: var(--bg-hover);
   border: 1px solid var(--border-subtle);
   border-radius: 3px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.tool-card__section-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+  margin-top: 6px;
+}
+
+.tool-card__section-label:first-child {
+  margin-top: 0;
+}
+
+.tool-card__section-pre {
+  margin: 0 0 2px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
   color: var(--text-secondary);
-  max-height: 240px;
-  overflow-y: auto;
   white-space: pre-wrap;
   word-break: break-all;
   line-height: 1.5;

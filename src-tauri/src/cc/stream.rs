@@ -7,7 +7,7 @@ pub enum StreamEvent {
     Init { session_id: String },
     TextDelta { text: String },
     ThinkingDelta { text: String },
-    ToolStart { tool_id: String, tool_name: String, input_preview: Option<String> },
+    ToolStart { tool_id: String, tool_name: String, input_preview: Option<String>, input_full: Option<String> },
     ToolDone { tool_id: String, output_preview: Option<String>, output_full: Option<String> },
     Result { text: Option<String>, session_id: String },
     Error { message: String },
@@ -95,7 +95,8 @@ fn dispatch_assistant<F: FnMut(StreamEvent)>(
                     let name = block["name"].as_str().unwrap_or("").to_string();
                     state.emitted_tool_ids.push(id.clone());
                     let input_preview = extract_input_preview(&block["input"]);
-                    emit(StreamEvent::ToolStart { tool_id: id, tool_name: name, input_preview });
+                    let input_full = extract_input_full(&block["input"]);
+                    emit(StreamEvent::ToolStart { tool_id: id, tool_name: name, input_preview, input_full });
                 }
             }
             _ => {}
@@ -109,6 +110,13 @@ fn extract_result_text(json: &Value, state: &StreamState) -> Option<String> {
         return None;
     }
     json["result"].as_str().map(|s| s.to_string())
+}
+
+fn extract_input_full(input: &Value) -> Option<String> {
+    if input.is_null() { return None; }
+    let s = serde_json::to_string_pretty(input).unwrap_or_default();
+    if s.is_empty() || s == "null" || s == "{}" { return None; }
+    Some(trunc_chars(&s, 10_000))
 }
 
 fn extract_input_preview(input: &Value) -> Option<String> {

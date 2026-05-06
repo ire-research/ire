@@ -104,6 +104,7 @@ export function ChatPane() {
               tool_id: event.tool_id,
               tool_name: event.tool_name,
               input_preview: event.input_preview,
+              input_full: event.input_full,
               output_preview: null,
               output_full: null,
               isDone: false,
