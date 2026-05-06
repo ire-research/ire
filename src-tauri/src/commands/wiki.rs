@@ -62,3 +62,49 @@ pub fn save_ideas(
     tracing::info!("ideas.md saved and committed");
     Ok(())
 }
+
+#[tauri::command]
+pub fn update_pulse_focus(
+    focus: String,
+    active: State<'_, ActiveWorkspace>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    tracing::info!(focus = %focus, "update_pulse_focus");
+    let store = wiki_store(&active)?;
+    let (current, _) = store
+        .read("status/pulse.md")
+        .map_err(|e| e.to_string())?;
+    let updated = replace_focus_line(&current, &focus);
+    store
+        .write("status/pulse.md", &updated, &app)
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Replace (or append) the `**Focus:** ...` line in pulse.md.
+fn replace_focus_line(content: &str, focus: &str) -> String {
+    let new_line = format!("**Focus:** {}", focus.trim());
+    let mut found = false;
+    let mut out: Vec<String> = content
+        .lines()
+        .map(|l| {
+            if l.trim_start().starts_with("**Focus:**") {
+                found = true;
+                new_line.clone()
+            } else {
+                l.to_string()
+            }
+        })
+        .collect();
+    if !found {
+        if !out.is_empty() && !out.last().unwrap().is_empty() {
+            out.push(String::new());
+        }
+        out.push(new_line);
+    }
+    let mut joined = out.join("\n");
+    if content.ends_with('\n') && !joined.ends_with('\n') {
+        joined.push('\n');
+    }
+    joined
+}

@@ -11,8 +11,11 @@ use cc::session::SessionManager;
 use commands::chat::{chat_cancel, chat_reset_session, chat_send};
 use commands::experiments::{experiment_cancel, experiment_list, experiment_logs};
 use commands::resources::{discard_resource, index_resource, list_resources, submit_resource};
-use commands::wiki::{read_wiki_file, save_ideas, save_notes};
-use commands::workspace::{close_workspace, init_workspace, open_workspace, setup_status};
+use commands::wiki::{read_wiki_file, save_ideas, save_notes, update_pulse_focus};
+use commands::workspace::{
+    close_workspace, init_workspace, open_workspace, read_workspace_state, save_workspace_state,
+    setup_status,
+};
 use mcp::McpState;
 use workspace::ActiveWorkspace;
 
@@ -38,9 +41,12 @@ pub fn run() {
             open_workspace,
             init_workspace,
             close_workspace,
+            read_workspace_state,
+            save_workspace_state,
             read_wiki_file,
             save_notes,
             save_ideas,
+            update_pulse_focus,
             chat_send,
             chat_cancel,
             chat_reset_session,

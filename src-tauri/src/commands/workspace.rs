@@ -9,6 +9,7 @@ use crate::db::migrations;
 use crate::mcp::{McpHandle, McpState};
 use crate::workspace::init as ws_init;
 use crate::workspace::lock::{LockError, WorkspaceLock};
+use crate::workspace::persisted::{self, PersistedWorkspace};
 use crate::workspace::state::{ActiveWorkspace, WorkspaceHandle, WorkspaceState};
 
 #[derive(Debug, Serialize)]
@@ -131,4 +132,25 @@ fn attach(
     let state = WorkspaceState::from_path(path);
     *active.0.lock().map_err(|e| e.to_string())? = Some(WorkspaceHandle::new(state.clone(), lock));
     Ok(state)
+}
+
+#[tauri::command]
+pub fn read_workspace_state(
+    active: State<'_, ActiveWorkspace>,
+) -> Result<PersistedWorkspace, String> {
+    let guard = active.0.lock().map_err(|e| e.to_string())?;
+    let handle = guard.as_ref().ok_or("no workspace open")?;
+    let ire = ws_init::ire_dir(&handle.state.path);
+    Ok(persisted::read(&ire))
+}
+
+#[tauri::command]
+pub fn save_workspace_state(
+    state: PersistedWorkspace,
+    active: State<'_, ActiveWorkspace>,
+) -> Result<(), String> {
+    let guard = active.0.lock().map_err(|e| e.to_string())?;
+    let handle = guard.as_ref().ok_or("no workspace open")?;
+    let ire = ws_init::ire_dir(&handle.state.path);
+    persisted::write(&ire, &state).map_err(|e| e.to_string())
 }

@@ -1,12 +1,23 @@
 import { useCallback, useEffect } from "react";
 import { Layout } from "./components/Layout";
 import { SetupScreen } from "./components/setup/SetupScreen";
+import { ToastStack } from "./components/ToastStack";
 import { useWorkspace } from "./state/workspace";
-import { ipc } from "./ipc";
+import { ipc, onBackendError } from "./ipc";
+import { useToasts } from "./state/toasts";
 
 export default function App() {
   const phase = useWorkspace((s) => s.phase);
   const setPhase = useWorkspace((s) => s.setPhase);
+
+  useEffect(() => {
+    const unlisten = onBackendError(({ scope, message }) => {
+      useToasts.getState().push({ kind: "error", scope, message });
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
 
   const refreshSetup = useCallback(async () => {
     try {
@@ -26,10 +37,25 @@ export default function App() {
   }, [refreshSetup]);
 
   if (phase.kind === "loading") {
-    return <div className="app-loading">Loading…</div>;
+    return (
+      <>
+        <div className="app-loading">Loading…</div>
+        <ToastStack />
+      </>
+    );
   }
   if (phase.kind === "setup") {
-    return <SetupScreen status={phase.status} onRefresh={refreshSetup} />;
+    return (
+      <>
+        <SetupScreen status={phase.status} onRefresh={refreshSetup} />
+        <ToastStack />
+      </>
+    );
   }
-  return <Layout />;
+  return (
+    <>
+      <Layout />
+      <ToastStack />
+    </>
+  );
 }

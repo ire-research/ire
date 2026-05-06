@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { useWorkspace } from "../../state/workspace";
 import { useChat, MAIN_TAB_ID } from "../../state/chat";
+import { toastError } from "../../state/toasts";
 import {
   ipc,
   onChatStream,
@@ -126,7 +127,7 @@ export function ChatPane() {
             } else if (currentTab.resourceStatus === "confirmed") {
               // CC has written the wiki file — commit it then close the tab
               if (currentTab.resourceId) {
-                ipc.indexResource(currentTab.resourceId).catch(console.error);
+                ipc.indexResource(currentTab.resourceId).catch((e) => toastError("index resource", e));
               }
               closeTab(tab_id);
             }
@@ -223,7 +224,7 @@ export function ChatPane() {
 
   const handleDiscardResource = () => {
     if (activeTab.resourceId) {
-      ipc.discardResource(activeTab.resourceId).catch(console.error);
+      ipc.discardResource(activeTab.resourceId).catch((e) => toastError("discard resource", e));
     }
     closeTab(activeTabId);
   };

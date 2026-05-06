@@ -346,9 +346,40 @@ h3 {
 }
 
 .focus-banner__text {
+  display: block;
+  width: 100%;
   margin-top: 2px;
+  padding: 0;
   font-size: 13px;
   color: var(--text-primary);
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: text;
+  font-family: inherit;
+}
+
+.focus-banner__text:hover {
+  color: var(--accent);
+}
+
+.focus-banner__placeholder {
+  color: var(--text-dim);
+  font-style: italic;
+}
+
+.focus-banner__input {
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+  padding: 1px 4px;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--surface);
+  border: 1px solid var(--border-focus);
+  border-radius: 2px;
+  outline: none;
 }
 
 /* === Markdown pane === */
@@ -1155,4 +1186,101 @@ h3 {
 
 .experiment-card__toggle:hover {
   background: var(--focus-bg);
+}
+
+/* Toasts */
+.toast-stack {
+  position: fixed;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 1000;
+  max-width: 420px;
+  pointer-events: none;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 4px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  font-size: 12px;
+  color: var(--text-primary, inherit);
+  pointer-events: auto;
+  animation: toast-in 120ms ease-out;
+}
+
+.toast--error {
+  border-left-color: #d04545;
+}
+
+.toast--success {
+  border-left-color: #4ca16f;
+}
+
+.toast__body {
+  flex: 1;
+  min-width: 0;
+  word-wrap: break-word;
+}
+
+.toast__scope {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+}
+
+.toast__message {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.toast__close {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.toast__close:hover {
+  color: var(--text-primary, inherit);
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.experiment-card__cancel {
+  margin-left: auto;
+  padding: 2px 10px;
+  font-size: 11px;
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+
+.experiment-card__cancel:hover:not(:disabled) {
+  color: var(--text-primary, inherit);
+  border-color: var(--border-focus);
+}
+
+.experiment-card__cancel:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
