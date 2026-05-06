@@ -2,6 +2,7 @@ import type { ResourceItem } from "../types";
 
 interface Props {
   resources: ResourceItem[];
+  onResourceClick?: (resource: ResourceItem) => void;
 }
 
 function displayTitle(r: ResourceItem): string {
@@ -13,7 +14,7 @@ function displayTitle(r: ResourceItem): string {
   }
 }
 
-export function ResourcesList({ resources }: Props) {
+export function ResourcesList({ resources, onResourceClick }: Props) {
   if (resources.length === 0) {
     return (
       <section className="resources-list">
@@ -28,7 +29,13 @@ export function ResourcesList({ resources }: Props) {
       <h3>Resources</h3>
       <ul>
         {resources.map((r) => (
-          <li key={r.resource_id} className="resource" title={r.url}>
+          <li
+            key={r.resource_id}
+            className="resource"
+            title={r.url}
+            onClick={r.wiki_path ? () => onResourceClick?.(r) : undefined}
+            style={{ cursor: r.wiki_path ? "pointer" : "default" }}
+          >
             <span className="resource__title">{displayTitle(r)}</span>
           </li>
         ))}

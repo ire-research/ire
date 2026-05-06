@@ -64,6 +64,21 @@ pub fn save_ideas(
 }
 
 #[tauri::command]
+pub fn save_wiki_file(
+    path: String,
+    content: String,
+    active: State<'_, ActiveWorkspace>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    tracing::info!(path = %path, bytes = content.len(), "save_wiki_file");
+    let store = wiki_store(&active)?;
+    store.write(&path, &content, &app).map_err(|e| e.to_string())?;
+    let first_50: String = content.chars().take(50).collect();
+    store.user_commit(&[&path], &format!("wiki: {}", first_50.trim()));
+    Ok(())
+}
+
+#[tauri::command]
 pub fn update_pulse_focus(
     focus: String,
     active: State<'_, ActiveWorkspace>,

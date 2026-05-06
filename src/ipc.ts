@@ -73,6 +73,8 @@ export const ipc = {
     invoke("list_resources"),
   getResourceConfirmPrompt: (): Promise<string> =>
     invoke("get_resource_confirm_prompt"),
+  saveWikiFile: (path: string, content: string): Promise<void> =>
+    invoke("save_wiki_file", { path, content }),
   experimentList: (limit?: number): Promise<ExperimentRow[]> =>
     invoke("experiment_list", { limit }),
   experimentLogs: (uuid: string, kb?: number): Promise<{ stdout: string; stderr: string }> =>
