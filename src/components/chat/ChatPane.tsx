@@ -162,8 +162,8 @@ export function ChatPane() {
       setActiveTab(payload.tab_id);
     }));
 
-    reg(onExperimentStarting(({ tab_id, uuid }) => {
-      linkExperimentUuid(tab_id, uuid);
+    reg(onExperimentStarting(({ tab_id, uuid, pid }) => {
+      linkExperimentUuid(tab_id, uuid, pid);
     }));
 
     reg(onExperimentStatus(({ uuid, status, exit_code }) => {

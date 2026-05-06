@@ -25,6 +25,7 @@ export interface ToolCallState {
   experimentUuid?: string;
   experimentStatus?: ExperimentStatus;
   experimentExitCode?: number;
+  experimentPid?: number;
   logLines?: string[];
 }
 
@@ -122,4 +123,5 @@ export interface ExperimentLogLinePayload {
 export interface ExperimentStartingPayload {
   tab_id: string;
   uuid: string;
+  pid?: number;
 }

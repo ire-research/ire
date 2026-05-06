@@ -75,7 +75,7 @@ pub fn start_experiment(
     // Bridge event: lets the frontend link this UUID to the pending ToolStart card.
     let _ = app.emit(
         "experiment-starting",
-        serde_json::json!({ "tab_id": tab_id, "uuid": uuid }),
+        serde_json::json!({ "tab_id": tab_id, "uuid": uuid, "pid": pid }),
     );
 
     let uuid_m = uuid.clone();
