@@ -18,8 +18,8 @@ pub enum StreamEvent {
 pub struct StreamState {
     pub session_id: String,
     pub emitted_text: bool,
-    emitted_text_len: usize,
-    emitted_thinking_len: usize,
+    emitted_text_chars: usize,
+    emitted_thinking_chars: usize,
     emitted_tool_ids: Vec<String>,
 }
 
@@ -72,18 +72,20 @@ fn dispatch_assistant<F: FnMut(StreamEvent)>(
         match block["type"].as_str() {
             Some("text") => {
                 let full = block["text"].as_str().unwrap_or("");
-                if full.len() > state.emitted_text_len {
-                    let delta = full[state.emitted_text_len..].to_string();
-                    state.emitted_text_len = full.len();
+                let n = full.chars().count();
+                if n > state.emitted_text_chars {
+                    let delta: String = full.chars().skip(state.emitted_text_chars).collect();
+                    state.emitted_text_chars = n;
                     state.emitted_text = true;
                     emit(StreamEvent::TextDelta { text: delta });
                 }
             }
             Some("thinking") => {
                 let full = block["thinking"].as_str().unwrap_or("");
-                if full.len() > state.emitted_thinking_len {
-                    let delta = full[state.emitted_thinking_len..].to_string();
-                    state.emitted_thinking_len = full.len();
+                let n = full.chars().count();
+                if n > state.emitted_thinking_chars {
+                    let delta: String = full.chars().skip(state.emitted_thinking_chars).collect();
+                    state.emitted_thinking_chars = n;
                     emit(StreamEvent::ThinkingDelta { text: delta });
                 }
             }

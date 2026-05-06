@@ -10,6 +10,8 @@ Each section corresponds to a notable batch of work. For the architectural reaso
 
 ### Added
 
+- **Experiment card: collapsible live log tail.** The experiment card is now collapsed by default. Clicking the header toggles a live log body showing the last 10 lines streamed from the experiment process. A blinking green dot in the header indicates `starting`/`running`; it turns solid green on `completed` and solid red on `failed`/`cancelled`.
+
 - **Claude Code Options in composer.** User can change model and effort directly from IRE's composer.
 
 - **~/.config/ire/config.json.** User-level configuration file with preferences. As of now, it only contains theme and recently opened projects.
