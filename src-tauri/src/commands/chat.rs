@@ -16,6 +16,12 @@ use crate::cc::stream::{dispatch, StreamEvent, StreamState};
 use crate::prompts;
 use crate::workspace::state::ActiveWorkspace;
 
+#[derive(serde::Deserialize)]
+pub struct ChatOptions {
+    pub model: String,
+    pub effort: String,
+}
+
 #[tauri::command]
 pub async fn chat_send(
     app_handle: tauri::AppHandle,
@@ -24,6 +30,7 @@ pub async fn chat_send(
     tab_id: String,
     message: String,
     mode: String,
+    options: ChatOptions,
 ) -> Result<(), String> {
     let workspace_path = {
         let guard = active.0.lock().map_err(|e| e.to_string())?;
@@ -44,7 +51,7 @@ pub async fn chat_send(
     let session_clone = (*session).clone();
     let tab_id_outer = tab_id.clone();
 
-    tracing::info!(tab_id = %tab_id, mode = %mode, msg = %trunc(&message), "chat_send");
+    tracing::info!(tab_id = %tab_id, mode = %mode, model = %options.model, effort = %options.effort, msg = %trunc(&message), "chat_send");
 
     let result = tokio::task::spawn_blocking(move || {
         let mut cmd = build_command(&SpawnArgs {
@@ -54,6 +61,8 @@ pub async fn chat_send(
             resume_id: resume_id.as_deref(),
             mcp_config: mcp_config.as_deref(),
             system_prompt: Some(&system_prompt),
+            model: &options.model,
+            effort: &options.effort,
         });
 
         let mut child = cmd.spawn().map_err(|e| e.to_string())?;

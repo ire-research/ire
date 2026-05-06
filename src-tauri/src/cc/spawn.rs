@@ -8,6 +8,8 @@ pub struct SpawnArgs<'a> {
     pub resume_id: Option<&'a str>,
     pub mcp_config: Option<&'a Path>,
     pub system_prompt: Option<&'a str>,
+    pub model: &'a str,
+    pub effort: &'a str,
 }
 
 pub fn build_command(args: &SpawnArgs<'_>) -> Command {
@@ -16,7 +18,9 @@ pub fn build_command(args: &SpawnArgs<'_>) -> Command {
     cmd.arg("-p")
         .arg(args.message)
         .arg("--model")
-        .arg("claude-haiku-4-5-20251001")
+        .arg(args.model)
+        .arg("--effort")
+        .arg(args.effort)
         .arg("--output-format")
         .arg("stream-json")
         .arg("--verbose")
