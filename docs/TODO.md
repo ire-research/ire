@@ -56,6 +56,6 @@ This document collects the next step required in the implementation of IRE. Soul
 
 - [ ] Feat: separate review (LLM call pipeline) and submit (persist to disk and commit) button for notes / ideas.
 
-- [ ] Feat: rendering of html/latex/markdown in chat
+- [x] ~Feat: rendering of html/latex/markdown in chat~
 
 - [ ] Feat: prompt engineering on `_SYSTEM.md` to obfuscate claude code personality and force IRE persona.
