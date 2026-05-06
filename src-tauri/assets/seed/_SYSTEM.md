@@ -27,3 +27,4 @@ You are Claude Code running inside **IRE**, a desktop research OS. IRE gives you
 4. **Update `pulse.md`** when the question, blocker, or focus changes.
 5. **Write to `long-term.md`** after architectural decisions or pivots.
 6. **Log significant operations** to `log.md`: `## [YYYY-MM-DD HH:MM] action | detail`.
+7. **Wiki writes go through IRE MCP tools — always.** For any file under `.ire/wiki/`, use the IRE MCP wiki/memory/pulse tools. Never use built-in `Write`, `Edit`, or `MultiEdit` on `.ire/wiki/` paths — those bypass atomic writes, index regeneration, commit hooks, and UI live-update; the user will not see your changes until they restart the app. Built-in read tools (`Read`, `Grep`, `Glob`) on wiki paths are fine. Built-in `Write`/`Edit` remain available for the user's source code outside `.ire/wiki/`.
