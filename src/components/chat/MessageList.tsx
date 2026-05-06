@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AssistantMessage, ChatMessage, ToolCallState } from "../../types";
 import { ExperimentCard } from "./ExperimentCard";
+import { MessageMarkdown } from "./MessageMarkdown";
 
 // CC may prefix MCP tool names with the server name (e.g. "ire__experiment.start"
 // or "mcp__ire__experiment__start"). Strip any prefix to get the bare tool name.
@@ -42,7 +43,9 @@ export function MessageList({ messages }: MessageListProps) {
         m.role === "user" ? (
           <div key={m.id} className="message message--user">
             <div className="message__role">You</div>
-            <div className="message__text">{m.text}</div>
+            <div className="message__text">
+              <MessageMarkdown content={m.text} />
+            </div>
           </div>
         ) : (
           <AssistantBubble key={m.id} msg={m as AssistantMessage} />
@@ -98,7 +101,9 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
       {msg.error ? (
         <div className="message__text message__error">{msg.error}</div>
       ) : msg.text ? (
-        <div className="message__text">{msg.text}</div>
+        <div className="message__text">
+          <MessageMarkdown content={msg.text} />
+        </div>
       ) : msg.isStreaming ? (
         <div className="message__text">
           <span className="typing-dot" />

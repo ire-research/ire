@@ -712,9 +712,10 @@ No table for chat messages — the CC session is the source of truth, and `--res
 - A spinning indicator inside the tab label signals a resource tab that is still being summarised.
 
 **Messages.** Text is streamed character-by-character into the latest assistant bubble.
-- Thinking blocks render as a collapsed-by-default accordion ("Thinking…").
+- Both user and assistant text are rendered through `MessageMarkdown` (`react-markdown` + `remark-gfm` + `remark-math` + `rehype-katex`). GitHub-flavoured markdown — tables, fenced code, task lists — and LaTeX (`$…$`, `$$…$$`) display inline. KaTeX CSS is imported once in `main.tsx`. Inline HTML is intentionally **not** enabled (no `rehype-raw`); raw HTML in the model output is shown as text or inside a fenced code block, never injected into the DOM.
+- Thinking blocks render as a collapsed-by-default accordion ("Thinking…"). Content is plain text (not markdown-parsed) since thinking traces are rarely well-formed markdown.
 - Tool calls render as cards: `[Read] path/to/file ▸ output preview`. Clicking expands the full output.
-- Experiment cards are special: status pill (Running / Completed / Failed), live log tail (last 10 lines), and a "view full logs" button.
+- Experiment cards are special: status pill (Running / Completed / Failed), live log tail (last 10 lines), and a "view full logs" button. A **Cancel** button appears in the header while status is `starting` or `running`.
 
 ### 13.3 Edit/preview toggle behaviour
 
