@@ -30,6 +30,6 @@ The seed `_SYSTEM.md` (rule 7) explicitly forbids CC from using built-in `Write`
 2. **Add a `notify` filesystem watcher.** SDD §3 explicitly opts out: *"No notify watcher in MVP — wiki changes are mediated through IRE."* Reversing that is a real architectural change.
 3. **Strengthen the system prompt.** Cheapest. Relies on CC compliance.
 
-We picked (3) for now. The seed prompt is the right place to set behavioral rules CC follows on every turn. Caveat: existing workspaces don't pick up updates to the seed automatically — see the queued seed-prompt update TODO. Caveat: the model can still misbehave; if that becomes a recurring problem, escalate to (1) or (2).
+We picked (3) for now. The seed prompt is the right place to set behavioral rules CC follows on every turn. Caveat: existing workspaces don't pick up updates to the seed automatically. Caveat: the model can still misbehave; if that becomes a recurring problem, escalate to (1) or (2).
 
 **Implementation.** `src-tauri/assets/seed/_SYSTEM.md` rule 7. See commit `c22fd6c`.
