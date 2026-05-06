@@ -68,7 +68,7 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
 
   return (
     <div className="message message--assistant">
-      <div className="message__role">Claude</div>
+      <div className="message__role">IRE</div>
 
       {msg.thinking && (
         <div className="thinking-block">

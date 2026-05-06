@@ -56,7 +56,7 @@ export function Composer({ onSend, disabled }: ComposerProps) {
   return (
     <div className="composer">
       <textarea
-        placeholder="Message Claude…"
+        placeholder="Message IRE…"
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
