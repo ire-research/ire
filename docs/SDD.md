@@ -317,7 +317,7 @@ Always injected into CC's context as a "do-not-propose" anchor. This directly ad
 When IRE spawns a CC turn, the system prompt is composed of:
 
 1. `wiki/_SYSTEM.md` — static IRE framework context (what IRE is, wiki layout, behavioral rules). MCP tool descriptions are received automatically via `tools/list` and are not duplicated here. Seeded from `assets/seed/_SYSTEM.md` on workspace init; always injected first.
-2. The mode-specific preamble (brainstorm vs. experiment; hardcoded one-liner).
+2. The mode-specific preamble (brainstorm vs. experiment), loaded from `src-tauri/assets/prompts/mode_{brainstorm,experiment}.md` via the `prompts` module. All CC-facing prompt text — mode preambles, the resource summarizer role, the resource-confirm follow-up, and the experiment wake-up template — lives in `src-tauri/assets/prompts/`. Edit those files to change CC's behaviour; never hardcode prompts at call sites.
 3. `wiki/_schema.md` (conventions).
 4. `wiki/_index.md` (catalog).
 5. `wiki/status/pulse.md` (focus + blocker).

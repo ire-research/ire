@@ -71,6 +71,8 @@ export const ipc = {
     invoke("index_resource", { resourceId }),
   listResources: (): Promise<ResourceItem[]> =>
     invoke("list_resources"),
+  getResourceConfirmPrompt: (): Promise<string> =>
+    invoke("get_resource_confirm_prompt"),
   experimentList: (limit?: number): Promise<ExperimentRow[]> =>
     invoke("experiment_list", { limit }),
   experimentLogs: (uuid: string, kb?: number): Promise<{ stdout: string; stderr: string }> =>

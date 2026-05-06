@@ -10,6 +10,7 @@ use crate::cc::session::SessionManager;
 use crate::cc::spawn::{build_command, SpawnArgs};
 use crate::cc::stream::{dispatch, StreamEvent, StreamState};
 use crate::db::models;
+use crate::prompts;
 use crate::resources::fetch::fetch_and_extract;
 use crate::wiki::WikiStore;
 use crate::workspace::state::ActiveWorkspace;
@@ -336,11 +337,7 @@ fn build_resource_system_prompt(workspace_root: &Path) -> String {
         }
     }
 
-    parts.push(
-        "You are IRE's research assistant. \
-         Analyze the provided resource and give an executive summary for the researcher."
-            .to_string(),
-    );
+    parts.push(prompts::resource_summarizer().to_string());
 
     for rel in &["status/pulse.md", "_index.md"] {
         if let Ok(content) = fs::read_to_string(wiki_root.join(rel)) {
@@ -351,4 +348,9 @@ fn build_resource_system_prompt(workspace_root: &Path) -> String {
     }
 
     parts.join("\n\n---\n\n")
+}
+
+#[tauri::command]
+pub fn get_resource_confirm_prompt() -> &'static str {
+    prompts::resource_confirm()
 }

@@ -9,6 +9,7 @@ use crate::cc::session::SessionManager;
 use crate::cc::spawn::{build_command, SpawnArgs};
 use crate::cc::stream::{dispatch, StreamEvent, StreamState};
 use crate::commands::chat::build_system_prompt;
+use crate::prompts::{self, WakeupArgs};
 
 pub fn fire_wakeup(
     workspace_root: &Path,
@@ -27,14 +28,14 @@ pub fn fire_wakeup(
     let stdout_tail = tail_file(&log_dir.join("stdout.log"), 8192);
     let stderr_tail = tail_file(&log_dir.join("stderr.log"), 8192);
 
-    let message = format!(
-        "{wake_prompt}\n\n\
-         Experiment uuid: {uuid}\n\
-         Exit code: {exit_code}\n\
-         Plan: {plan_path}\n\n\
-         stdout tail:\n{stdout_tail}\n\n\
-         stderr tail:\n{stderr_tail}"
-    );
+    let message = prompts::experiment_wakeup(WakeupArgs {
+        wake_prompt,
+        uuid,
+        exit_code,
+        plan_path: &plan_path,
+        stdout_tail: &stdout_tail,
+        stderr_tail: &stderr_tail,
+    });
 
     tracing::info!(uuid = %uuid, tab_id = %tab_id, "firing experiment wake-up");
 
