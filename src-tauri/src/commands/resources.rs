@@ -124,6 +124,8 @@ pub async fn submit_resource(
                 resume_id: None,
                 mcp_config: if mcp_config.exists() { Some(&mcp_config) } else { None },
                 system_prompt: Some(&system_prompt),
+                model: "claude-haiku-4-5-20251001",
+                effort: "high",
             });
 
             let mut child = cmd.spawn().map_err(|e| e.to_string())?;

@@ -59,6 +59,8 @@ pub fn fire_wakeup(
         resume_id: resume_id.as_deref(),
         mcp_config: mcp_config.as_deref(),
         system_prompt: Some(&system_prompt),
+        model: "claude-haiku-4-5-20251001",
+        effort: "high",
     });
 
     let mut child = match cmd.spawn() {
