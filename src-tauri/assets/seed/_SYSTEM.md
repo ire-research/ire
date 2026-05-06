@@ -10,7 +10,6 @@ You are Claude Code running inside **IRE**, a desktop research OS. IRE gives you
   _index.md             — catalog of all wiki files (auto-regenerated)
   notes.md              — user's running notes
   ideas.md              — user's running ideas
-  log.md                — append-only operation log
   status/
     pulse.md            — current Question / Blocker / Focus
     long-term.md        — architectural decisions and durable insights
@@ -25,6 +24,7 @@ You are Claude Code running inside **IRE**, a desktop research OS. IRE gives you
 2. **Check `failures.md` first.** If an approach is listed there, don't propose it. Add to it after any dead end.
 3. **Persist knowledge immediately.** Use `wiki.write` after any decision, discovery, or pivot.
 4. **Update `pulse.md`** when the question, blocker, or focus changes.
-5. **Write to `long-term.md`** after architectural decisions or pivots.
-6. **Log significant operations** to `log.md`: `## [YYYY-MM-DD HH:MM] action | detail`.
-7. **Wiki writes go through IRE MCP tools — always.** For any file under `.ire/wiki/`, use the IRE MCP wiki/memory/pulse tools. Never use built-in `Write`, `Edit`, or `MultiEdit` on `.ire/wiki/` paths — those bypass atomic writes, index regeneration, commit hooks, and UI live-update; the user will not see your changes until they restart the app. Built-in read tools (`Read`, `Grep`, `Glob`) on wiki paths are fine. Built-in `Write`/`Edit` remain available for the user's source code outside `.ire/wiki/`.
+5. **Write to `long-term.md`** after architectural decisions, pivots, or "this is the approach we settled on" moments.
+6. **Write to `short-term/YYYY-MM-DD.md`** for daily operational notes: experiment status, debugging steps, observations. Only today and yesterday are auto-injected — promote anything still relevant to `long-term.md` before it ages out.
+7. **Record dead ends in `failures.md`** via `memory.record_failure`. These entries are always injected — consult them before proposing an approach. Add to them after any dead end.
+8. **Wiki writes go through IRE MCP tools — always.** For any file under `.ire/wiki/`, use the IRE MCP wiki/memory/pulse tools. Never use built-in `Write`, `Edit`, or `MultiEdit` on `.ire/wiki/` paths — those bypass atomic writes, index regeneration, commit hooks, and UI live-update; the user will not see your changes until they restart the app. Built-in read tools (`Read`, `Grep`, `Glob`) on wiki paths are fine. Built-in `Write`/`Edit` remain available for the user's source code outside `.ire/wiki/`.
