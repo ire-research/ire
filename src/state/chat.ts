@@ -27,8 +27,8 @@ interface ChatStore {
   // Tool call management
   addTool: (tabId: string, msgId: string, tool: ToolCallState) => void;
   markToolDone: (tabId: string, toolId: string, outputPreview?: string | null, outputFull?: string | null) => void;
-  /** Link the pending experiment card in tabId to its assigned UUID. */
-  linkExperimentUuid: (tabId: string, uuid: string) => void;
+  /** Link the pending experiment card in tabId to its assigned UUID and PID. */
+  linkExperimentUuid: (tabId: string, uuid: string, pid?: number) => void;
   /** Update experiment status across all tabs by UUID. */
   updateExperimentStatus: (uuid: string, status: ExperimentStatus, exitCode?: number) => void;
   /** Append a log line to the experiment card with the given UUID. */
@@ -66,6 +66,14 @@ function updateToolInMessage(
   };
 }
 
+// CC prefixes MCP tool names with the server name (e.g. "ire__experiment.start").
+// Mirror the normalization in MessageList.tsx so look-ups match what was stored.
+function isExperimentToolName(name: string): boolean {
+  const parts = name.split("__");
+  const bare = parts[parts.length - 1].replace(/_/g, ".");
+  return bare === "experiment.start";
+}
+
 /** Find the last assistant message in a tab that has a pending experiment card (no UUID yet). */
 function findPendingExperimentMsgId(tabs: Tab[], tabId: string): string | null {
   const tab = tabs.find((t) => t.id === tabId);
@@ -75,7 +83,7 @@ function findPendingExperimentMsgId(tabs: Tab[], tabId: string): string | null {
     if (m.role === "assistant") {
       const am = m as AssistantMessage;
       const pending = am.tools?.find(
-        (t) => t.tool_name === "experiment.start" && !t.experimentUuid
+        (t) => isExperimentToolName(t.tool_name) && !t.experimentUuid
       );
       if (pending) return am.id;
     }
@@ -244,7 +252,7 @@ export const useChat = create<ChatStore>((set) => ({
       return s;
     }),
 
-  linkExperimentUuid: (tabId, uuid) =>
+  linkExperimentUuid: (tabId, uuid, pid) =>
     set((s) => {
       const msgId = findPendingExperimentMsgId(s.tabs, tabId);
       if (!msgId) return s;
@@ -252,8 +260,13 @@ export const useChat = create<ChatStore>((set) => ({
         tabs: updateMessage(s.tabs, tabId, msgId, (m) =>
           updateToolInMessage(
             m,
-            (t) => t.tool_name === "experiment.start" && !t.experimentUuid,
-            (t) => ({ ...t, experimentUuid: uuid, experimentStatus: "running" as ExperimentStatus })
+            (t) => isExperimentToolName(t.tool_name) && !t.experimentUuid,
+            (t) => ({
+              ...t,
+              experimentUuid: uuid,
+              experimentStatus: "running" as ExperimentStatus,
+              ...(pid !== undefined ? { experimentPid: pid } : {}),
+            })
           )
         ),
       };
