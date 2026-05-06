@@ -30,7 +30,7 @@ This document collects the next step required in the implementation of IRE. Soul
 
 - [x] ~Implement Phase 6 of `docs/SDD.md`~
 
-- [ ] Add `docs/DECISIONS.md` (or `CHANGELOG.md`) to record non-obvious design changes and their rationale — there is no such doc today. First entry: `_SYSTEM.md` now mandates MCP-only writes for `.ire/wiki/` because Haiku was using built-in `Write`/`Edit` and bypassing `wiki-changed` events, so panes only refreshed on app restart.
+- [x] ~Add `docs/DECISIONS.md` and `docs/CHANGELOG.md` to record non-obvious design changes and visible changes~
 
 - [ ] Feat: seed-prompt update prompt on workspace open. Detect when the bundled seed `_SYSTEM.md` (and `_schema.md`) is newer than the workspace copy and offer to update via a modal. Use a **version marker** strategy: embed `<!-- ire-system-version: N -->` in the seed and bump on every change. On `workspace-ready`, parse the marker from both bundled (`include_str!`) and `.ire/wiki/_SYSTEM.md`; if `disk_version < bundled_version`, fire a modal with the diff and Update / Keep mine buttons. Update writes through `WikiStore::write` so it picks up index regen, `wiki-changed`, and git auto-commit for free. Detect drift (user edits) via a separate hash and warn before overwriting. Tauri commands: `check_seed_updates()`, `apply_seed_update({ path })`.
 
