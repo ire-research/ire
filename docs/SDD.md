@@ -378,7 +378,10 @@ User pastes URL → Submit
   → submit_resource(url) Tauri command
   → Rust:
       1. fetch URL with reqwest (10 s timeout, follow redirects)
-      2. detect content-type:
+      2. arXiv shortcut: if URL is arxiv.org/abs/<id> or arxiv.org/pdf/<id>,
+         fetch arxiv.org/e-print/<id> instead and extract LaTeX from the
+         tarball (gzip + tar). Falls back to PDF on failure.
+      3. detect content-type:
            pdf  → pdf-extract crate → plain text
            html → readability extraction → plain text
       3. write extracted text to .ire/cache/<url-sha256>.txt
