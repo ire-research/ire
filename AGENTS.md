@@ -83,3 +83,9 @@ After every major change, read `docs/CHANGELOG.md` and `docs/DECISIONS.md` and u
 - When the wiki layout changes (new files, renamed paths, restructured dirs), update the layout block.
 - When behavioral rules change (new agent expectations, updated conventions), update the rules list.
 - `_SYSTEM.md` contains only: wiki layout reference and universal agent rules.
+
+### 7. Parallel Intervention
+
+**Be aware of possible multi-agent collaboration in the codebase**
+
+Multiple agents may be working simultaneously. If you see errors in files you did NOT edit, do not try to fix them. Wait 30 seconds and retry - the other agent is likely mid-edit.
