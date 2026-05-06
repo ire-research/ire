@@ -26,6 +26,18 @@ export interface WorkspaceState {
   name: string;
 }
 
+export interface PersistedWorkspace {
+  version: number;
+  theme?: "dark" | "light" | null;
+  panel_layout?: PanelLayouts | null;
+  last_opened?: string | null;
+}
+
+export interface PanelLayouts {
+  /** Map of panel-group id → react-resizable-panels Layout (panel id → percentage). */
+  groups?: Record<string, Record<string, number>>;
+}
+
 export const ipc = {
   setupStatus: (): Promise<SetupStatus> => invoke("setup_status"),
   openWorkspace: (path: string): Promise<WorkspaceState> =>
@@ -33,12 +45,18 @@ export const ipc = {
   initWorkspace: (path: string): Promise<WorkspaceState> =>
     invoke("init_workspace", { path }),
   closeWorkspace: (): Promise<void> => invoke("close_workspace"),
+  readWorkspaceState: (): Promise<PersistedWorkspace> =>
+    invoke("read_workspace_state"),
+  saveWorkspaceState: (state: PersistedWorkspace): Promise<void> =>
+    invoke("save_workspace_state", { state }),
   readWikiFile: (path: string): Promise<WikiFile> =>
     invoke("read_wiki_file", { path }),
   saveNotes: (content: string): Promise<void> =>
     invoke("save_notes", { content }),
   saveIdeas: (content: string): Promise<void> =>
     invoke("save_ideas", { content }),
+  updatePulseFocus: (focus: string): Promise<void> =>
+    invoke("update_pulse_focus", { focus }),
   chatSend: (tabId: string, message: string, mode: ChatMode): Promise<void> =>
     invoke("chat_send", { tabId, message, mode }),
   chatCancel: (tabId: string): Promise<void> =>
@@ -66,6 +84,14 @@ export function onWikiChanged(
 ): Promise<() => void> {
   return listen<{ path: string }>("wiki-changed", (event) =>
     cb(event.payload)
+  );
+}
+
+export function onBackendError(
+  cb: (payload: { scope: string; message: string }) => void
+): Promise<() => void> {
+  return listen<{ scope: string; message: string }>("error", (event) =>
+    cb(event.payload),
   );
 }
 

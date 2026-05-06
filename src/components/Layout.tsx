@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { ipc, onWikiChanged } from "../ipc";
 import { useWorkspace } from "../state/workspace";
+import { toastError } from "../state/toasts";
 import type { ResourceItem } from "../types";
 import { ChatPane } from "./chat/ChatPane";
 import { FocusBanner } from "./FocusBanner";
@@ -14,12 +15,18 @@ function parseFocus(pulse: string): string {
   return match ? match[1].trim() : "";
 }
 
+
 export function Layout() {
   const phase = useWorkspace((s) => s.phase);
   const setPhase = useWorkspace((s) => s.setPhase);
   const theme = useWorkspace((s) => s.theme);
   const toggleTheme = useWorkspace((s) => s.toggleTheme);
+  const panelLayout = useWorkspace((s) => s.panelLayout);
+  const setGroupLayout = useWorkspace((s) => s.setGroupLayout);
+  const toPersisted = useWorkspace((s) => s.toPersisted);
   const workspace = phase.kind === "ready" ? phase.workspace : null;
+
+  const groups = panelLayout.groups ?? {};
 
   const [pulseContent, setPulseContent] = useState("");
   const [notesContent, setNotesContent] = useState("");
@@ -39,11 +46,11 @@ export function Layout() {
         setNotesContent(notes.content);
         setIdeasContent(ideas.content);
       })
-      .catch((e) => console.error("failed to load wiki files", e));
+      .catch((e) => toastError("load wiki", e));
 
     ipc.listResources()
       .then(setResources)
-      .catch((e) => console.error("failed to load resources", e));
+      .catch((e) => toastError("load resources", e));
   }, [phase.kind]);
 
   // Re-read affected file on wiki-changed events
@@ -56,7 +63,7 @@ export function Layout() {
       } else if (path === "ideas.md") {
         ipc.readWikiFile("ideas.md").then((f) => setIdeasContent(f.content));
       } else if (path.startsWith("resources/")) {
-        ipc.listResources().then(setResources).catch(console.error);
+        ipc.listResources().then(setResources).catch((e) => toastError("load resources", e));
       }
     });
     return () => {
@@ -72,6 +79,22 @@ export function Layout() {
     }
   }, [theme]);
 
+  // Debounced persistence of theme + panel layout to .ire/workspace.json.
+  // Skip the initial render (otherwise we overwrite the loaded file with defaults).
+  const skipInitialSave = useRef(true);
+  useEffect(() => {
+    if (skipInitialSave.current) {
+      skipInitialSave.current = false;
+      return;
+    }
+    const handle = setTimeout(() => {
+      ipc.saveWorkspaceState(toPersisted()).catch((e) =>
+        toastError("save layout", e),
+      );
+    }, 1000);
+    return () => clearTimeout(handle);
+  }, [theme, panelLayout, toPersisted]);
+
   const handleClose = async () => {
     await ipc.closeWorkspace();
     const status = await ipc.setupStatus();
@@ -79,11 +102,11 @@ export function Layout() {
   };
 
   const handleSaveNotes = async (content: string) => {
-    await ipc.saveNotes(content).catch((e) => console.error("save notes:", e));
+    await ipc.saveNotes(content).catch((e) => toastError("save notes", e));
   };
 
   const handleSaveIdeas = async (content: string) => {
-    await ipc.saveIdeas(content).catch((e) => console.error("save ideas:", e));
+    await ipc.saveIdeas(content).catch((e) => toastError("save ideas", e));
   };
 
   return (
@@ -109,20 +132,33 @@ export function Layout() {
         </button>
       </header>
 
-      <Group orientation="horizontal" className="layout__body">
+      <Group
+        id="body"
+        orientation="horizontal"
+        className="layout__body"
+        defaultLayout={groups.body}
+        onLayoutChanged={(layout) => setGroupLayout("body", layout)}
+      >
         <Panel
+          id="left"
           defaultSize="22%"
           minSize="15%"
           collapsible
           className="column column--left"
         >
           <FocusBanner focus={parseFocus(pulseContent)} />
-          <Group orientation="vertical" className="column__inner">
-            <Panel defaultSize="55%" minSize="20%">
+          <Group
+            id="left"
+            orientation="vertical"
+            className="column__inner"
+            defaultLayout={groups.left}
+            onLayoutChanged={(layout) => setGroupLayout("left", layout)}
+          >
+            <Panel id="pulse" defaultSize="55%" minSize="20%">
               <MarkdownPane title="pulse.md" content={pulseContent} />
             </Panel>
             <Separator className="resize-handle resize-handle--v" />
-            <Panel defaultSize="45%" minSize="20%">
+            <Panel id="resources" defaultSize="45%" minSize="20%">
               <ResourcesList resources={resources} />
             </Panel>
           </Group>
@@ -130,20 +166,27 @@ export function Layout() {
 
         <Separator className="resize-handle resize-handle--h" />
 
-        <Panel defaultSize="56%" minSize="30%" className="column column--center">
+        <Panel id="center" defaultSize="56%" minSize="30%" className="column column--center">
           <ChatPane />
         </Panel>
 
         <Separator className="resize-handle resize-handle--h" />
 
         <Panel
+          id="right"
           defaultSize="22%"
           minSize="15%"
           collapsible
           className="column column--right"
         >
-          <Group orientation="vertical" className="column__inner">
-            <Panel defaultSize="40%" minSize="15%">
+          <Group
+            id="right"
+            orientation="vertical"
+            className="column__inner"
+            defaultLayout={groups.right}
+            onLayoutChanged={(layout) => setGroupLayout("right", layout)}
+          >
+            <Panel id="notes" defaultSize="40%" minSize="15%">
               <MarkdownPane
                 title="notes.md"
                 content={notesContent}
@@ -152,7 +195,7 @@ export function Layout() {
               />
             </Panel>
             <Separator className="resize-handle resize-handle--v" />
-            <Panel defaultSize="40%" minSize="15%">
+            <Panel id="ideas" defaultSize="40%" minSize="15%">
               <MarkdownPane
                 title="ideas.md"
                 content={ideasContent}
@@ -161,7 +204,7 @@ export function Layout() {
               />
             </Panel>
             <Separator className="resize-handle resize-handle--v" />
-            <Panel defaultSize="20%" minSize="10%">
+            <Panel id="resource-input" defaultSize="20%" minSize="10%">
               <ResourceInput />
             </Panel>
           </Group>

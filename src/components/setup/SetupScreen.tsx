@@ -9,6 +9,7 @@ interface Props {
 
 export function SetupScreen({ status, onRefresh }: Props) {
   const setPhase = useWorkspace((s) => s.setPhase);
+  const hydrateFromPersisted = useWorkspace((s) => s.hydrateFromPersisted);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,6 +25,8 @@ export function SetupScreen({ status, onRefresh }: Props) {
     try {
       const workspace =
         kind === "open" ? await ipc.openWorkspace(path) : await ipc.initWorkspace(path);
+      const persisted = await ipc.readWorkspaceState().catch(() => null);
+      if (persisted) hydrateFromPersisted(persisted);
       setPhase({ kind: "ready", workspace });
     } catch (e) {
       setError(String(e));

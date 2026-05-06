@@ -734,22 +734,28 @@ The UI supports dark and light themes. Dark is the default. A toggle button in t
 - All colors are defined as CSS custom properties in `:root` (dark values). `[data-theme="light"]` overrides them with light values.
 - Theme state lives in the Zustand workspace store (`theme: "dark" | "light"`). A `toggleTheme` action flips it.
 - `Layout` syncs `document.documentElement.dataset.theme` to the store value via `useEffect` — setting the attribute to `"light"` or removing it to revert to the dark `:root` defaults.
-- Theme preference is not persisted across sessions (deferred to Phase 7 alongside other `workspace.json` state).
+- Theme preference is persisted to `.ire/workspace.json` as part of the workspace state (see [§13.6](#136-workspace-state-workspacejson)) and rehydrated before `Layout` mounts.
 
 ### 13.6 Workspace state (`workspace.json`)
 
 ```json
 {
   "version": 1,
-  "panel_layout": { /* react-resizable-panels serialised state */ },
-  "collapsed_panels": ["resources"],
-  "central_mode": "brainstorm",
-  "session_id": "abc-123-…",
-  "last_opened": "2026-05-03T10:14:00Z"
+  "theme": "dark",
+  "panel_layout": {
+    "groups": {
+      "body":  { "left": 22, "center": 56, "right": 22 },
+      "left":  { "pulse": 55, "resources": 45 },
+      "right": { "notes": 40, "ideas": 40, "resource-input": 20 }
+    }
+  },
+  "last_opened": "2026-05-06T10:14:00Z"
 }
 ```
 
-Saved on close and on layout change (debounced 1s).
+Each entry under `panel_layout.groups.<group-id>` is the `Layout` map (`{ panel-id: percentage }`) that `react-resizable-panels` accepts as `defaultLayout` on `<Group>`. Unknown / missing groups fall back to per-`<Panel>` `defaultSize` props. Persisted via `save_workspace_state` (debounced 1 s on theme or layout change). Hydrated by `read_workspace_state` from `SetupScreen.handlePick` immediately after `open_workspace`/`init_workspace`, before the workspace transitions to `phase = "ready"` so the panels mount with the correct sizes.
+
+Per-tab CC `session_id`s and the central pane mode are intentionally **not** persisted in MVP: sessions live in the in-memory `SessionManager` and are reset on app close.
 
 ---
 
@@ -776,7 +782,9 @@ Saved on close and on layout change (debounced 1s).
 | `experiment_list` | `{ limit? }` | `[ExperimentRow]` |
 | `experiment_logs` | `{ uuid, kb? }` | `{ stdout, stderr }` |
 | `experiment_cancel` | `{ uuid }` | `{}` |
-| `save_layout` | `{ workspace_json }` | `{}` |
+| `read_workspace_state` | — | `PersistedWorkspace` (theme + panel layout from `.ire/workspace.json`) |
+| `save_workspace_state` | `{ state: PersistedWorkspace }` | `{}` (debounced from frontend; atomic write) |
+| `update_pulse_focus` | `{ focus }` | `{}` (replaces `**Focus:** …` line in `status/pulse.md`; auto-committed) |
 
 ### 14.2 Events (backend → frontend)
 
@@ -930,7 +938,7 @@ Each phase ends with a demoable milestone.
 
 **Phase 6 — Experiments.** `experiment.start`, detached subprocess, monitor, wake-up turn composition. Experiment cards in chat with live log tail. *Milestone:* CC can run a Python script ablation, tell the user "I'll be back", and resume with results when the script exits. ✅
 
-**Phase 7 — Polish.** Workspace.json layout persistence, error toasts, cancel buttons, focus-banner editor, end-to-end smoke test on a real research project.
+**Phase 7 — Polish.** `workspace.json` persistence (theme + per-group panel layouts via `read_workspace_state` / `save_workspace_state`, debounced 1 s, hydrated before the Layout mounts). Error toast stack (top-right) wired to a frontend `useToasts` zustand store; subscribes to the backend `error` event and replaces silent `console.error` calls in user-facing flows. Cancel button on `ExperimentCard` (visible while status is `starting` or `running`) calls `experiment_cancel`. Inline focus-banner editor: click the banner to edit, Enter / blur saves through `update_pulse_focus`, Escape cancels. *Milestone:* layout, theme, and focus survive restart; user-visible failures surface as toasts; experiments can be cancelled from the chat.
 
 ---
 
