@@ -53,6 +53,7 @@ ML research workflows are fragmented across IDEs, reference managers, and AI int
 ┌──────────────────────────────────────────────────────────────────────┐
 │ Tauri WebView (React)                                                │
 │   five-pane layout · streaming chat · markdown edit/preview          │
+│   central column: chat tabs + resource preview tabs                  │
 └──────────────────────────────────────────────────────────────────────┘
                        ▲ invoke / events
                        │
@@ -473,10 +474,11 @@ IRE supports multiple independent chat tabs in the central pane.
 | Main | On workspace open (id `"main"`) | No (pinned) | Hosts the Brainstorm / Experiment mode selector. The primary research conversation. |
 | Chat | User clicks + button | Yes | Fresh CC session, independent conversation history. |
 | Resource | Backend resource ingestion (§8.3) | Auto-closes on Confirm/Discard | Dedicated to reviewing a single resource summary; shows Confirm / Discard instead of a free-form Composer when CC finishes. |
+| Preview | User clicks a resource in the Resources list | Yes | Renders a `MarkdownPane` (edit/preview toggle + Submit) for the resource's wiki file. Clicking the same resource again focuses the existing tab rather than opening a duplicate. Submit persists edits to disk via `save_wiki_file` and commits. |
 
 **Session isolation.** Each tab carries its own `tab_id` (UUID for dynamically created tabs; `"main"` for the pinned tab). The backend `SessionManager` maintains a `HashMap<tab_id, PerTabSession>` where `PerTabSession` holds `{ session_id: Option<String>, running_pid: Option<u32> }`. This replaces the old single `ChatSession` global.
 
-**Event routing.** `chat-stream` events are wrapped as `{ tab_id, event }` before being emitted to the frontend. The frontend maintains a single global listener that routes each event to the correct tab's message list using the `tab_id` field. A `tab-created` event (payload: `{ tab_id, label, kind, resource_id? }`) is emitted by the backend whenever a new tab is opened programmatically (e.g. during resource ingestion).
+**Event routing.** `chat-stream` events are wrapped as `{ tab_id, event }` before being emitted to the frontend. The frontend maintains a single global listener that routes each event to the correct tab's message list using the `tab_id` field. A `tab-created` event (payload: `{ tab_id, label, kind, resource_id? }`) is emitted by the backend whenever a new tab is opened programmatically (e.g. during resource ingestion). Preview tabs are created client-side only (no `tab-created` event) — the store's `openPreviewTab` action handles deduplication and activation.
 
 **User-initiated turn (any tab)**
 
@@ -681,7 +683,7 @@ No table for chat messages — the CC session is the source of truth, and `--res
 │ ▸ FOCUS     │                                       │ ▸ Notes       │
 │  pulse.md   │                                       │  notes.md     │
 │  [edit/pre] │                                       │  [edit/pre]   │
-│             │     Central pane: Chat                │  [Submit]     │
+│             │     Central pane: Chat / Preview      │  [Submit]     │
 ├─────────────┤     - streaming text                  ├───────────────┤
 │ ▸ Resources │     - thinking blocks (collapsible)   │ ▸ Ideas       │
 │  list view  │     - tool cards (Read, Bash, …)      │  ideas.md     │
@@ -724,6 +726,8 @@ No table for chat messages — the CC session is the source of truth, and `--res
 ### 13.4 Resource list
 
 The Resources list shows only confirmed (indexed) resources — those where the user clicked Confirm and the wiki file was written and committed. Each entry shows the extracted title (frontmatter `title:` → first `#` heading → filename stem). No status label is shown. Resources in progress (being fetched or summarised) do not appear in the list; they are visible only in the open resource chat tab.
+
+Clicking a resource entry (only enabled when `wiki_path` is non-null) opens a **Preview tab** in the central column. The tab fetches the wiki file content via `read_wiki_file` and renders it in a `MarkdownPane` with edit/preview toggle and a Submit button. Submit calls `save_wiki_file` to persist edits and commit. Clicking the same resource while its Preview tab is already open re-focuses that tab instead of opening a duplicate.
 
 ### 13.5 Theming
 
@@ -769,6 +773,7 @@ Per-tab CC `session_id`s and the central pane mode are intentionally **not** per
 | `init_workspace` | `{ path }` | `{ workspace: WorkspaceState }` |
 | `close_workspace` | — | `{}` |
 | `read_wiki_file` | `{ path }` | `{ content, frontmatter }` |
+| `save_wiki_file` | `{ path, content }` | `{}` (atomic write + user commit for the given wiki-relative path) |
 | `save_notes` | `{ content }` | `{}` (kicks ingestion + user commit on success) |
 | `save_ideas` | `{ content }` | `{}` (kicks ingestion + user commit on success) |
 | `submit_resource` | `{ url }` | `{ resource_id }` |
@@ -789,7 +794,7 @@ Per-tab CC `session_id`s and the central pane mode are intentionally **not** per
 | Event | Payload |
 |---|---|
 | `chat-stream` | `{ tab_id: string, event: StreamEvent }` (see [§10.3](#103-ndjson-parser-ccstream) and [§9.4](#94-multi-tab-chat)) |
-| `tab-created` | `{ tab_id: string, label: string, kind: "chat"\|"resource", resource_id?: string }` |
+| `tab-created` | `{ tab_id: string, label: string, kind: "chat"\|"resource", resource_id?: string }` (preview tabs are created client-side only) |
 | `chat-cancelled` | `{ tab_id: string }` |
 | `experiment-status` | `{ uuid, status, exit_code? }` |
 | `experiment-log-line` | `{ uuid, stream: "stdout"\|"stderr", line }` |

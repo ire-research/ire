@@ -14,7 +14,7 @@ use commands::experiments::{experiment_cancel, experiment_list, experiment_logs}
 use commands::resources::{
     discard_resource, get_resource_confirm_prompt, index_resource, list_resources, submit_resource,
 };
-use commands::wiki::{read_wiki_file, save_ideas, save_notes, update_pulse_focus};
+use commands::wiki::{read_wiki_file, save_ideas, save_notes, save_wiki_file, update_pulse_focus};
 use commands::workspace::{
     close_workspace, init_workspace, open_workspace, read_workspace_state, save_workspace_state,
     setup_status,
@@ -47,6 +47,7 @@ pub fn run() {
             read_workspace_state,
             save_workspace_state,
             read_wiki_file,
+            save_wiki_file,
             save_notes,
             save_ideas,
             update_pulse_focus,
