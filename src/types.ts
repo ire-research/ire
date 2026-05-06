@@ -19,6 +19,7 @@ export interface ToolCallState {
   tool_id: string;
   tool_name: string;
   input_preview: string | null;
+  input_full: string | null;
   output_preview: string | null;
   output_full: string | null;
   isDone: boolean;
@@ -45,7 +46,7 @@ export type StreamEvent =
   | { kind: "Init"; session_id: string }
   | { kind: "TextDelta"; text: string }
   | { kind: "ThinkingDelta"; text: string }
-  | { kind: "ToolStart"; tool_id: string; tool_name: string; input_preview: string | null }
+  | { kind: "ToolStart"; tool_id: string; tool_name: string; input_preview: string | null; input_full: string | null }
   | { kind: "ToolDone"; tool_id: string; output_preview: string | null; output_full: string | null }
   | { kind: "Result"; text: string | null; session_id: string }
   | { kind: "Error"; message: string }
