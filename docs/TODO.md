@@ -40,7 +40,7 @@ This document collects the next step required in the implementation of IRE. Soul
 
 - [ ] Feat: viewer for the sources (user clicks on the bottom left and it opens in the central panel as markdown editor/preview).
 
-- [ ] Feat: remove `log.md` and use `short-term/` to track daily changes. Clearly explain in `_SYSTEM.md` how memory should be handled.
+- [x] ~Feat: remove `log.md` and use `short-term/` to track daily changes. Clearly explain in `_SYSTEM.md` how memory should be handled.~
 
 - [x] ~Refactor: centralize all prompts in a single folder for visibility and maintenance (now some are hardcoded)~
 

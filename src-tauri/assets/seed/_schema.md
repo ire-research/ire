@@ -6,7 +6,6 @@ Conventions for the agent reading and writing this wiki.
 
 - Every page has a stable path. Renames go through `wiki.rename`.
 - `_index.md` is the canonical catalog. It is regenerated automatically — do not edit it directly.
-- `log.md` is append-only. Format: `## [YYYY-MM-DD HH:MM] <op> | <title>`.
 
 ## Frontmatter
 

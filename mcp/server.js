@@ -70,7 +70,7 @@ const TOOLS = [
   },
   {
     name: 'wiki.write',
-    description: 'Atomically write a wiki file. Updates _index.md and appends to log.md. Auto-committed for status/** paths; uncommitted for notes.md, ideas.md, resources/**.',
+    description: 'Atomically write a wiki file. Updates _index.md. Auto-committed for status/** paths; uncommitted for notes.md, ideas.md, resources/**.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -83,7 +83,7 @@ const TOOLS = [
   },
   {
     name: 'wiki.append',
-    description: 'Append content to a wiki file. Used for append-only files like log.md.',
+    description: 'Append content to a wiki file.',
     inputSchema: {
       type: 'object',
       properties: {
