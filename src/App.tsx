@@ -9,6 +9,8 @@ import { useToasts } from "./state/toasts";
 export default function App() {
   const phase = useWorkspace((s) => s.phase);
   const setPhase = useWorkspace((s) => s.setPhase);
+  const theme = useWorkspace((s) => s.theme);
+  const hydrateFromUserConfig = useWorkspace((s) => s.hydrateFromUserConfig);
 
   useEffect(() => {
     const unlisten = onBackendError(({ scope, message }) => {
@@ -19,9 +21,22 @@ export default function App() {
     };
   }, []);
 
+  // Apply theme to DOM globally so SetupScreen also respects user preference.
+  useEffect(() => {
+    if (theme === "light") {
+      document.documentElement.dataset.theme = "light";
+    } else {
+      delete document.documentElement.dataset.theme;
+    }
+  }, [theme]);
+
   const refreshSetup = useCallback(async () => {
     try {
-      const status = await ipc.setupStatus();
+      const [status, config] = await Promise.all([
+        ipc.setupStatus(),
+        ipc.readUserConfig().catch(() => null),
+      ]);
+      if (config) hydrateFromUserConfig(config);
       setPhase({ kind: "setup", status });
     } catch (e) {
       // Not running inside a Tauri window (e.g. plain browser dev).
@@ -30,7 +45,7 @@ export default function App() {
         status: { binary: { kind: "missing" } },
       });
     }
-  }, [setPhase]);
+  }, [setPhase, hydrateFromUserConfig]);
 
   useEffect(() => {
     refreshSetup();

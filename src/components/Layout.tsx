@@ -26,6 +26,7 @@ export function Layout() {
   const panelLayout = useWorkspace((s) => s.panelLayout);
   const setGroupLayout = useWorkspace((s) => s.setGroupLayout);
   const toPersisted = useWorkspace((s) => s.toPersisted);
+  const recentWorkspaces = useWorkspace((s) => s.recentWorkspaces);
   const workspace = phase.kind === "ready" ? phase.workspace : null;
 
   const groups = panelLayout.groups ?? {};
@@ -73,20 +74,12 @@ export function Layout() {
     };
   }, []);
 
-  useEffect(() => {
-    if (theme === "light") {
-      document.documentElement.dataset.theme = "light";
-    } else {
-      delete document.documentElement.dataset.theme;
-    }
-  }, [theme]);
-
-  // Debounced persistence of theme + panel layout to .ire/workspace.json.
+  // Debounced persistence of panel layout to .ire/workspace.json.
   // Skip the initial render (otherwise we overwrite the loaded file with defaults).
-  const skipInitialSave = useRef(true);
+  const skipInitialLayoutSave = useRef(true);
   useEffect(() => {
-    if (skipInitialSave.current) {
-      skipInitialSave.current = false;
+    if (skipInitialLayoutSave.current) {
+      skipInitialLayoutSave.current = false;
       return;
     }
     const handle = setTimeout(() => {
@@ -95,7 +88,23 @@ export function Layout() {
       );
     }, 1000);
     return () => clearTimeout(handle);
-  }, [theme, panelLayout, toPersisted]);
+  }, [panelLayout, toPersisted]);
+
+  // Debounced persistence of theme to ~/.config/ire/config.json.
+  // Always include recent_workspaces so a theme save never clobbers them.
+  const skipInitialThemeSave = useRef(true);
+  useEffect(() => {
+    if (skipInitialThemeSave.current) {
+      skipInitialThemeSave.current = false;
+      return;
+    }
+    const handle = setTimeout(() => {
+      ipc.saveUserConfig({ theme, recent_workspaces: recentWorkspaces }).catch((e) =>
+        toastError("save theme", e),
+      );
+    }, 1000);
+    return () => clearTimeout(handle);
+  }, [theme, recentWorkspaces]);
 
   const handleClose = async () => {
     await ipc.closeWorkspace();
