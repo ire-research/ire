@@ -42,6 +42,8 @@ This document collects the next step required in the implementation of IRE. Soul
 
 - [x] ~Refactor: centralize all prompts in a single folder for visibility and maintenance (now some are hardcoded)~
 
+- [x] ~Feat: standard config file in `~/.config/ire/config` to save user preferences (e.g., theme selected, last opened workspace etc.).~
+
 - [ ] Feat: seed-prompt update prompt on workspace open. Detect when the bundled seed `_SYSTEM.md` (and `_schema.md`) is newer than the workspace copy and offer to update via a modal. Use a **version marker** strategy: embed `<!-- ire-system-version: N -->` in the seed and bump on every change. On `workspace-ready`, parse the marker from both bundled (`include_str!`) and `.ire/wiki/_SYSTEM.md`; if `disk_version < bundled_version`, fire a modal with the diff and Update / Keep mine buttons. Update writes through `WikiStore::write` so it picks up index regen, `wiki-changed`, and git auto-commit for free. Detect drift (user edits) via a separate hash and warn before overwriting. Tauri commands: `check_seed_updates()`, `apply_seed_update({ path })`.
 
 - [ ] Feat: fetch latex source directly instead of parsing pdf if arXiv link
@@ -53,8 +55,6 @@ This document collects the next step required in the implementation of IRE. Soul
 - [ ] Feat: run without CC (all CC-related features return a pop up message "requires CC installed" upon interaction)
 
 - [ ] Feat: claude code options menu in user UI (model, thinking, effort)
-
-- [ ] Feat: standard config file in `~/.config/ire/config` to save user preferences (e.g., theme selected, last opened workspace etc.).
 
 - [ ] Feat: separate review (LLM call pipeline) and submit (persist to disk and commit) button for notes / ideas.
 

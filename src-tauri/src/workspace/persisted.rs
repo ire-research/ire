@@ -12,8 +12,6 @@ pub struct PersistedWorkspace {
     #[serde(default = "default_version")]
     pub version: u32,
     #[serde(default)]
-    pub theme: Option<String>,
-    #[serde(default)]
     pub panel_layout: Option<serde_json::Value>,
     #[serde(default)]
     pub last_opened: Option<String>,
@@ -23,7 +21,6 @@ impl Default for PersistedWorkspace {
     fn default() -> Self {
         Self {
             version: default_version(),
-            theme: None,
             panel_layout: None,
             last_opened: None,
         }

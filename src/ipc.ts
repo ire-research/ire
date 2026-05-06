@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
   ChatMode,
+  ChatOptions,
   ExperimentLogLinePayload,
   ExperimentRow,
   ExperimentStartingPayload,
@@ -28,9 +29,13 @@ export interface WorkspaceState {
 
 export interface PersistedWorkspace {
   version: number;
-  theme?: "dark" | "light" | null;
   panel_layout?: PanelLayouts | null;
   last_opened?: string | null;
+}
+
+export interface UserConfig {
+  theme?: "dark" | "light" | null;
+  recent_workspaces?: string[];
 }
 
 export interface PanelLayouts {
@@ -57,8 +62,8 @@ export const ipc = {
     invoke("save_ideas", { content }),
   updatePulseFocus: (focus: string): Promise<void> =>
     invoke("update_pulse_focus", { focus }),
-  chatSend: (tabId: string, message: string, mode: ChatMode): Promise<void> =>
-    invoke("chat_send", { tabId, message, mode }),
+  chatSend: (tabId: string, message: string, mode: ChatMode, options: ChatOptions): Promise<void> =>
+    invoke("chat_send", { tabId, message, mode, options }),
   chatCancel: (tabId: string): Promise<void> =>
     invoke("chat_cancel", { tabId }),
   chatResetSession: (tabId: string): Promise<void> =>
@@ -81,6 +86,9 @@ export const ipc = {
     invoke("experiment_logs", { uuid, kb }),
   experimentCancel: (uuid: string): Promise<void> =>
     invoke("experiment_cancel", { uuid }),
+  readUserConfig: (): Promise<UserConfig> => invoke("read_user_config"),
+  saveUserConfig: (config: UserConfig): Promise<void> =>
+    invoke("save_user_config", { config }),
 };
 
 export function onWikiChanged(
