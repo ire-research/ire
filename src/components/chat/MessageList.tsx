@@ -117,7 +117,7 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
 
 function ToolCard({ tool }: { tool: ToolCallState }) {
   const [expanded, setExpanded] = useState(false);
-  const canExpand = tool.isDone && !!tool.output_full;
+  const canExpand = !!(tool.input_full || tool.output_full);
 
   return (
     <div className="tool-card-wrapper">
@@ -136,9 +136,25 @@ function ToolCard({ tool }: { tool: ToolCallState }) {
           </>
         )}
         {!tool.isDone && <span className="tool-card__running"> …</span>}
+        {canExpand && (
+          <span className="tool-card__chevron">{expanded ? " ▾" : " ▸"}</span>
+        )}
       </div>
-      {expanded && tool.output_full && (
-        <pre className="tool-card__expanded">{tool.output_full}</pre>
+      {expanded && (
+        <div className="tool-card__expanded">
+          {tool.input_full && (
+            <>
+              <div className="tool-card__section-label">Input</div>
+              <pre className="tool-card__section-pre">{tool.input_full}</pre>
+            </>
+          )}
+          {tool.output_full && (
+            <>
+              <div className="tool-card__section-label">Output</div>
+              <pre className="tool-card__section-pre">{tool.output_full}</pre>
+            </>
+          )}
+        </div>
       )}
     </div>
   );
