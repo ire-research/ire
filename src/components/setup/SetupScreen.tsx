@@ -10,10 +10,28 @@ interface Props {
 export function SetupScreen({ status, onRefresh }: Props) {
   const setPhase = useWorkspace((s) => s.setPhase);
   const hydrateFromPersisted = useWorkspace((s) => s.hydrateFromPersisted);
+  const pushRecentWorkspace = useWorkspace((s) => s.pushRecentWorkspace);
+  const recentWorkspaces = useWorkspace((s) => s.recentWorkspaces);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const binaryFound = status.binary.kind === "found";
+
+  const openWorkspace = async (path: string) => {
+    setError(null);
+    setBusy(true);
+    try {
+      const workspace = await ipc.openWorkspace(path);
+      pushRecentWorkspace(path);
+      const persisted = await ipc.readWorkspaceState().catch(() => null);
+      if (persisted) hydrateFromPersisted(persisted);
+      setPhase({ kind: "ready", workspace });
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const handlePick = async (kind: "open" | "init") => {
     setError(null);
@@ -25,6 +43,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
     try {
       const workspace =
         kind === "open" ? await ipc.openWorkspace(path) : await ipc.initWorkspace(path);
+      pushRecentWorkspace(path);
       const persisted = await ipc.readWorkspaceState().catch(() => null);
       if (persisted) hydrateFromPersisted(persisted);
       setPhase({ kind: "ready", workspace });
@@ -87,6 +106,29 @@ export function SetupScreen({ status, onRefresh }: Props) {
           </div>
           {error && <div className="setup__error">{error}</div>}
         </section>
+
+        {recentWorkspaces.length > 0 && (
+          <section className="setup__step">
+            <h2>Recent workspaces</h2>
+            <ul className="setup__recents">
+              {recentWorkspaces.map((path) => {
+                const name = path.split("/").filter(Boolean).pop() ?? path;
+                return (
+                  <li key={path}>
+                    <button
+                      className="setup__recent-item"
+                      disabled={!binaryFound || busy}
+                      onClick={() => openWorkspace(path)}
+                    >
+                      <span className="setup__recent-name">{name}</span>
+                      <span className="setup__recent-path">{path}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
       </div>
     </div>
   );

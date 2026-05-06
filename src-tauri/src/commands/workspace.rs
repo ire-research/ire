@@ -7,6 +7,7 @@ use crate::cc::discovery::{find_claude_binary, DiscoveryError};
 use crate::cc::session::SessionManager;
 use crate::db::migrations;
 use crate::mcp::{McpHandle, McpState};
+use crate::user_config::{self, UserConfig};
 use crate::workspace::init as ws_init;
 use crate::workspace::lock::{LockError, WorkspaceLock};
 use crate::workspace::persisted::{self, PersistedWorkspace};
@@ -57,9 +58,12 @@ pub fn open_workspace(
     let path = PathBuf::from(path);
     ws_init::validate_existing(&path).map_err(|e| e.to_string())?;
     let sm = (*session).clone();
-    let result = attach(&active, &mcp, sm, path, app);
+    let result = attach(&active, &mcp, sm, path.clone(), app);
     match &result {
-        Ok(s) => tracing::info!(name = %s.name, path = ?s.path, "workspace opened"),
+        Ok(s) => {
+            tracing::info!(name = %s.name, path = ?s.path, "workspace opened");
+            user_config::push_recent(&path).ok();
+        }
         Err(e) => tracing::warn!(error = %e, "open_workspace failed"),
     }
     result
@@ -77,9 +81,12 @@ pub fn init_workspace(
     let path = PathBuf::from(path);
     ws_init::initialize(&path).map_err(|e| e.to_string())?;
     let sm = (*session).clone();
-    let result = attach(&active, &mcp, sm, path, app);
+    let result = attach(&active, &mcp, sm, path.clone(), app);
     match &result {
-        Ok(s) => tracing::info!(name = %s.name, path = ?s.path, "workspace initialized"),
+        Ok(s) => {
+            tracing::info!(name = %s.name, path = ?s.path, "workspace initialized");
+            user_config::push_recent(&path).ok();
+        }
         Err(e) => tracing::warn!(error = %e, "init_workspace failed"),
     }
     result
@@ -153,4 +160,14 @@ pub fn save_workspace_state(
     let handle = guard.as_ref().ok_or("no workspace open")?;
     let ire = ws_init::ire_dir(&handle.state.path);
     persisted::write(&ire, &state).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn read_user_config() -> UserConfig {
+    user_config::read()
+}
+
+#[tauri::command]
+pub fn save_user_config(config: UserConfig) -> Result<(), String> {
+    user_config::write(&config).map_err(|e| e.to_string())
 }

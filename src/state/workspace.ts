@@ -4,6 +4,7 @@ import type {
   PanelLayouts,
   PersistedWorkspace,
   SetupStatus,
+  UserConfig,
   WorkspaceState as WorkspaceInfo,
 } from "../ipc";
 
@@ -19,11 +20,16 @@ interface WorkspaceStore {
   mode: ChatMode;
   theme: Theme;
   panelLayout: PanelLayouts;
+  recentWorkspaces: string[];
   setMode: (mode: ChatMode) => void;
   setPhase: (phase: Phase) => void;
+  setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
   setGroupLayout: (groupId: string, layout: Record<string, number>) => void;
+  setRecentWorkspaces: (paths: string[]) => void;
+  pushRecentWorkspace: (path: string) => void;
   hydrateFromPersisted: (state: PersistedWorkspace) => void;
+  hydrateFromUserConfig: (config: UserConfig) => void;
   toPersisted: () => PersistedWorkspace;
 }
 
@@ -32,8 +38,10 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => ({
   mode: "brainstorm",
   theme: "dark",
   panelLayout: {},
+  recentWorkspaces: [],
   setMode: (mode) => set({ mode }),
   setPhase: (phase) => set({ phase }),
+  setTheme: (theme) => set({ theme }),
   toggleTheme: () =>
     set((s) => ({ theme: s.theme === "dark" ? "light" : "dark" })),
   setGroupLayout: (groupId, layout) =>
@@ -43,17 +51,25 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => ({
         groups: { ...(s.panelLayout.groups ?? {}), [groupId]: layout },
       },
     })),
+  setRecentWorkspaces: (paths) => set({ recentWorkspaces: paths }),
+  pushRecentWorkspace: (path) =>
+    set((s) => {
+      const filtered = s.recentWorkspaces.filter((p) => p !== path);
+      return { recentWorkspaces: [path, ...filtered].slice(0, 10) };
+    }),
   hydrateFromPersisted: (state) => {
+    set({ panelLayout: state.panel_layout ?? {} });
+  },
+  hydrateFromUserConfig: (config) => {
     set({
-      theme: state.theme === "light" ? "light" : "dark",
-      panelLayout: state.panel_layout ?? {},
+      theme: config.theme === "light" ? "light" : "dark",
+      recentWorkspaces: config.recent_workspaces ?? [],
     });
   },
   toPersisted: () => {
-    const { theme, panelLayout } = get();
+    const { panelLayout } = get();
     return {
       version: 1,
-      theme,
       panel_layout: panelLayout,
       last_opened: new Date().toISOString(),
     };

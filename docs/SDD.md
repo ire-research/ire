@@ -120,7 +120,7 @@ my_research_project/
 ├── .ire/
 │   ├── .lock                        # PID of running IRE instance (gitignored)
 │   ├── local.db                     # SQLite (gitignored)
-│   ├── workspace.json               # UI layout, last-used session ids (gitignored)
+│   ├── workspace.json               # per-workspace UI layout (panel sizes); gitignored
 │   ├── logs/                        # ire.log + experiment logs (gitignored)
 │   │   ├── ire.log
 │   │   └── <experiment_uuid>/
@@ -158,6 +158,26 @@ my_research_project/
 
 `wiki/` is intentionally **not** gitignored — it is the durable knowledge artefact and benefits from version history.
 
+### User config (global, cross-project)
+
+```
+~/.config/ire/           # $XDG_CONFIG_HOME/ire/ if set, else $HOME/.config/ire/
+└── config.json          # user preferences + recent workspaces
+```
+
+`config.json` schema:
+```json
+{
+  "theme": "dark",
+  "recent_workspaces": [
+    "/home/user/projects/my_project",
+    "/home/user/projects/other_project"
+  ]
+}
+```
+
+This file is managed exclusively by IRE. It is read once at app startup (before any workspace is opened) and written on theme change and whenever a workspace is opened. `recent_workspaces` is kept ordered newest-first and capped at 10 entries.
+
 ### App source tree
 
 See [§16](#16-source-tree-layout).
@@ -177,8 +197,13 @@ See [§16](#16-source-tree-layout).
 │ Step 2: choose workspace                             │
 │   • [Open existing]   → file dialog                  │
 │   • [Initialize new]  → file dialog (empty dir)      │
+│ Recent workspaces (if any)                           │
+│   • list of last-opened paths from user config       │
+│   • click any entry to open without a file dialog    │
 └──────────────────────────────────────────────────────┘
 ```
+
+On startup, IRE reads `~/.config/ire/config.json` and applies the persisted theme immediately (before any workspace is opened) so the setup screen itself respects the user's preference.
 
 ### 5.2 Open existing
 
@@ -734,16 +759,15 @@ Clicking a resource entry (only enabled when `wiki_path` is non-null) opens a **
 The UI supports dark and light themes. Dark is the default. A toggle button in the topbar switches between them.
 
 - All colors are defined as CSS custom properties in `:root` (dark values). `[data-theme="light"]` overrides them with light values.
-- Theme state lives in the Zustand workspace store (`theme: "dark" | "light"`). A `toggleTheme` action flips it.
-- `Layout` syncs `document.documentElement.dataset.theme` to the store value via `useEffect` — setting the attribute to `"light"` or removing it to revert to the dark `:root` defaults.
-- Theme preference is persisted to `.ire/workspace.json` as part of the workspace state (see [§13.6](#136-workspace-state-workspacejson)) and rehydrated before `Layout` mounts.
+- Theme state lives in the Zustand workspace store (`theme: "dark" | "light"`). A `toggleTheme` action flips it; `setTheme` sets it directly.
+- `App` (not `Layout`) syncs `document.documentElement.dataset.theme` to the store value via `useEffect` — setting the attribute to `"light"` or removing it to revert to the dark `:root` defaults. This runs at the app level so the setup screen also respects the stored preference.
+- Theme preference is persisted to `~/.config/ire/config.json` (see [§13.7](#137-user-config-configireconfig.json)) — **not** in `workspace.json`. It is rehydrated at app startup before any workspace is opened. When the user toggles the theme inside an open workspace, `Layout` debounces a `save_user_config` call (1 s) that writes the updated theme alongside the current `recent_workspaces` to avoid clobbering them.
 
 ### 13.6 Workspace state (`workspace.json`)
 
 ```json
 {
   "version": 1,
-  "theme": "dark",
   "panel_layout": {
     "groups": {
       "body":  { "left": 22, "center": 56, "right": 22 },
@@ -755,9 +779,33 @@ The UI supports dark and light themes. Dark is the default. A toggle button in t
 }
 ```
 
-Each entry under `panel_layout.groups.<group-id>` is the `Layout` map (`{ panel-id: percentage }`) that `react-resizable-panels` accepts as `defaultLayout` on `<Group>`. Unknown / missing groups fall back to per-`<Panel>` `defaultSize` props. Persisted via `save_workspace_state` (debounced 1 s on theme or layout change). Hydrated by `read_workspace_state` from `SetupScreen.handlePick` immediately after `open_workspace`/`init_workspace`, before the workspace transitions to `phase = "ready"` so the panels mount with the correct sizes.
+Each entry under `panel_layout.groups.<group-id>` is the `Layout` map (`{ panel-id: percentage }`) that `react-resizable-panels` accepts as `defaultLayout` on `<Group>`. Unknown / missing groups fall back to per-`<Panel>` `defaultSize` props. Persisted via `save_workspace_state` (debounced 1 s on layout change). Hydrated by `read_workspace_state` from `SetupScreen.handlePick` immediately after `open_workspace`/`init_workspace`, before the workspace transitions to `phase = "ready"` so the panels mount with the correct sizes.
+
+Theme is **not** stored here — it is a user-level preference and lives in `~/.config/ire/config.json` (see [§13.7](#137-user-config-configireconfig.json)).
 
 Per-tab CC `session_id`s and the central pane mode are intentionally **not** persisted in MVP: sessions live in the in-memory `SessionManager` and are reset on app close.
+
+### 13.7 User config (`~/.config/ire/config.json`)
+
+Stores preferences that apply across all workspaces. Path: `$XDG_CONFIG_HOME/ire/config.json`, falling back to `$HOME/.config/ire/config.json`.
+
+```json
+{
+  "theme": "dark",
+  "recent_workspaces": [
+    "/home/user/projects/my_project",
+    "/home/user/projects/other_project"
+  ]
+}
+```
+
+**Read.** Called once during app startup (`refreshSetup` in `App.tsx`) in parallel with `setup_status`. Result passed to `hydrateFromUserConfig` in the workspace Zustand store, which sets `theme` and `recentWorkspaces`. The directory is created if absent; missing file returns defaults (`theme: null`, `recent_workspaces: []`).
+
+**Written by two paths:**
+- `push_recent` (Rust, `user_config.rs`) — called at the end of every successful `open_workspace` / `init_workspace`. Reads the existing config, prepends the path, deduplicates, truncates to 10, writes back.
+- `save_user_config` (Tauri command, called from `Layout.tsx`) — debounced 1 s after a theme toggle. Always sends the full config object including `recent_workspaces` from the store to avoid clobbering entries written by `push_recent`.
+
+**Frontend store fields.** `recentWorkspaces: string[]` in the workspace Zustand store mirrors the persisted list. `pushRecentWorkspace(path)` prepends and caps to 10 in-memory; the actual disk write is done by the Rust backend.
 
 ---
 
@@ -785,8 +833,10 @@ Per-tab CC `session_id`s and the central pane mode are intentionally **not** per
 | `experiment_list` | `{ limit? }` | `[ExperimentRow]` |
 | `experiment_logs` | `{ uuid, kb? }` | `{ stdout, stderr }` |
 | `experiment_cancel` | `{ uuid }` | `{}` |
-| `read_workspace_state` | — | `PersistedWorkspace` (theme + panel layout from `.ire/workspace.json`) |
+| `read_workspace_state` | — | `PersistedWorkspace` (panel layout from `.ire/workspace.json`) |
 | `save_workspace_state` | `{ state: PersistedWorkspace }` | `{}` (debounced from frontend; atomic write) |
+| `read_user_config` | — | `UserConfig` (theme + recent workspaces from `~/.config/ire/config.json`) |
+| `save_user_config` | `{ config: UserConfig }` | `{}` (writes full config; called on theme toggle) |
 | `update_pulse_focus` | `{ focus }` | `{}` (replaces `**Focus:** …` line in `status/pulse.md`; auto-committed) |
 
 ### 14.2 Events (backend → frontend)
@@ -867,6 +917,7 @@ ire/
 │   └── src/
 │       ├── main.rs
 │       ├── lib.rs                      # tauri::Builder, .manage, command registration
+│       ├── user_config.rs              # UserConfig struct, read/write, push_recent
 │       ├── commands/
 │       │   ├── mod.rs
 │       │   ├── workspace.rs

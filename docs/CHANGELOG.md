@@ -16,6 +16,8 @@ Each section corresponds to a notable batch of work. For the architectural reaso
 
 - **Resources Preview Tab.** When user clicks on a resource in the bottom left pane, the resource is opened with a markdown preview+editor in the central column. The central column now effectively becomes a general purpose area, with both chat tabs and preview tabs.
 
+- **~/.config/ire/config.json.** User-level configuration file with preferences. As of now, it only contains theme and recently opened projects.
+
 ### Changed
 
 - **`_SYSTEM.md` mandates MCP-only writes for `.ire/wiki/`.** Built-in `Write`/`Edit`/`MultiEdit` are forbidden on wiki paths; CC must use the IRE MCP wiki/memory/pulse tools. Bypassing this skipped `wiki-changed` events and the side panes wouldn't refresh until app restart. See [DECISIONS.md](./DECISIONS.md#2026-05-06--wiki-writes-must-go-through-mcp-not-built-in-writeedit).
