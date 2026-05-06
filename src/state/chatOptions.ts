@@ -24,7 +24,7 @@ interface ChatOptionsState {
 
 export const useChatOptions = create<ChatOptionsState>((set) => ({
   model: "claude-haiku-4-5-20251001",
-  effort: "high",
+  effort: "low",
   setModel: (model) => set({ model }),
   setEffort: (effort) => set({ effort }),
 }));

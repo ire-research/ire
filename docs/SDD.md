@@ -743,7 +743,7 @@ No table for chat messages — the CC session is the source of truth, and `--res
 
 **Composer footer.** Below the textarea, a footer bar holds two dropdown selectors and the Send button. Both dropdowns share the same visual style (a small pill button that opens a menu above it):
 - **Model** — selects the Claude model; options come from `MODELS` in `state/chatOptions.ts` (Haiku 4.5, Sonnet 4.6, Opus 4.7). Default: Haiku 4.5.
-- **Effort** — selects the thinking-budget level; options come from `EFFORT_LEVELS` (Low → Med → High → XHigh → Max). Default: High.
+- **Effort** — selects the thinking-budget level; options come from `EFFORT_LEVELS` (Low → Med → High → XHigh → Max). Default: **Low**. Persisted to `.ire/workspace.json` (debounced 1 s) and rehydrated on workspace open.
 Both values are passed as `options: { model, effort }` on every `chat_send` invocation.
 
 ### 13.3 Edit/preview toggle behaviour
@@ -780,11 +780,14 @@ The UI supports dark and light themes. Dark is the default. A toggle button in t
       "right": { "notes": 40, "ideas": 40, "resource-input": 20 }
     }
   },
-  "last_opened": "2026-05-06T10:14:00Z"
+  "last_opened": "2026-05-06T10:14:00Z",
+  "effort": "low"
 }
 ```
 
 Each entry under `panel_layout.groups.<group-id>` is the `Layout` map (`{ panel-id: percentage }`) that `react-resizable-panels` accepts as `defaultLayout` on `<Group>`. Unknown / missing groups fall back to per-`<Panel>` `defaultSize` props. Persisted via `save_workspace_state` (debounced 1 s on layout change). Hydrated by `read_workspace_state` from `SetupScreen.handlePick` immediately after `open_workspace`/`init_workspace`, before the workspace transitions to `phase = "ready"` so the panels mount with the correct sizes.
+
+`effort` stores the last-used thinking-budget level (`"low"` | `"medium"` | `"high"` | `"xhigh"` | `"max"`). Defaults to `"low"` on first open. Persisted by `Layout` (debounced 1 s on change) and applied to `useChatOptions` during workspace hydration in `SetupScreen`.
 
 Theme is **not** stored here — it is a user-level preference and lives in `~/.config/ire/config.json` (see [§13.7](#137-user-config-configireconfig.json)).
 

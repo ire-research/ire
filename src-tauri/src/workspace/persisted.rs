@@ -15,6 +15,8 @@ pub struct PersistedWorkspace {
     pub panel_layout: Option<serde_json::Value>,
     #[serde(default)]
     pub last_opened: Option<String>,
+    #[serde(default = "default_effort")]
+    pub effort: String,
 }
 
 impl Default for PersistedWorkspace {
@@ -23,8 +25,13 @@ impl Default for PersistedWorkspace {
             version: default_version(),
             panel_layout: None,
             last_opened: None,
+            effort: default_effort(),
         }
     }
+}
+
+fn default_effort() -> String {
+    "low".to_string()
 }
 
 fn default_version() -> u32 {
