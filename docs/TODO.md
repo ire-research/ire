@@ -34,7 +34,7 @@ This document collects the next step required in the implementation of IRE. Soul
 
 - [ ] Feat: seed-prompt update prompt on workspace open. Detect when the bundled seed `_SYSTEM.md` (and `_schema.md`) is newer than the workspace copy and offer to update via a modal. Use a **version marker** strategy: embed `<!-- ire-system-version: N -->` in the seed and bump on every change. On `workspace-ready`, parse the marker from both bundled (`include_str!`) and `.ire/wiki/_SYSTEM.md`; if `disk_version < bundled_version`, fire a modal with the diff and Update / Keep mine buttons. Update writes through `WikiStore::write` so it picks up index regen, `wiki-changed`, and git auto-commit for free. Detect drift (user edits) via a separate hash and warn before overwriting. Tauri commands: `check_seed_updates()`, `apply_seed_update({ path })`.
 
-- [ ] Implement Phase 7 of `docs/SDD.md`
+- [x] ~Implement Phase 7 of `docs/SDD.md`~
 
 - [ ] Feat: fetch latex source directly instead of parsing pdf if arXiv link
 
