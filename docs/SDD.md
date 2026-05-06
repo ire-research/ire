@@ -135,7 +135,6 @@ my_research_project/
 │       ├── _schema.md               # Conventions for CC
 │       ├── notes.md                 # User notes (cleaned by ingestion)
 │       ├── ideas.md                 # User ideas (cleaned by ingestion)
-│       ├── log.md                   # Append-only operation log
 │       ├── status/
 │       │   ├── pulse.md             # Research question + blocker + focus banner
 │       │   ├── long-term.md         # Agent-written architectural decisions
@@ -228,7 +227,6 @@ See [§16](#16-source-tree-layout).
   ---
   ```
 - **`_index.md` is canonical.** It is auto-regenerated on every wiki write. CC must consult it to navigate; it must not edit it directly.
-- **`log.md` is append-only**, format `## [YYYY-MM-DD HH:MM] <op> | <title>` so unix tools can grep it.
 
 ### 6.2 Atomic write contract
 
@@ -239,9 +237,8 @@ All wiki mutations go through `WikiStore` (Rust) which holds the in-process `tok
 3. `sync_all()` the temp file.
 4. `fs::rename(tmp, final)` — atomic on local FS.
 5. Re-derive `_index.md` from a directory walk (cheap; <1k files in MVP) and atomic-rename it.
-6. Append a row to `log.md` (also atomic-rename).
-7. Emit `wiki-changed { path }` event.
-8. Release mutex.
+6. Emit `wiki-changed { path }` event.
+7. Release mutex.
 
 No CAS, no advisory file lock, no WAL — single-instance is enforced by `.lock` (see [§15](#15-concurrency--data-safety)).
 
@@ -262,14 +259,14 @@ Wiki paths split into two classes based on **who decides when the change becomes
 
 | Class | Paths | Commit trigger |
 |---|---|---|
-| **Auto-tracked** | `status/**`, `log.md`, `_schema.md`, `_index.md` | Every `WikiStore` write commits immediately. |
+| **Auto-tracked** | `status/**`, `_schema.md`, `_index.md` | Every `WikiStore` write commits immediately. |
 | **User-tracked** | `notes.md`, `ideas.md`, `resources/**` | Written to disk on every change, but **only committed** when the user explicitly submits (notes/ideas Submit button) or approves (resource summary review). |
 
 Rationale: memory and operational state should be durably versioned without human-in-the-loop friction; user-facing artefacts deserve an explicit commit gesture so the user can review and edit before the change becomes part of git history.
 
 **Index handling.** `_index.md` is auto-tracked, but it can be touched by either class of write. Rule:
 
-- If the triggering write is **auto-tracked**: commit `<that path> + _index.md` in one commit. Auto-message, e.g. `auto: memory long-term.md`, `auto: pulse update`, `auto: log append`.
+- If the triggering write is **auto-tracked**: commit `<that path> + _index.md` in one commit. Auto-message, e.g. `auto: memory long-term.md`, `auto: pulse update`.
 - If the triggering write is **user-tracked**: write `_index.md` to disk but **do not commit it yet**. The index update lands in the eventual user commit alongside the user-tracked path. Until then, `_index.md` may legitimately reference uncommitted files in the working tree — that is fine.
 
 The `WikiStore` exposes `write(path, content, ...)` which classifies internally; the MCP server does not need to know which class a path is in.
@@ -600,8 +597,8 @@ The MCP server is a **thin RPC bridge** to the Rust backend over a Unix domain s
 | Tool | Description |
 |---|---|
 | `wiki.read({ path })` | Read any wiki markdown file. Returns content + frontmatter. |
-| `wiki.write({ path, content, summary? })` | Atomic write; updates `_index.md` and appends to `log.md`. **Auto-committed** if `path` is in the auto-tracked class ([§6.4](#64-git-commit-policy)); otherwise uncommitted until the user submits/approves. |
-| `wiki.append({ path, content })` | Append-only (currently used for `log.md` style files). Same commit semantics as `wiki.write`. |
+| `wiki.write({ path, content, summary? })` | Atomic write; updates `_index.md`. **Auto-committed** if `path` is in the auto-tracked class ([§6.4](#64-git-commit-policy)); otherwise uncommitted until the user submits/approves. |
+| `wiki.append({ path, content })` | Append content to a wiki file. Same commit semantics as `wiki.write`. |
 | `wiki.list({ glob? })` | List wiki paths; defaults to all. |
 | `wiki.rename({ from, to })` | Atomic rename + index update. Auto-committed iff both `from` and `to` are auto-tracked. |
 | `memory.write_long_term({ section, content })` | Append to `status/long-term.md` under section. **Auto-committed.** |
