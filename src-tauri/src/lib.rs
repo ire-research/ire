@@ -5,6 +5,7 @@ mod experiments;
 mod mcp;
 mod prompts;
 mod resources;
+mod user_config;
 mod wiki;
 mod workspace;
 
@@ -16,8 +17,8 @@ use commands::resources::{
 };
 use commands::wiki::{read_wiki_file, save_ideas, save_notes, save_wiki_file, update_pulse_focus};
 use commands::workspace::{
-    close_workspace, init_workspace, open_workspace, read_workspace_state, save_workspace_state,
-    setup_status,
+    close_workspace, init_workspace, open_workspace, read_user_config, read_workspace_state,
+    save_user_config, save_workspace_state, setup_status,
 };
 use mcp::McpState;
 use workspace::ActiveWorkspace;
@@ -46,6 +47,8 @@ pub fn run() {
             close_workspace,
             read_workspace_state,
             save_workspace_state,
+            read_user_config,
+            save_user_config,
             read_wiki_file,
             save_wiki_file,
             save_notes,

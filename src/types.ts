@@ -1,5 +1,12 @@
 export type ChatMode = "brainstorm" | "experiment";
 
+export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
+
+export interface ChatOptions {
+  model: string;
+  effort: EffortLevel;
+}
+
 export type ExperimentStatus = "starting" | "running" | "completed" | "failed" | "cancelled";
 
 export interface UserMessage {

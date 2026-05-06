@@ -741,6 +741,11 @@ No table for chat messages — the CC session is the source of truth, and `--res
 - Tool calls render as cards: `[Read] path/to/file ▸ output preview`. Clicking expands the full output.
 - Experiment cards are special: status pill (Running / Completed / Failed), live log tail (last 10 lines), and a "view full logs" button. A **Cancel** button appears in the header while status is `starting` or `running`.
 
+**Composer footer.** Below the textarea, a footer bar holds two dropdown selectors and the Send button. Both dropdowns share the same visual style (a small pill button that opens a menu above it):
+- **Model** — selects the Claude model; options come from `MODELS` in `state/chatOptions.ts` (Haiku 4.5, Sonnet 4.6, Opus 4.7). Default: Haiku 4.5.
+- **Effort** — selects the thinking-budget level; options come from `EFFORT_LEVELS` (Low → Med → High → XHigh → Max). Default: High.
+Both values are passed as `options: { model, effort }` on every `chat_send` invocation.
+
 ### 13.3 Edit/preview toggle behaviour
 
 - Default state per pane: **Preview**.
@@ -827,7 +832,7 @@ Stores preferences that apply across all workspaces. Path: `$XDG_CONFIG_HOME/ire
 | `submit_resource` | `{ url }` | `{ resource_id }` |
 | `index_resource` | `{ resource_id }` | `{}` (commits `resources/<slug>.md` + `_index.md`) |
 | `discard_resource` | `{ resource_id }` | `{}` (deletes file, marks rejected) |
-| `chat_send` | `{ tab_id, mode, message }` | `{}` (events follow) |
+| `chat_send` | `{ tab_id, mode, message, options: { model: string, effort: EffortLevel } }` | `{}` (events follow) |
 | `chat_cancel` | `{ tab_id }` | `{}` |
 | `chat_reset_session` | `{ tab_id }` | `{}` (forgets session id for that tab) |
 | `experiment_list` | `{ limit? }` | `[ExperimentRow]` |
