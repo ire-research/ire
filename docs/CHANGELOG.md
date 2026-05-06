@@ -27,6 +27,8 @@ Each section corresponds to a notable batch of work. For the architectural reaso
 
 - **Removed `log.dm` memory layer.** The `log.md` was redundant and added noise to the already tracked files and interventions with git commits. Now, CC is aware of its memory layout with short-term, long-term and failures, and uses them accordingly.
 
+- **Assistant name renamed CLAUDE → IRE in user-facing UI.** Chat message role label and composer placeholder now say "IRE". Setup-screen references to the *Claude Code binary* stay (those are about the actual CLI dependency).
+
 - **`_SYSTEM.md` mandates MCP-only writes for `.ire/wiki/`.** Built-in `Write`/`Edit`/`MultiEdit` are forbidden on wiki paths; CC must use the IRE MCP wiki/memory/pulse tools. Bypassing this skipped `wiki-changed` events and the side panes wouldn't refresh until app restart. See [DECISIONS.md](./DECISIONS.md#2026-05-06--wiki-writes-must-go-through-mcp-not-built-in-writeedit).
 
 - **All CC-facing prompts centralised in `src-tauri/assets/prompts/`.** Mode preambles, the resource-summarizer role, the resource-confirm follow-up, and the experiment wake-up template now live as `.md` files embedded via `include_str!` and accessed through a new `prompts` module. The frontend's confirm-resource prompt is fetched via a `get_resource_confirm_prompt` IPC command. Behaviour unchanged; one place to edit when tuning CC.
