@@ -8,6 +8,19 @@ pub struct FetchResult {
 }
 
 pub fn fetch_and_extract(url: &str) -> Result<FetchResult> {
+    // arXiv: prefer the LaTeX e-print to the PDF — cleaner text, no math noise.
+    if let Some(id) = super::arxiv::parse_arxiv_id(url) {
+        match super::arxiv::fetch_latex_source(&id) {
+            Ok(text) => {
+                tracing::info!(arxiv_id = %id, bytes = text.len(), "fetched arXiv LaTeX source");
+                return Ok(FetchResult { text, content_type: "application/x-tex".to_string() });
+            }
+            Err(e) => {
+                tracing::warn!(arxiv_id = %id, error = %e, "arXiv LaTeX fetch failed, falling back to PDF");
+            }
+        }
+    }
+
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(20))
         .redirect(reqwest::redirect::Policy::limited(5))
