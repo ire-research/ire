@@ -21,6 +21,7 @@ Each section corresponds to a notable batch of work. For the architectural reaso
 - **Phase 7 — Polish.** Workspace layout (theme + panel sizes) persists to `.ire/workspace.json` and rehydrates before the UI mounts. Top-right toast stack surfaces backend errors and silent failures that previously only hit `console.error`. Experiment cards gained a **Cancel** button that calls `experiment_cancel` while the run is live. The focus banner is now click-to-edit and writes to `status/pulse.md` via a new `update_pulse_focus` command.
 
 - **Markdown + LaTeX in chat.** Both user and assistant messages render through `react-markdown` + `remark-gfm` + `remark-math` + `rehype-katex`. KaTeX delimiters `$…$` and `$$…$$` work; tables, fenced code, task lists, blockquotes, headings — all GFM. Inline HTML stays sanitized (no `rehype-raw`); raw HTML in model output appears as text or inside a code block.
+- **arXiv LaTeX e-print fetching.** Submitting an `arxiv.org/abs/<id>` or `arxiv.org/pdf/<id>` URL now downloads the LaTeX source tarball from `arxiv.org/e-print/<id>` instead of the PDF, gunzip + untar in-process, and feeds the concatenated `.tex` content to the summariser. Cleaner text than `pdf-extract` for math-heavy papers; falls back to PDF on any failure.
 
 ### Changed
 
