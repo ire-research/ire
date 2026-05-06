@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result};
-use chrono::Local;
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
@@ -32,18 +31,14 @@ impl WikiStore {
         Ok((content, fm))
     }
 
-    /// Atomically write `rel_path`, regenerate `_index.md`, append to `log.md`,
-    /// emit `wiki-changed`, and auto-commit if the path is auto-tracked.
+    /// Atomically write `rel_path`, regenerate `_index.md`, emit `wiki-changed`,
+    /// and auto-commit if the path is auto-tracked.
     pub fn write(&self, rel_path: &str, content: &str, app: &AppHandle) -> Result<()> {
         let path = self.wiki_root.join(rel_path);
         atomic_write(&path, content)?;
 
         let index_content = index::build(&self.wiki_root)?;
         atomic_write(&self.wiki_root.join("_index.md"), &index_content)?;
-
-        let now = Local::now().format("%Y-%m-%d %H:%M");
-        let log_entry = format!("## [{now}] write | {rel_path}\n");
-        append_log(&self.wiki_root, &log_entry)?;
 
         if is_auto_tracked(rel_path) {
             let msg = format!("auto: wiki {rel_path}");
@@ -54,8 +49,8 @@ impl WikiStore {
         Ok(())
     }
 
-    /// Atomically rename `from` to `to` inside the wiki, update `_index.md`
-    /// and `log.md`, emit `wiki-changed`, and auto-commit if applicable.
+    /// Atomically rename `from` to `to` inside the wiki, update `_index.md`,
+    /// emit `wiki-changed`, and auto-commit if applicable.
     pub fn rename(&self, from: &str, to: &str, app: &AppHandle) -> Result<()> {
         let src = self.wiki_root.join(from);
         let dst = self.wiki_root.join(to);
@@ -68,10 +63,6 @@ impl WikiStore {
 
         let index_content = index::build(&self.wiki_root)?;
         atomic_write(&self.wiki_root.join("_index.md"), &index_content)?;
-
-        let now = Local::now().format("%Y-%m-%d %H:%M");
-        let log_entry = format!("## [{now}] rename | {from} -> {to}\n");
-        append_log(&self.wiki_root, &log_entry)?;
 
         if is_auto_tracked(from) || is_auto_tracked(to) {
             let msg = format!("auto: wiki rename {from} -> {to}");
@@ -204,7 +195,6 @@ impl WikiStore {
 
 pub fn is_auto_tracked(rel_path: &str) -> bool {
     rel_path.starts_with("status/")
-        || rel_path == "log.md"
         || rel_path == "_schema.md"
         || rel_path == "_index.md"
 }
@@ -225,8 +215,3 @@ pub(crate) fn atomic_write(path: &Path, content: &str) -> Result<()> {
     Ok(())
 }
 
-fn append_log(wiki_root: &Path, entry: &str) -> Result<()> {
-    let log_path = wiki_root.join("log.md");
-    let existing = fs::read_to_string(&log_path).unwrap_or_default();
-    atomic_write(&log_path, &(existing + entry))
-}

@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{anyhow, Context, Result};
-use chrono::Local;
 
 const SYSTEM_MD: &str = include_str!("../../assets/seed/_SYSTEM.md");
 const SCHEMA_MD: &str = include_str!("../../assets/seed/_schema.md");
@@ -67,7 +66,6 @@ pub fn initialize(path: &Path) -> Result<()> {
     write_if_absent(&wiki.join("_schema.md"), SCHEMA_MD)?;
     write_if_absent(&wiki.join("notes.md"), "")?;
     write_if_absent(&wiki.join("ideas.md"), "")?;
-    write_if_absent(&wiki.join("log.md"), &log_seed())?;
     write_if_absent(&status.join("pulse.md"), PULSE_MD)?;
     write_if_absent(&status.join("long-term.md"), LONG_TERM_MD)?;
     write_if_absent(&status.join("failures.md"), FAILURES_MD)?;
@@ -89,17 +87,11 @@ fn write_if_absent(p: &Path, content: &str) -> Result<()> {
     Ok(())
 }
 
-fn log_seed() -> String {
-    let now = Local::now().format("%Y-%m-%d %H:%M");
-    format!("## [{now}] init | workspace scaffolded\n")
-}
-
 fn index_seed() -> String {
     "- [_SYSTEM.md](./_SYSTEM.md) — IRE framework context for the agent\n\
      - [_schema.md](./_schema.md) — wiki conventions for the agent\n\
      - [notes.md](./notes.md) — running user notes\n\
      - [ideas.md](./ideas.md) — running user ideas\n\
-     - [log.md](./log.md) — append-only operation log\n\
      - [status/pulse.md](./status/pulse.md) — current research question + blocker + focus\n\
      - [status/long-term.md](./status/long-term.md) — architectural decisions and pivots\n\
      - [status/failures.md](./status/failures.md) — methods that did not work\n"
@@ -199,7 +191,6 @@ mod tests {
             ".ire/wiki/_index.md",
             ".ire/wiki/notes.md",
             ".ire/wiki/ideas.md",
-            ".ire/wiki/log.md",
             ".ire/wiki/status/pulse.md",
             ".ire/wiki/status/long-term.md",
             ".ire/wiki/status/failures.md",
