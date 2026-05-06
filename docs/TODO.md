@@ -42,7 +42,7 @@ This document collects the next step required in the implementation of IRE. Soul
 
 - [ ] Feat: remove `log.md` and use `short-term/` to track daily changes. Clearly explain in `_SYSTEM.md` how memory should be handled.
 
-- [ ] Refactor: centralize all prompts in a single folder for visibility and maintenance (now some are hardcoded)
+- [x] ~Refactor: centralize all prompts in a single folder for visibility and maintenance (now some are hardcoded)~
 
 - [ ] Feat: change assistant name from CLAUDE to IRE everywhere 
 

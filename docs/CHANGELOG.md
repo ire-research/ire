@@ -14,6 +14,7 @@ Each section corresponds to a notable batch of work. For the architectural reaso
 
 ### Changed
 - **`_SYSTEM.md` mandates MCP-only writes for `.ire/wiki/`.** Built-in `Write`/`Edit`/`MultiEdit` are forbidden on wiki paths; CC must use the IRE MCP wiki/memory/pulse tools. Bypassing this skipped `wiki-changed` events and the side panes wouldn't refresh until app restart. See [DECISIONS.md](./DECISIONS.md#2026-05-06--wiki-writes-must-go-through-mcp-not-built-in-writeedit).
+- **All CC-facing prompts centralised in `src-tauri/assets/prompts/`.** Mode preambles, the resource-summarizer role, the resource-confirm follow-up, and the experiment wake-up template now live as `.md` files embedded via `include_str!` and accessed through a new `prompts` module. The frontend's confirm-resource prompt is fetched via a `get_resource_confirm_prompt` IPC command. Behaviour unchanged; one place to edit when tuning CC.
 
 ### Fixed
 - **Resource indexing now matches `_schema.md`.** `index_resource` looks up the resource page by its `sources:` frontmatter array (the schema-canonical field) instead of `url:`. The Confirm-flow prompt was also aligned to write `sources: [<url>]`. Without this fix, every confirmed resource ended up with `wiki_path=NULL` in the DB and never appeared in the resources list. See [DECISIONS.md](./DECISIONS.md#2026-05-06--sources-array-not-url-is-the-canonical-resource-frontmatter-field).

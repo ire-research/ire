@@ -13,6 +13,7 @@ fn trunc(s: &str) -> &str {
 use crate::cc::session::SessionManager;
 use crate::cc::spawn::{build_command, SpawnArgs};
 use crate::cc::stream::{dispatch, StreamEvent, StreamState};
+use crate::prompts;
 use crate::workspace::state::ActiveWorkspace;
 
 #[tauri::command]
@@ -136,18 +137,7 @@ pub fn build_system_prompt(workspace_root: &Path, mode: &str) -> String {
         }
     }
 
-    let preamble = if mode == "experiment" {
-        "You are IRE's experiment-mode assistant. You have access to wiki, memory, pulse, and experiment MCP tools as well as Bash, Edit, Write, and Read.\n\n\
-        ## Experiment workflow\n\n\
-        When asked to run an experiment:\n\
-        1. Plan the run and get user agreement.\n\
-        2. Call `experiment.start` with `name`, `plan_md`, `command`, and a `wake_prompt` that tells IRE what to do when the process finishes.\n\
-        3. End your turn — do **not** wait. IRE resumes you via `--resume` when the process exits.\n\
-        4. On wake-up: read the logs from `wake_prompt` context, update the wiki, pulse, and memory as appropriate."
-    } else {
-        "You are IRE's brainstorm-mode assistant. You have access to wiki, memory, and pulse MCP tools. Use them to maintain persistent project knowledge across sessions."
-    };
-    parts.push(preamble.to_string());
+    parts.push(prompts::mode_preamble(mode).to_string());
 
     for rel in &[
         "_schema.md",
