@@ -234,7 +234,8 @@ pub fn index_resource(
     Ok(())
 }
 
-/// Scan `wiki/resources/` for a `.md` file whose frontmatter `url:` matches `resource_url`.
+/// Scan `wiki/resources/` for a `.md` file whose frontmatter `sources:` array
+/// contains `resource_url`. `_schema.md` makes `sources` the canonical field.
 fn find_resource_wiki_path(wiki_root: &std::path::Path, resource_url: &str) -> Option<String> {
     use crate::wiki::frontmatter;
 
@@ -250,14 +251,26 @@ fn find_resource_wiki_path(wiki_root: &std::path::Path, resource_url: &str) -> O
         }
         let content = std::fs::read_to_string(&path).unwrap_or_default();
         let (fm, _) = frontmatter::parse(&content);
-        if let Some(fm) = fm {
-            if fm.get("url").map(|u| u.trim()) == Some(resource_url) {
-                let filename = path.file_name()?.to_str()?;
-                return Some(format!("resources/{filename}"));
-            }
+        let Some(fm) = fm else { continue };
+        let Some(sources) = fm.get("sources") else { continue };
+        if parse_sources_array(sources).iter().any(|s| *s == resource_url) {
+            let filename = path.file_name()?.to_str()?;
+            return Some(format!("resources/{filename}"));
         }
     }
     None
+}
+
+/// Parse a YAML inline-array string like `[https://a, "https://b"]` into entries.
+fn parse_sources_array(value: &str) -> Vec<&str> {
+    value
+        .trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']')
+        .split(',')
+        .map(|s| s.trim().trim_matches(|c: char| c == '"' || c == '\''))
+        .filter(|s| !s.is_empty())
+        .collect()
 }
 
 /// Extract a human title from a wiki markdown file.
