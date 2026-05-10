@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>IRE - Workspace Picker</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface-variant": "#24252d",
+                        "tertiary-dim": "#ebebef",
+                        "surface-container-lowest": "#000000",
+                        "surface-container-high": "#1e1f26",
+                        "outline-variant": "#474750",
+                        "on-secondary-fixed-variant": "#5a5b63",
+                        "on-tertiary-fixed": "#484a4d",
+                        "on-secondary-container": "#bfbec8",
+                        "primary-fixed": "#e2e2e5",
+                        "on-tertiary-fixed-variant": "#65666a",
+                        "secondary-container": "#3a3b43",
+                        "secondary-dim": "#9d9da6",
+                        "on-primary": "#3f4043",
+                        "on-primary-container": "#d0d0d3",
+                        "tertiary-fixed-dim": "#e5e5e9",
+                        "error-dim": "#b95463",
+                        "surface-tint": "#c6c6c9",
+                        "primary-fixed-dim": "#d4d4d7",
+                        "on-error": "#490013",
+                        "surface-container": "#19191e",
+                        "on-primary-fixed": "#3e3f42",
+                        "surface": "#0e0e11",
+                        "surface-container-highest": "#24252d",
+                        "tertiary": "#f9f9fd",
+                        "secondary-fixed-dim": "#d4d3dd",
+                        "error": "#ec7c8a",
+                        "on-tertiary-container": "#55575a",
+                        "tertiary-container": "#ebebef",
+                        "background": "#0e0e11",
+                        "on-primary-fixed-variant": "#5a5b5e",
+                        "outline": "#75757e",
+                        "tertiary-fixed": "#f3f3f7",
+                        "secondary": "#9d9da6",
+                        "on-secondary": "#1f2027",
+                        "surface-container-low": "#131317",
+                        "error-container": "#7f2737",
+                        "on-background": "#e6e4ef",
+                        "primary-dim": "#b8b8bb",
+                        "inverse-primary": "#5e5f62",
+                        "on-tertiary": "#5e5f62",
+                        "on-surface-variant": "#abaab4",
+                        "secondary-fixed": "#e3e1ec",
+                        "on-secondary-fixed": "#3e3f47",
+                        "surface-bright": "#2a2b35",
+                        "inverse-surface": "#fbf8fc",
+                        "inverse-on-surface": "#555458",
+                        "primary-container": "#454749",
+                        "on-surface": "#e6e4ef",
+                        "primary": "#c6c6c9",
+                        "surface-dim": "#0e0e11",
+                        "on-error-container": "#ff97a3"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    fontFamily: {
+                        "headline": ["Inter", "sans-serif"],
+                        "display": ["Inter", "sans-serif"],
+                        "body": ["Inter", "sans-serif"],
+                        "label": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"]
+                    }
+                }
+            }
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-background text-on-surface min-h-screen flex flex-col justify-center items-center overflow-hidden antialiased selection:bg-primary-container selection:text-on-primary-container">
+<!-- Header Chrome Strip -->
+<header class="fixed top-0 left-0 w-full h-12 flex items-center justify-between px-6 z-50">
+<div class="flex items-center gap-2">
+<div class="w-3 h-3 rounded-full bg-outline-variant"></div>
+<div class="w-3 h-3 rounded-full bg-outline-variant"></div>
+<div class="w-3 h-3 rounded-full bg-outline-variant"></div>
+</div>
+<div class="absolute left-1/2 -translate-x-1/2 font-headline font-semibold text-sm text-on-surface-variant tracking-tight">
+            ire
+        </div>
+<div class="w-12"></div> <!-- Spacer for centering -->
+</header>
+<!-- Main Content Canvas -->
+<main class="w-full max-w-[560px] px-6 py-12 flex flex-col gap-6">
+<!-- Header Section -->
+<section class="flex flex-col gap-3">
+<span class="font-label text-xs uppercase tracking-widest text-on-surface-variant">WORKSPACE</span>
+<h1 class="font-display text-2xl font-bold text-on-surface tracking-tight">Open or create a workspace.</h1>
+<p class="font-body text-sm text-on-surface-variant leading-relaxed">
+                Each workspace maps 1:1 to a Git repository. Your code, wiki, experiments, and Claude-Code state live together in <span class="font-mono text-xs px-1 py-0.5 bg-surface-container-low border border-outline-variant rounded">.ire/</span>.
+            </p>
+</section>
+<!-- Recent Workspaces -->
+<section class="flex flex-col">
+<div class="flex items-center justify-between mb-4">
+<span class="font-label text-xs uppercase tracking-widest text-on-surface-variant">RECENT</span>
+<button class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center">
+<span class="material-symbols-outlined text-[16px]">refresh</span>
+</button>
+</div>
+<div class="flex flex-col border border-outline-variant rounded">
+<!-- Active Row -->
+<button class="flex items-center justify-between w-full h-[56px] px-4 bg-surface-container-low border-l-[3px] border-l-primary border-b border-b-outline-variant text-left hover:bg-surface-container-highest transition-colors group">
+<div class="flex flex-col">
+<span class="font-headline text-sm font-semibold text-on-surface">transformer-ablations</span>
+<span class="font-body text-xs text-on-surface-variant group-hover:text-on-surface transition-colors">~/research/transformer-ablations · last opened 2h ago</span>
+</div>
+<span class="material-symbols-outlined text-outline-variant text-[16px] group-hover:text-on-surface transition-colors">chevron_right</span>
+</button>
+<!-- Inactive Rows -->
+<button class="flex items-center justify-between w-full h-[56px] px-4 border-l-[3px] border-l-transparent border-b border-b-outline-variant text-left hover:bg-surface-container-low transition-colors group">
+<div class="flex flex-col">
+<span class="font-headline text-sm font-medium text-on-surface">flow-matching-toy</span>
+<span class="font-body text-xs text-on-surface-variant group-hover:text-on-surface transition-colors">~/projects/flow-matching-toy · last opened yesterday</span>
+</div>
+<span class="material-symbols-outlined text-outline-variant text-[16px] group-hover:text-on-surface transition-colors">chevron_right</span>
+</button>
+<button class="flex items-center justify-between w-full h-[56px] px-4 border-l-[3px] border-l-transparent border-b border-b-outline-variant text-left hover:bg-surface-container-low transition-colors group">
+<div class="flex flex-col">
+<span class="font-headline text-sm font-medium text-on-surface">mech-interp-mlp</span>
+<span class="font-body text-xs text-on-surface-variant group-hover:text-on-surface transition-colors">~/research/mech-interp-mlp · last opened 3 days ago</span>
+</div>
+<span class="material-symbols-outlined text-outline-variant text-[16px] group-hover:text-on-surface transition-colors">chevron_right</span>
+</button>
+<button class="flex items-center justify-between w-full h-[56px] px-4 border-l-[3px] border-l-transparent text-left hover:bg-surface-container-low transition-colors group">
+<div class="flex flex-col">
+<span class="font-headline text-sm font-medium text-on-surface">datacomp-replication</span>
+<span class="font-body text-xs text-on-surface-variant group-hover:text-on-surface transition-colors">~/projects/datacomp-replication · last opened 1 week ago</span>
+</div>
+<span class="material-symbols-outlined text-outline-variant text-[16px] group-hover:text-on-surface transition-colors">chevron_right</span>
+</button>
+</div>
+</section>
+<!-- Actions -->
+<section class="flex flex-row gap-4 w-full mt-2">
+<button class="flex-1 h-9 border border-outline-variant rounded font-body text-sm font-medium text-on-surface hover:bg-surface-container-low hover:border-outline transition-all duration-150 flex items-center justify-center">
+                Open existing folder…
+            </button>
+<button class="flex-1 h-9 border border-outline-variant rounded font-body text-sm font-medium text-on-surface hover:bg-surface-container-low hover:border-outline transition-all duration-150 flex items-center justify-center">
+                Initialize new workspace…
+            </button>
+</section>
+<!-- Divider -->
+<hr class="border-t border-outline-variant w-full my-2"/>
+<!-- Status Row -->
+<section class="flex items-center justify-between w-full">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 rounded-full bg-[#10b981]"></div>
+<span class="font-mono text-xs text-on-surface-variant">claude-code · authenticated</span>
+</div>
+<a class="font-body text-xs text-outline hover:text-on-surface transition-colors underline decoration-outline-variant underline-offset-2" href="#">
+                settings
+            </a>
+</section>
+</main>
+<!-- Footer -->
+<footer class="fixed bottom-8 w-full text-center">
+<span class="font-body text-xs text-outline-variant">local-first · no telemetry · MIT licensed</span>
+</footer>
+</body></html>

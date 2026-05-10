@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>IRE Resource Detail</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "surface-tint": "#c6c6c9",
+                        "surface-bright": "#2a2b35",
+                        "surface-container-high": "#1e1f26",
+                        "secondary": "#9d9da6",
+                        "outline": "#75757e",
+                        "surface-container-lowest": "#000000",
+                        "on-error": "#490013",
+                        "tertiary-container": "#ebebef",
+                        "surface-dim": "#0e0e11",
+                        "inverse-primary": "#5e5f62",
+                        "tertiary-fixed-dim": "#e5e5e9",
+                        "on-tertiary-fixed-variant": "#65666a",
+                        "on-secondary-container": "#bfbec8",
+                        "primary-container": "#454749",
+                        "error-container": "#7f2737",
+                        "on-primary-fixed": "#3e3f42",
+                        "primary-dim": "#b8b8bb",
+                        "on-surface-variant": "#abaab4",
+                        "tertiary-fixed": "#f3f3f7",
+                        "error-dim": "#b95463",
+                        "on-surface": "#e6e4ef",
+                        "primary": "#c6c6c9",
+                        "surface-container-low": "#131317",
+                        "on-secondary-fixed": "#3e3f47",
+                        "surface": "#0e0e11",
+                        "on-secondary-fixed-variant": "#5a5b63",
+                        "surface-variant": "#24252d",
+                        "surface-container": "#19191e",
+                        "on-primary": "#3f4043",
+                        "on-tertiary": "#5e5f62",
+                        "on-primary-container": "#d0d0d3",
+                        "primary-fixed": "#e2e2e5",
+                        "error": "#ec7c8a",
+                        "background": "#0e0e11",
+                        "secondary-container": "#3a3b43",
+                        "on-tertiary-fixed": "#484a4d",
+                        "inverse-surface": "#fbf8fc",
+                        "tertiary-dim": "#ebebef",
+                        "inverse-on-surface": "#555458",
+                        "secondary-fixed-dim": "#d4d3dd",
+                        "surface-container-highest": "#24252d",
+                        "secondary-dim": "#9d9da6",
+                        "on-secondary": "#1f2027",
+                        "outline-variant": "#474750",
+                        "secondary-fixed": "#e3e1ec",
+                        "primary-fixed-dim": "#d4d4d7",
+                        "on-primary-fixed-variant": "#5a5b5e",
+                        "on-error-container": "#ff97a3",
+                        "on-tertiary-container": "#55575a",
+                        "on-background": "#e6e4ef",
+                        "tertiary": "#f9f9fd"
+                    },
+                    borderRadius: {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    fontFamily: {
+                        "headline": ["Inter", "sans-serif"],
+                        "display": ["Inter", "sans-serif"],
+                        "body": ["Inter", "sans-serif"],
+                        "label": ["Inter", "sans-serif"],
+                        "mono": ["JetBrains Mono", "monospace"]
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-surface text-on-surface font-body h-screen flex flex-col overflow-hidden antialiased selection:bg-surface-container-highest selection:text-on-surface">
+<!-- Top Bar -->
+<header class="h-10 border-b border-outline-variant bg-surface shrink-0 flex items-center justify-between px-4 w-full z-20">
+<!-- Left: Navigation / Breadcrumbs -->
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant cursor-pointer hover:text-on-surface transition-colors" style="font-variation-settings: 'FILL' 0;">arrow_back</span>
+<div class="text-sm text-on-surface-variant truncate font-body">
+<span class="cursor-pointer hover:text-on-surface transition-colors">transformer-ablations</span>
+<span class="mx-1.5 text-outline-variant">/</span>
+<span class="cursor-pointer hover:text-on-surface transition-colors">Resources</span>
+<span class="mx-1.5 text-outline-variant">/</span>
+<span class="text-on-surface">On Layer Normalization in the Transformer</span>
+</div>
+</div>
+<!-- Right: Actions -->
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant cursor-pointer hover:text-on-surface transition-colors" style="font-variation-settings: 'FILL' 0;">star</span>
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant cursor-pointer hover:text-on-surface transition-colors" style="font-variation-settings: 'FILL' 0;">format_quote</span>
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant cursor-pointer hover:text-on-surface transition-colors" style="font-variation-settings: 'FILL' 0;">download</span>
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant cursor-pointer hover:text-on-surface transition-colors" style="font-variation-settings: 'FILL' 0;">more_vert</span>
+</div>
+</header>
+<!-- Main Workspace -->
+<div class="flex flex-1 overflow-hidden relative">
+<!-- Left Column (Sticky Outline) -->
+<aside class="w-[260px] h-full border-r border-outline-variant bg-surface-container-low shrink-0 flex flex-col overflow-y-auto z-10">
+<div class="p-4">
+<h3 class="text-xs font-label uppercase tracking-widest text-on-surface-variant mb-3">OUTLINE</h3>
+<nav class="flex flex-col">
+<a class="text-sm font-body text-on-surface-variant py-1 px-2.5 truncate hover:text-on-surface transition-colors" href="#">Abstract</a>
+<a class="text-sm font-body text-on-surface-variant py-1 px-2.5 truncate hover:text-on-surface transition-colors pl-4" href="#">1. Introduction</a>
+<a class="text-sm font-body text-on-surface-variant py-1 px-2.5 truncate hover:text-on-surface transition-colors pl-4" href="#">2. Related work</a>
+<!-- Active Item -->
+<a class="text-sm font-body text-on-surface py-1 pr-2.5 pl-[14px] truncate border-l-[2px] border-primary bg-surface-variant my-0.5" href="#">3. Pre-LN vs Post-LN</a>
+<a class="text-sm font-body text-on-surface-variant py-1 px-2.5 truncate hover:text-on-surface transition-colors pl-6" href="#">3.1 Gradient flow</a>
+<a class="text-sm font-body text-on-surface-variant py-1 px-2.5 truncate hover:text-on-surface transition-colors pl-6" href="#">3.2 Stability analysis</a>
+<a class="text-sm font-body text-on-surface-variant py-1 px-2.5 truncate hover:text-on-surface transition-colors pl-4" href="#">4. Experiments</a>
+<a class="text-sm font-body text-on-surface-variant py-1 px-2.5 truncate hover:text-on-surface transition-colors pl-4" href="#">5. Discussion</a>
+<a class="text-sm font-body text-on-surface-variant py-1 px-2.5 truncate hover:text-on-surface transition-colors" href="#">References</a>
+</nav>
+<div class="border-t border-outline-variant my-5"></div>
+<div class="flex items-center gap-1.5 text-xs font-label uppercase tracking-widest text-on-surface-variant mb-3">
+<span class="material-symbols-outlined text-[16px]">edit</span>
+<span>NOTES IN THIS PAPER · 4</span>
+</div>
+<div class="flex flex-col space-y-2.5">
+<div class="text-sm font-body text-on-surface-variant truncate cursor-pointer hover:text-on-surface transition-colors">this matches our exp-013 finding...</div>
+<div class="text-sm font-body text-on-surface-variant truncate cursor-pointer hover:text-on-surface transition-colors">the 'warmup' assumption is...</div>
+<div class="text-sm font-body text-on-surface-variant truncate cursor-pointer hover:text-on-surface transition-colors">compare to RMSNorm here</div>
+</div>
+</div>
+</aside>
+<!-- Center Column (Reading Area) -->
+<main class="flex-1 overflow-y-auto bg-surface scroll-smooth pb-32">
+<!-- Fluid layout with side gutter for margin notes -->
+<div class="max-w-[980px] mx-auto px-8 pt-6 flex relative">
+<!-- Main Article Content -->
+<article class="w-full max-w-[720px] shrink-0 pb-16">
+<!-- Metadata Header -->
+<header class="mb-6">
+<div class="flex items-center gap-2 mb-5">
+<span class="border border-outline-variant text-on-surface-variant text-[11px] font-label uppercase tracking-wider px-2 py-0.5 rounded-full">arXiv:2002.04745</span>
+<span class="border border-outline-variant text-on-surface-variant text-[11px] font-label uppercase tracking-wider px-2 py-0.5 rounded-full">ICML 2020</span>
+<span class="border border-outline-variant text-on-surface-variant text-[11px] font-label uppercase tracking-wider px-2 py-0.5 rounded-full">applied</span>
+</div>
+<h1 class="font-display text-4xl font-semibold text-on-surface tracking-tight leading-[1.1] mb-3">On Layer Normalization in the Transformer Architecture</h1>
+<p class="font-body text-[15px] text-on-surface-variant leading-relaxed">
+                            Ruibin Xiong, Yunchang Yang, Di He, Kai Zheng, Shuxin Zheng, Chen Xing, Huishuai Zhang, Yanyan Lan, Liwei Wang, Tie-Yan Liu — 2020
+                        </p>
+<div class="font-body text-sm text-on-surface-variant mt-2 flex items-center gap-2">
+<a class="text-primary underline decoration-outline hover:decoration-primary underline-offset-2 transition-colors" href="#">arxiv.org/abs/2002.04745</a>
+<span class="text-outline-variant">·</span>
+<span>added 3d ago by claude-code</span>
+</div>
+</header>
+<div class="w-full h-px bg-outline-variant my-6"></div>
+<!-- Reading Area Flow -->
+<div class="font-body text-[15px] leading-[1.65] text-on-surface space-y-[28px] relative">
+<h2 class="font-headline text-xl font-semibold tracking-tight text-on-surface mt-2 mb-[-8px]">Abstract</h2>
+<p class="text-on-surface-variant">
+                            The Transformer is a highly successful model that has achieved state-of-the-art results across a wide range of natural language processing tasks. A key component of the architecture is Layer Normalization (LayerNorm), which is typically applied after the residual connection (Post-LN). However, recent studies have shown that placing LayerNorm inside the residual block (Pre-LN) can significantly improve training stability, especially for very deep models.
+                        </p>
+<p class="text-on-surface-variant">
+                            In this paper, we provide a theoretical analysis of the gradient properties in both Pre-LN and Post-LN architectures. We demonstrate that the gradients of the parameters near the output layer in the Post-LN Transformer are unusually large at initialization, which causes instability and necessitates a learning rate warmup strategy. Conversely, the Pre-LN architecture naturally restricts the scale of the gradients, allowing for warmup-free training and faster convergence.
+                        </p>
+<h2 class="font-headline text-xl font-semibold tracking-tight text-on-surface mt-10 mb-[-8px]">3. Pre-LN vs Post-LN</h2>
+<p class="text-on-surface-variant">
+                            To understand the empirical differences between the two architectural variants, we analyze the variance of the hidden states and the scale of the gradients as they propagate through the network. Our findings formalize why the original Transformer design requires careful optimization heuristics.
+                        </p>
+<blockquote class="border-l-[4px] border-outline-variant pl-4 italic text-on-surface-variant my-6">
+                            "...the gradients in the Post-LN architecture are not well-behaved at initialization, which leads to the necessity of warmup. In contrast, the Pre-LN architecture maintains well-scaled gradients across all layers, eliminating the need for learning rate warmup."
+                        </blockquote>
+<p class="text-on-surface-variant">
+                            The variance of the signal in the forward pass of the Post-LN architecture accumulates linearly with network depth. Specifically, if we consider a simplified model where the residual block is defined by an arbitrary function \( F \), we observe:
+                        </p>
+<div class="font-mono text-[14px] italic text-center text-on-surface-variant py-2">
+                            Var(x_{l+1}) = Var(x_l) + Var(F(x_l))
+                        </div>
+<p class="text-on-surface-variant">
+                            This accumulation dictates that the inputs to the final normalization layers have significantly higher variance than those at earlier layers, impacting the backward pass.
+                        </p>
+<h3 class="font-headline text-[17px] font-semibold tracking-tight text-on-surface mt-8 mb-[-8px]">3.1 Gradient flow</h3>
+<p class="text-on-surface-variant">
+                            The structural difference can be summarized by where the normalization operation is applied within the iteration. For the Pre-LN variant, the computation graph effectively looks like this:
+                        </p>
+<div class="border border-outline-variant bg-surface-container-lowest p-4 overflow-x-auto my-4">
+<pre class="font-mono text-[13px] text-on-surface-variant leading-relaxed"><code>for layer in transformer:
+    # Pre-LN applies normalization before the sublayer
+    x = x + sublayer(layer_norm(x))</code></pre>
+</div>
+<p class="text-on-surface-variant">
+                            This subtle shift ensures that the main residual stream bypasses the normalization operation entirely, allowing gradients to flow uninterrupted from the loss function to the input embeddings.
+                        </p>
+<!-- Add Note Input at bottom of article -->
+<div class="mt-12 h-[36px] flex items-center border border-outline-variant bg-surface px-3 focus-within:border-outline focus-within:ring-1 focus-within:ring-outline transition-all">
+<span class="material-symbols-outlined text-[16px] text-on-surface-variant mr-2">add</span>
+<input class="flex-1 bg-transparent border-none p-0 text-sm font-body text-on-surface placeholder:text-on-surface-variant/50 focus:ring-0 outline-none" placeholder="Add a note here..." type="text"/>
+<button class="text-xs font-label uppercase tracking-widest text-on-surface-variant hover:text-on-surface ml-3 transition-colors">Add</button>
+</div>
+</div>
+</article>
+<!-- Margin Notes Gutter (Absolute positioned notes relative to the main flow container) -->
+<aside class="hidden xl:block absolute right-8 top-0 w-[200px] h-full pointer-events-none">
+<!-- Note 1 -->
+<div class="absolute top-[380px] left-0 right-0 pointer-events-auto">
+<div class="border-l-[1px] border-outline-variant pl-3 py-0.5">
+<p class="font-body text-sm text-on-surface-variant leading-relaxed">Connect to exp-013 finding</p>
+</div>
+</div>
+<!-- Note 2 -->
+<div class="absolute top-[580px] left-0 right-0 pointer-events-auto">
+<div class="border-l-[1px] border-outline-variant pl-3 py-0.5">
+<p class="font-body text-sm text-on-surface-variant leading-relaxed">Same conclusion as Liu 2020</p>
+</div>
+</div>
+</aside>
+</div>
+</main>
+</div>
+</body></html>
