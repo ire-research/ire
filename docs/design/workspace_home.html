@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>IRE Workspace Home</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+    .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+    body { font-family: 'Inter', sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* Drag handles — vertical (col-resize) */
+    .drag-handle-col {
+        width: 4px;
+        cursor: col-resize;
+        background: transparent;
+        flex-shrink: 0;
+        transition: background 120ms ease-out;
+        position: relative;
+        z-index: 10;
+    }
+    .drag-handle-col:hover,
+    .drag-handle-col.dragging { background: #474750; }
+    .drag-handle-col::after {
+        content: '';
+        position: absolute;
+        inset: 0 -4px;
+    }
+
+    /* Drag handles — horizontal (row-resize) */
+    .drag-handle-row {
+        height: 4px;
+        cursor: row-resize;
+        background: transparent;
+        flex-shrink: 0;
+        transition: background 120ms ease-out;
+        position: relative;
+        z-index: 10;
+        width: 100%;
+    }
+    .drag-handle-row:hover,
+    .drag-handle-row.dragging { background: #474750; }
+    /* ::after — full hit-target overlay for the row handle */
+    .drag-handle-row::after {
+        content: '';
+        position: absolute;
+        inset: -4px 0;
+    }
+
+    /* Collapsible sections in left rail */
+    .rail-section__body { overflow: hidden; }
+    .rail-section--collapsed .rail-section__body { display: none; }
+
+    /* Idea entry trash reveal */
+    .idea-entry .idea-trash { opacity: 0; transition: opacity 120ms ease-out; }
+    .idea-entry:hover .idea-trash { opacity: 1; }
+
+    /* Status bar reorder ghost */
+    .status-item[draggable] { cursor: grab; }
+    .status-item[draggable]:active { cursor: grabbing; opacity: 0.5; }
+    .status-item.drag-over { outline: 1px dashed #474750; }
+
+    /* Thin, blending scrollbars for all scrollable areas */
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: #3a3b43 transparent;
+    }
+    *::-webkit-scrollbar { width: 4px; height: 4px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb {
+        background: #3a3b43;
+        border-radius: 2px;
+    }
+    *::-webkit-scrollbar-thumb:hover { background: #474750; }
+    *::-webkit-scrollbar-corner { background: transparent; }
+
+    /* No scrollbar — used only for the tab bar and status bar overflow */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
+    .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+    /* Experiment pane */
+    .exp-log { font-family: 'JetBrains Mono', monospace; font-size: 11px; line-height: 1.6; }
+
+    /* Auto-resizing composer textarea */
+    #composer-textarea {
+        min-height: 52px;
+        max-height: 240px;
+        overflow-y: auto;
+        resize: none;
+        field-sizing: content; /* modern browsers */
+    }
+</style>
+<script id="tailwind-config">
+    tailwind.config = {
+        darkMode: "class",
+        theme: {
+            extend: {
+                colors: {
+                    "surface-dim": "#0e0e11",
+                    "on-tertiary-container": "#55575a",
+                    "surface-container-lowest": "#000000",
+                    "secondary-dim": "#9d9da6",
+                    "tertiary-container": "#ebebef",
+                    "surface": "#0e0e11",
+                    "on-primary": "#3f4043",
+                    "on-secondary": "#1f2027",
+                    "on-surface": "#e6e4ef",
+                    "on-secondary-fixed": "#3e3f47",
+                    "error-dim": "#b95463",
+                    "on-background": "#e6e4ef",
+                    "on-tertiary-fixed": "#484a4d",
+                    "inverse-surface": "#fbf8fc",
+                    "outline": "#75757e",
+                    "surface-container-low": "#131317",
+                    "on-secondary-fixed-variant": "#5a5b63",
+                    "secondary-fixed-dim": "#d4d3dd",
+                    "secondary-fixed": "#e3e1ec",
+                    "surface-tint": "#c6c6c9",
+                    "primary": "#c6c6c9",
+                    "surface-variant": "#24252d",
+                    "surface-container-highest": "#24252d",
+                    "on-secondary-container": "#bfbec8",
+                    "primary-fixed-dim": "#d4d4d7",
+                    "on-surface-variant": "#abaab4",
+                    "on-primary-container": "#d0d0d3",
+                    "error-container": "#7f2737",
+                    "background": "#0e0e11",
+                    "tertiary": "#f9f9fd",
+                    "on-tertiary-fixed-variant": "#65666a",
+                    "tertiary-dim": "#ebebef",
+                    "primary-fixed": "#e2e2e5",
+                    "surface-container": "#19191e",
+                    "secondary": "#9d9da6",
+                    "inverse-on-surface": "#555458",
+                    "surface-bright": "#2a2b35",
+                    "on-tertiary": "#5e5f62",
+                    "tertiary-fixed": "#f3f3f7",
+                    "error": "#ec7c8a",
+                    "outline-variant": "#474750",
+                    "secondary-container": "#3a3b43",
+                    "primary-dim": "#b8b8bb",
+                    "inverse-primary": "#5e5f62",
+                    "tertiary-fixed-dim": "#e5e5e9",
+                    "surface-container-high": "#1e1f26",
+                    "on-primary-fixed-variant": "#5a5b5e",
+                    "on-error-container": "#ff97a3",
+                    "primary-container": "#454749",
+                    "on-primary-fixed": "#3e3f42",
+                    "on-error": "#490013",
+                    "warn": "#d97706",
+                    "ok": "#10b981",
+                    "accent": "#E4E4E7",
+                    "accent-fg": "#0A0A0A"
+                },
+                borderRadius: {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+                },
+                fontFamily: {
+                    "headline": ["Inter"],
+                    "display": ["Inter"],
+                    "body": ["Inter"],
+                    "label": ["Inter"]
+                }
+            }
+        }
+    }
+</script>
+</head>
+<body class="bg-background text-on-surface font-body h-screen flex flex-col overflow-hidden text-sm">
+
+<!-- Top NavBar — stripped to essentials -->
+<header class="flex items-center justify-between px-3 h-10 w-full bg-background border-b border-outline-variant shrink-0">
+    <!-- Left: running experiment badge -->
+    <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2 border border-warn/30 text-warn px-2 py-0.5 rounded text-xs bg-warn/5">
+            <span class="w-1.5 h-1.5 rounded-full bg-warn animate-pulse"></span>
+            running 1 exp
+        </div>
+    </div>
+    <!-- Right: settings + theme -->
+    <div class="flex items-center gap-2">
+        <button class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center p-1 cursor-pointer duration-75">
+            <span class="material-symbols-outlined text-[18px]">settings</span>
+        </button>
+        <button class="text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center p-1 cursor-pointer duration-75">
+            <span class="material-symbols-outlined text-[18px]">dark_mode</span>
+        </button>
+    </div>
+</header>
+
+<!-- Main Content Layout — flex row, resizable panes via drag handles -->
+<div class="flex flex-1 overflow-hidden" id="main-layout">
+
+    <!-- ═══════════════════════════════════════════════════════════ LEFT RAIL -->
+    <!-- overflow-hidden: sections are individually scrollable; row handles sit between them -->
+    <nav class="flex flex-col bg-surface-container-low border-r border-outline-variant shrink-0 overflow-hidden relative"
+         id="left-rail" style="width:280px; min-width:160px; max-width:420px;">
+
+        <!-- Corner handle: sits at the intersection of the right col-handle and top row-handle of this pane -->
+        <!-- Positioned by JS after layout -->
+
+        <!-- ── FOCUS SECTION ──────────────────────────────────────────────── -->
+        <div class="flex flex-col overflow-hidden" id="left-focus"
+             style="min-height:80px; height:calc((100vh - 64px) / 3);">
+            <div class="px-4 pt-4 pb-3 overflow-y-auto flex-1">
+                <!-- Focus section header -->
+                <div class="flex items-center gap-2 px-0 py-1 mb-2">
+                    <span class="material-symbols-outlined text-[16px] shrink-0 text-on-surface-variant">target</span>
+                    <span class="text-[14px] text-on-surface-variant">Focus</span>
+                </div>
+                <!-- Research Question -->
+                <div class="mb-3 group/rq pl-1">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="text-[11px] text-on-surface-variant font-medium">Research question</span>
+                        <button class="opacity-0 group-hover/rq:opacity-100 transition-opacity p-0.5 text-on-surface-variant hover:text-on-surface" title="Edit research question">
+                            <span class="material-symbols-outlined text-[14px]">edit_document</span>
+                        </button>
+                    </div>
+                    <p class="text-[14px] text-on-surface leading-relaxed">
+                        Layer-norm placement affects emergent in-context learning at &lt;1B params.
+                    </p>
+                </div>
+                <!-- This Week -->
+                <div class="group/tw pl-1">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <span class="text-[11px] text-on-surface-variant font-medium">This week</span>
+                        <button class="opacity-0 group-hover/tw:opacity-100 transition-opacity p-0.5 text-on-surface-variant hover:text-on-surface" title="Edit this week">
+                            <span class="material-symbols-outlined text-[14px]">edit_document</span>
+                        </button>
+                    </div>
+                    <p class="text-[14px] text-on-surface leading-relaxed">
+                        Reproduce LN-pre vs LN-post on 350M baseline.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Row handle: Focus ↔ Resources -->
+        <div class="drag-handle-row border-t border-outline-variant"
+             onmousedown="startRowDrag(event,'left-focus','left-resources')"></div>
+
+        <!-- ── RESOURCES SECTION ──────────────────────────────────────────── -->
+        <div class="flex flex-col overflow-hidden" id="left-resources"
+             style="min-height:60px; height:calc((100vh - 64px) / 3);">
+            <div class="overflow-y-auto flex-1 py-1">
+                <div class="rail-section" id="section-resources">
+                    <button onclick="toggleSection('section-resources')"
+                            class="w-full flex items-center gap-2 px-4 py-2 hover:bg-surface-container-high transition-colors cursor-pointer duration-75 text-on-surface-variant text-[14px] text-left">
+                        <span class="material-symbols-outlined text-[16px] shrink-0">chevron_right</span>
+                        <span class="material-symbols-outlined text-[16px] shrink-0">description</span>
+                        Resources
+                    </button>
+                    <div class="rail-section__body">
+                        <div class="pl-10 pr-3 pb-1 space-y-0.5">
+                            <button onclick="openMainTab('resource', 'Emergent Abilities — survey')"
+                                    class="w-full text-left px-2 py-1.5 rounded text-[14px] text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors truncate">
+                                Emergent Abilities — survey
+                            </button>
+                            <button onclick="openMainTab('resource', 'DeepNet — paper')"
+                                    class="w-full text-left px-2 py-1.5 rounded text-[14px] text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors truncate">
+                                DeepNet — paper
+                            </button>
+                            <button onclick="openMainTab('resource', 'Sandwich Norm')"
+                                    class="w-full text-left px-2 py-1.5 rounded text-[14px] text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors truncate">
+                                Sandwich Norm
+                            </button>
+                            <button onclick="openMainTab('resource', 'LN-Pre vs LN-Post Analysis')"
+                                    class="w-full text-left px-2 py-1.5 rounded text-[14px] text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors truncate">
+                                LN-Pre vs LN-Post Analysis
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Row handle: Resources ↔ Experiments -->
+        <div class="drag-handle-row border-t border-outline-variant"
+             onmousedown="startRowDrag(event,'left-resources','left-experiments')"></div>
+
+        <!-- ── EXPERIMENTS SECTION ────────────────────────────────────────── -->
+        <div class="flex flex-col overflow-hidden flex-1" id="left-experiments"
+             style="min-height:60px;">
+            <div class="overflow-y-auto flex-1 py-1">
+                <div class="rail-section" id="section-experiments">
+                    <button onclick="toggleSection('section-experiments')"
+                            class="w-full flex items-center gap-2 px-4 py-2 hover:bg-surface-container-high transition-colors cursor-pointer duration-75 text-on-surface-variant text-[14px] text-left">
+                        <span class="material-symbols-outlined text-[16px] shrink-0">expand_more</span>
+                        <span class="material-symbols-outlined text-[16px] shrink-0">science</span>
+                        Experiments
+                    </button>
+                    <div class="rail-section__body">
+                        <div class="pl-10 pr-3 pb-1 space-y-0.5">
+                            <button onclick="openExpPane('exp-014-post', 'run')"
+                                    class="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-surface-container-high transition-colors cursor-pointer">
+                                <span class="font-mono text-[13px] text-on-surface truncate pr-2">exp-014-post</span>
+                                <span class="text-warn text-[10px] uppercase border border-warn/30 px-1 rounded bg-warn/10 shrink-0">Run</span>
+                            </button>
+                            <button onclick="openExpPane('exp-013-pre', 'done')"
+                                    class="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-surface-container-high transition-colors cursor-pointer">
+                                <span class="font-mono text-[13px] text-on-surface-variant truncate pr-2">exp-013-pre</span>
+                                <span class="text-ok text-[10px] uppercase border border-ok/30 px-1 rounded bg-ok/10 shrink-0">Done</span>
+                            </button>
+                            <button onclick="openExpPane('exp-012-base', 'done')"
+                                    class="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-surface-container-high transition-colors cursor-pointer">
+                                <span class="font-mono text-[13px] text-on-surface-variant truncate pr-2">exp-012-base</span>
+                                <span class="text-ok text-[10px] uppercase border border-ok/30 px-1 rounded bg-ok/10 shrink-0">Done</span>
+                            </button>
+                            <button onclick="openExpPane('exp-011-fail', 'fail')"
+                                    class="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-surface-container-high transition-colors cursor-pointer">
+                                <span class="font-mono text-[13px] text-on-surface-variant truncate pr-2">exp-011-fail</span>
+                                <span class="text-error text-[10px] uppercase border border-error/30 px-1 rounded bg-error/10 shrink-0">Fail</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </nav>
+
+    <!-- Drag handle: left ↔ center -->
+    <div class="drag-handle-col" id="handle-left" onmousedown="startColDrag(event,'left-rail','center-col')"></div>
+
+    <!-- ═══════════════════════════════════════════════ CENTER COLUMN (FLUID) -->
+    <main class="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden" id="center-col">
+
+        <!-- Tab Bar -->
+        <div class="flex h-8 border-b border-outline-variant bg-surface-container-low shrink-0 px-2 overflow-x-auto no-scrollbar">
+            <div id="tab-chat"
+                 class="flex items-center px-3 border-r border-outline-variant bg-surface-container-highest text-on-surface text-xs min-w-max cursor-pointer border-t border-t-primary"
+                 onclick="switchTab('chat')">
+                <span class="material-symbols-outlined text-[14px] mr-1.5">chat</span>
+                Chat
+            </div>
+            <div id="tab-emergent"
+                 class="flex items-center px-3 border-r border-outline-variant text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors text-xs min-w-max cursor-pointer"
+                 onclick="switchTab('emergent')">
+                <span class="material-symbols-outlined text-[14px] mr-1.5 animate-spin">progress_activity</span>
+                Emergent Abilities...
+            </div>
+            <div id="tab-deepnet"
+                 class="flex items-center px-3 border-r border-outline-variant text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors text-xs min-w-max cursor-pointer"
+                 onclick="switchTab('deepnet')">
+                <span class="material-symbols-outlined text-[14px] mr-1.5">description</span>
+                DeepNet
+            </div>
+            <div id="tab-exp014"
+                 class="flex items-center px-3 border-r border-outline-variant text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors text-xs min-w-max cursor-pointer"
+                 onclick="switchTab('exp014')">
+                <span class="material-symbols-outlined text-[14px] mr-1.5">science</span>
+                exp-014
+            </div>
+            <div class="flex items-center justify-center w-8 text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors cursor-pointer">
+                <span class="material-symbols-outlined text-[16px]">add</span>
+            </div>
+        </div>
+
+        <!-- Chat header: reset / cancel -->
+        <div class="flex items-center justify-end px-4 h-8 shrink-0 border-b border-outline-variant/30">
+            <button class="text-on-surface-variant hover:text-on-surface transition-colors p-1" title="Reset conversation">
+                <span class="material-symbols-outlined text-[16px]">refresh</span>
+            </button>
+        </div>
+
+        <!-- MAIN CONTENT — chat or experiment pane -->
+        <div class="flex-1 overflow-hidden relative" id="content-host">
+
+            <!-- ─── CHAT VIEW ─── -->
+            <div id="view-chat" class="absolute inset-0 overflow-y-auto px-4 md:px-8 lg:px-12 pt-4 pb-40 space-y-6">
+
+                <!-- USER -->
+                <div class="flex justify-end">
+                    <div class="bg-surface-container text-on-surface px-4 py-3 rounded border border-outline-variant max-w-[560px] text-[14px] leading-relaxed">
+                        Run exp-014 with LN-post configuration on the 350M baseline. Make sure to track the gradients closely, I suspect vanishing gradients early in training.
+                    </div>
+                </div>
+
+                <!-- ASSISTANT -->
+                <div class="flex flex-col items-start max-w-[720px] space-y-4">
+                    <!-- Thinking block -->
+                    <div class="flex gap-3 text-on-surface-variant text-[13px] w-full">
+                        <div class="w-px bg-outline-variant shrink-0 my-1"></div>
+                        <div class="italic py-1 opacity-80 text-xs">
+                            <p class="mb-2">Thinking Process:</p>
+                            <ul class="list-disc pl-4 space-y-1">
+                                <li>User wants to initiate exp-014 using LN-post on the 350M model.</li>
+                                <li>Need to explicitly enable verbose gradient tracking.</li>
+                                <li>I'll first check if the baseline config exists, then dispatch the training job.</li>
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="text-on-surface text-[14px] leading-relaxed">
+                        I'm initiating <code class="font-mono text-[12px] bg-surface-container px-1 rounded">exp-014</code> with the LayerNorm-post configuration. I'll inject a gradient monitoring hook into the early layers to watch for the vanishing gradient issue you mentioned.
+                    </div>
+                    <!-- Done tool call -->
+                    <div class="w-full bg-surface-container-low border border-outline-variant rounded px-3 py-2 flex items-center gap-3 text-xs cursor-pointer hover:bg-surface-container transition-colors">
+                        <span class="material-symbols-outlined text-ok text-[16px]">check_circle</span>
+                        <span class="font-mono text-on-surface-variant flex-1">fetch_config(model="350M_baseline")</span>
+                        <span class="text-on-surface-variant opacity-50">12ms</span>
+                    </div>
+                    <!-- Running tool call -->
+                    <div class="w-full bg-surface-container border border-warn/40 rounded flex flex-col overflow-hidden">
+                        <div class="bg-surface-container-high px-3 py-2 flex items-center gap-3 text-xs border-b border-warn/20">
+                            <span class="material-symbols-outlined text-warn text-[16px] animate-spin">progress_activity</span>
+                            <span class="font-mono text-warn flex-1">dispatch_run(name="exp-014", ln="post", grad_track=True)</span>
+                        </div>
+                        <div class="p-3 bg-surface-container-lowest font-mono text-[11px] text-on-surface-variant overflow-x-auto h-32 leading-relaxed">
+                            [INFO] Loaded config 350M_baseline.yaml<br/>
+                            [INFO] Applying override: model.norm_type="post"<br/>
+                            [INFO] Attaching gradient monitor hook to layers 0-3...<br/>
+                            [INFO] Allocating resources... GPU 0 (88% free)<br/>
+                            <span class="text-on-surface opacity-70 animate-pulse">Waiting for scheduler...</span>
+                        </div>
+                    </div>
+                    <div class="text-on-surface text-[14px] leading-relaxed">
+                        The run is queued and starting up. I'll alert you if the gradient norms in layer 0 drop below the threshold in the first 100 steps.
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── RESOURCE PREVIEW VIEW ─── (hidden by default) -->
+            <div id="view-resource" class="absolute inset-0 overflow-y-auto px-4 md:px-8 lg:px-12 pt-6 pb-8 hidden">
+                <p class="text-[11px] uppercase tracking-widest text-on-surface-variant mb-4">Resource · Paper</p>
+                <h2 class="text-base font-semibold text-on-surface mb-2">Emergent Abilities of Large Language Models</h2>
+                <p class="text-[13px] text-on-surface-variant mb-6">Wei et al., 2022 · arxiv:2206.07682</p>
+                <p class="text-[14px] text-on-surface leading-relaxed mb-4">We investigate the phenomenon of emergent abilities — capabilities present in large models that are absent in smaller ones — across a suite of tasks. We find that these abilities emerge sharply at certain scale thresholds and are not predictable by extrapolating the performance of smaller models.</p>
+                <p class="text-[13px] text-on-surface-variant leading-relaxed">This resource is a preview. Confirm to save it to the wiki.</p>
+            </div>
+
+            <!-- ─── EXPERIMENT PANE VIEW ─── (hidden by default) -->
+            <div id="view-experiment" class="absolute inset-0 overflow-y-auto px-4 py-4 pb-8 hidden">
+
+                <!-- Header -->
+                <div class="flex items-center gap-3 mb-4">
+                    <span class="font-mono font-semibold text-[14px] text-on-surface">exp-014-post</span>
+                    <span class="text-warn text-[10px] uppercase border border-warn/30 px-1.5 py-0.5 rounded bg-warn/10">Running</span>
+                </div>
+
+                <!-- Metadata grid -->
+                <div class="grid grid-cols-2 gap-x-6 gap-y-3 mb-5 border border-outline-variant rounded p-3 bg-surface-container-low text-[12px]">
+                    <div>
+                        <span class="text-on-surface-variant block mb-0.5">Status</span>
+                        <span class="text-warn font-medium">Running · 00:04:22</span>
+                    </div>
+                    <div>
+                        <span class="text-on-surface-variant block mb-0.5">Runtime</span>
+                        <span class="text-on-surface font-mono">4m 22s</span>
+                    </div>
+                    <div class="col-span-2">
+                        <span class="text-on-surface-variant block mb-0.5">Command</span>
+                        <code class="font-mono text-[11px] text-on-surface bg-surface-container px-2 py-1 rounded block truncate">
+                            python train.py --config 350M_baseline.yaml --norm-type post --grad-track --seed 42
+                        </code>
+                    </div>
+                </div>
+
+                <!-- Trailing logs -->
+                <div class="border border-outline-variant rounded overflow-hidden">
+                    <div class="flex items-center justify-between px-3 py-1.5 bg-surface-container-low border-b border-outline-variant">
+                        <span class="text-[10px] uppercase tracking-widest text-on-surface-variant">Logs</span>
+                        <span class="text-[10px] text-on-surface-variant font-mono">live</span>
+                    </div>
+                    <div class="exp-log p-3 bg-surface-container-lowest text-on-surface-variant h-48 overflow-y-auto">
+                        [00:00:01] INFO  Loaded config 350M_baseline.yaml<br/>
+                        [00:00:01] INFO  Applying override: model.norm_type="post"<br/>
+                        [00:00:02] INFO  Attaching gradient monitor hook to layers 0–3<br/>
+                        [00:00:03] INFO  Allocating resources — GPU 0 (88% free)<br/>
+                        [00:00:05] INFO  Scheduler: job queued (id=7842)<br/>
+                        [00:00:08] INFO  Job started on node gpu-03<br/>
+                        [00:00:12] INFO  Step    1/10000 — loss=4.312  grad_norm=0.241<br/>
+                        [00:00:15] INFO  Step   10/10000 — loss=4.198  grad_norm=0.219<br/>
+                        [00:00:18] INFO  Step   50/10000 — loss=3.971  grad_norm=0.207<br/>
+                        [00:00:24] INFO  Step  100/10000 — loss=3.742  grad_norm=0.183<br/>
+                        [00:00:31] INFO  Step  200/10000 — loss=3.511  grad_norm=0.174<br/>
+                        [00:04:22] INFO  Step 1540/10000 — loss=2.938  grad_norm=0.161<br/>
+                        <span class="text-on-surface opacity-60 animate-pulse">▌</span>
+                    </div>
+                </div>
+
+            </div>
+
+        </div><!-- /content-host -->
+
+        <!-- Floating Composer -->
+        <div class="absolute bottom-6 left-1/2 -translate-x-1/2 w-full px-6 pointer-events-none" style="z-index:20;">
+            <div class="pointer-events-auto bg-surface-container border border-outline-variant rounded-lg shadow-lg shadow-black/30 flex flex-col overflow-visible">
+                <textarea
+                    id="composer-textarea"
+                    class="w-full bg-transparent border-none text-on-surface text-[14px] focus:ring-0 px-3 py-2.5 placeholder-on-surface-variant/50 outline-none"
+                    placeholder="Continue the experiment..."
+                    oninput="autoResize(this)"></textarea>
+                <div class="flex items-center justify-between px-2 pb-2 pt-0">
+                    <!-- Model + Effort controls (left) -->
+                    <div class="flex items-center gap-1">
+                        <!-- Model picker -->
+                        <div class="relative" id="model-picker">
+                            <button onclick="togglePicker('model-picker')"
+                                    class="flex items-center gap-1 px-2 py-1 text-on-surface-variant hover:bg-surface-container-high rounded hover:text-on-surface transition-colors text-[11px] border border-outline-variant/50">
+                                <span class="text-[10px] text-on-surface-variant/60 mr-0.5">model</span>
+                                Haiku 4.5
+                                <span class="material-symbols-outlined text-[12px]">expand_more</span>
+                            </button>
+                            <div id="model-picker-dropdown" class="hidden absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 py-1 min-w-[140px] z-50">
+                                <button class="w-full text-left px-3 py-1.5 text-[12px] text-on-surface hover:bg-surface-container-highest transition-colors font-medium">Haiku 4.5</button>
+                                <button class="w-full text-left px-3 py-1.5 text-[12px] text-on-surface-variant hover:bg-surface-container-highest transition-colors">Sonnet 4.6</button>
+                                <button class="w-full text-left px-3 py-1.5 text-[12px] text-on-surface-variant hover:bg-surface-container-highest transition-colors">Opus 4.7</button>
+                            </div>
+                        </div>
+                        <!-- Effort picker -->
+                        <div class="relative" id="effort-picker">
+                            <button onclick="togglePicker('effort-picker')"
+                                    class="flex items-center gap-1 px-2 py-1 text-on-surface-variant hover:bg-surface-container-high rounded hover:text-on-surface transition-colors text-[11px] border border-outline-variant/50">
+                                <span class="text-[10px] text-on-surface-variant/60 mr-0.5">effort</span>
+                                Low
+                                <span class="material-symbols-outlined text-[12px]">expand_more</span>
+                            </button>
+                            <div id="effort-picker-dropdown" class="hidden absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 py-1 min-w-[100px] z-50">
+                                <button class="w-full text-left px-3 py-1.5 text-[12px] text-on-surface hover:bg-surface-container-highest transition-colors font-medium">Low</button>
+                                <button class="w-full text-left px-3 py-1.5 text-[12px] text-on-surface-variant hover:bg-surface-container-highest transition-colors">Med</button>
+                                <button class="w-full text-left px-3 py-1.5 text-[12px] text-on-surface-variant hover:bg-surface-container-highest transition-colors">High</button>
+                                <button class="w-full text-left px-3 py-1.5 text-[12px] text-on-surface-variant hover:bg-surface-container-highest transition-colors">XHigh</button>
+                                <button class="w-full text-left px-3 py-1.5 text-[12px] text-on-surface-variant hover:bg-surface-container-highest transition-colors">Max</button>
+                            </div>
+                        </div>
+                        <!-- Slash command -->
+                        <button class="p-1.5 text-on-surface-variant hover:bg-surface-container-high rounded hover:text-on-surface transition-colors font-mono text-[11px]">
+                            /
+                        </button>
+                    </div>
+                    <!-- Send (right) -->
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] text-on-surface-variant/50">⌘↵</span>
+                        <button class="bg-accent text-accent-fg px-4 py-1 rounded text-[12px] font-medium hover:opacity-90 transition-opacity flex items-center gap-1">
+                            Send <span class="material-symbols-outlined text-[14px]">arrow_upward</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </main><!-- /center-col -->
+
+    <!-- Drag handle: center ↔ right -->
+    <div class="drag-handle-col" id="handle-right" onmousedown="startColDrag(event,'center-col','right-rail')"></div>
+
+    <!-- ═══════════════════════════════════════════════════════════ RIGHT RAIL -->
+    <aside class="flex flex-col bg-surface-container-low border-l border-outline-variant shrink-0 overflow-hidden"
+           id="right-rail" style="width:320px; min-width:180px; max-width:440px;">
+
+        <!-- ── NOTES SECTION ──────────────────────────────────────────────── -->
+        <div class="flex flex-col overflow-hidden" id="right-notes"
+             style="min-height:80px; height:calc((100vh - 64px) / 3);">
+            <div class="px-4 pt-4 pb-3 overflow-y-auto flex-1">
+                <div class="flex items-center gap-2 py-1 mb-2">
+                    <span class="material-symbols-outlined text-[16px] shrink-0 text-on-surface-variant">edit_note</span>
+                    <span class="text-[14px] text-on-surface-variant flex-1">Notes</span>
+                    <span class="material-symbols-outlined text-[14px] cursor-pointer hover:text-on-surface text-on-surface-variant">edit_document</span>
+                </div>
+                <ul class="text-[14px] text-on-surface space-y-2 list-disc pl-4 marker:text-outline-variant">
+                    <li class="pl-1">LN-pre stabilizes deep networks but may hurt expressive power.</li>
+                    <li class="pl-1">Check recent paper on "Sandwich Norm" as an alternative.</li>
+                    <li class="pl-1">Baseline 350M uses GeLU; consider SwiGLU next week.</li>
+                    <li class="pl-1 text-on-surface-variant">Setup eval harness for hellaswag.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Row handle: Notes ↔ Ideas -->
+        <div class="drag-handle-row border-t border-outline-variant"
+             onmousedown="startRowDrag(event,'right-notes','right-ideas')"></div>
+
+        <!-- ── IDEAS SECTION ──────────────────────────────────────────────── -->
+        <div class="flex flex-col overflow-hidden" id="right-ideas"
+             style="min-height:80px; height:calc((100vh - 64px) / 3);">
+            <div class="px-4 pt-4 pb-3 overflow-y-auto flex-1">
+                <div class="flex items-center gap-2 py-1 mb-2">
+                    <span class="material-symbols-outlined text-[16px] shrink-0 text-on-surface-variant">lightbulb</span>
+                    <span class="text-[14px] text-on-surface-variant flex-1">Ideas</span>
+                    <span class="material-symbols-outlined text-[14px] cursor-pointer hover:text-on-surface text-on-surface-variant">add</span>
+                </div>
+                <div class="space-y-2" id="ideas-list">
+                    <div class="idea-entry bg-surface-container border border-outline-variant p-2 rounded text-[14px] text-on-surface cursor-pointer hover:border-outline transition-colors flex items-start justify-between gap-2"
+                         draggable="true" ondragstart="ideaDragStart(event)" ondragover="ideaDragOver(event)" ondrop="ideaDrop(event)">
+                        <span class="flex-1">Ablate positional embeddings (RoPE vs ALiBi)</span>
+                        <button class="idea-trash p-0.5 text-on-surface-variant hover:text-error transition-colors shrink-0 mt-0.5" title="Remove idea" onclick="removeIdea(event)">
+                            <span class="material-symbols-outlined text-[14px]">delete</span>
+                        </button>
+                    </div>
+                    <div class="idea-entry bg-surface-container border border-outline-variant p-2 rounded text-[14px] text-on-surface cursor-pointer hover:border-outline transition-colors flex items-start justify-between gap-2"
+                         draggable="true" ondragstart="ideaDragStart(event)" ondragover="ideaDragOver(event)" ondrop="ideaDrop(event)">
+                        <span class="flex-1">Train small proxy on C4, measure token perplexity variance</span>
+                        <button class="idea-trash p-0.5 text-on-surface-variant hover:text-error transition-colors shrink-0 mt-0.5" title="Remove idea" onclick="removeIdea(event)">
+                            <span class="material-symbols-outlined text-[14px]">delete</span>
+                        </button>
+                    </div>
+                    <div class="idea-entry bg-surface-container border border-outline-variant p-2 rounded text-[14px] text-on-surface-variant opacity-70 cursor-pointer hover:border-outline transition-colors flex items-start justify-between gap-2"
+                         draggable="true" ondragstart="ideaDragStart(event)" ondragover="ideaDragOver(event)" ondrop="ideaDrop(event)">
+                        <span class="flex-1">Try 4-bit quantization during fine-tuning</span>
+                        <button class="idea-trash p-0.5 text-on-surface-variant hover:text-error transition-colors shrink-0 mt-0.5" title="Remove idea" onclick="removeIdea(event)">
+                            <span class="material-symbols-outlined text-[14px]">delete</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Row handle: Ideas ↔ Add resource -->
+        <div class="drag-handle-row border-t border-outline-variant"
+             onmousedown="startRowDrag(event,'right-ideas','right-addresource')"></div>
+
+        <!-- ── ADD RESOURCE SECTION ───────────────────────────────────────── -->
+        <div class="flex flex-col overflow-hidden flex-1" id="right-addresource"
+             style="min-height:72px;">
+            <div class="px-4 pt-4 pb-3 overflow-y-auto flex-1">
+                <div class="flex items-center gap-2 py-1 mb-3">
+                    <span class="material-symbols-outlined text-[16px] shrink-0 text-on-surface-variant">add_link</span>
+                    <span class="text-[14px] text-on-surface-variant">Add resource</span>
+                </div>
+                <div class="flex gap-2">
+                    <input class="flex-1 bg-surface-container border border-outline-variant rounded text-[13px] text-on-surface px-2 py-1.5 focus:border-outline focus:ring-0 placeholder-on-surface-variant/50 min-w-0"
+                           placeholder="https://arxiv.org/abs/..." type="text"/>
+                    <button class="border border-outline text-on-surface px-3 py-1.5 rounded text-[12px] hover:bg-surface-container-high transition-colors shrink-0">
+                        Add
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </aside>
+
+</div><!-- /main-layout -->
+
+<!-- ═══════════════════════════════════════════════════════ BOTTOM STATUS BAR -->
+<!-- Not position:fixed — lives in the flex column so it never overlaps content -->
+<footer class="h-6 flex items-center px-3 bg-surface-container-lowest border-t border-outline-variant text-on-surface-variant font-mono text-[10px] shrink-0 overflow-hidden select-none cursor-default"
+        id="status-bar">
+    <!-- Items are draggable for reordering -->
+    <div class="flex items-center gap-0 w-full overflow-x-auto no-scrollbar" id="status-items">
+
+        <div class="status-item flex items-center gap-1.5 px-2 border-r border-outline-variant/40 shrink-0 h-6"
+             draggable="true" ondragstart="statusDragStart(event)" ondragover="statusDragOver(event)" ondrop="statusDrop(event)">
+            <span class="text-on-surface-variant/70">~/research/transformer-ablations</span>
+            <span class="text-outline-variant">·</span>
+            <span class="text-primary">main</span>
+            <span class="text-ok">+12</span>
+            <span class="text-error">-4</span>
+        </div>
+
+        <div class="status-item flex items-center gap-1.5 px-2 border-r border-outline-variant/40 shrink-0 h-6"
+             draggable="true" ondragstart="statusDragStart(event)" ondragover="statusDragOver(event)" ondrop="statusDrop(event)">
+            <span class="material-symbols-outlined text-[11px]">memory</span>
+            <span>AMD EPYC 7763</span>
+            <span class="text-outline-variant">·</span>
+            <span class="text-ok">34%</span>
+        </div>
+
+        <div class="status-item flex items-center gap-1.5 px-2 border-r border-outline-variant/40 shrink-0 h-6"
+             draggable="true" ondragstart="statusDragStart(event)" ondragover="statusDragOver(event)" ondrop="statusDrop(event)">
+            <span class="material-symbols-outlined text-[11px]">developer_board</span>
+            <span>NVIDIA A100</span>
+            <span class="text-outline-variant">·</span>
+            <span class="text-warn">88%</span>
+            <span class="text-outline-variant">·</span>
+            <span>80 GB VRAM</span>
+        </div>
+
+        <div class="status-item flex items-center gap-1.5 px-2 border-r border-outline-variant/40 shrink-0 h-6"
+             draggable="true" ondragstart="statusDragStart(event)" ondragover="statusDragOver(event)" ondrop="statusDrop(event)">
+            <span class="material-symbols-outlined text-[11px]">storage</span>
+            <span>128 GB RAM</span>
+        </div>
+
+        <div class="status-item flex items-center gap-1.5 px-2 border-r border-outline-variant/40 shrink-0 h-6"
+             draggable="true" ondragstart="statusDragStart(event)" ondragover="statusDragOver(event)" ondrop="statusDrop(event)">
+            <span>gciro@gpu-03</span>
+        </div>
+
+        <div class="status-item flex items-center gap-1.5 px-2 shrink-0 h-6 ml-auto"
+             draggable="true" ondragstart="statusDragStart(event)" ondragover="statusDragOver(event)" ondrop="statusDrop(event)">
+            <span>claude-code</span>
+            <span class="text-outline-variant">·</span>
+            <span class="text-ok">connected</span>
+            <span class="w-1.5 h-1.5 rounded-full bg-ok ml-0.5"></span>
+        </div>
+
+    </div>
+</footer>
+
+<script>
+// ─── Composer auto-resize ────────────────────────────────────────────────────
+function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 240) + 'px';
+}
+
+// ─── Column (horizontal) pane resize ────────────────────────────────────────
+function startColDrag(e, leftId, rightId) {
+    e.preventDefault();
+    const left  = document.getElementById(leftId);
+    const right = document.getElementById(rightId);
+    const startX = e.clientX;
+    const startLeftW  = left.getBoundingClientRect().width;
+    const startRightW = right.getBoundingClientRect().width;
+
+    // highlight the active handle
+    const handle = e.currentTarget;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'col-resize';
+
+    function onMove(ev) {
+        const delta = ev.clientX - startX;
+        const minL = parseInt(left.style.minWidth) || 0;
+        const minR = parseInt(right.style.minWidth) || 0;
+        const newLeft  = Math.max(minL, startLeftW  + delta);
+        const newRight = Math.max(minR, startRightW - delta);
+        // left-rail and right-rail have explicit widths; center-col is flex-1
+        if (leftId === 'center-col') {
+            right.style.width = newRight + 'px';
+        } else {
+            left.style.width = newLeft + 'px';
+        }
+    }
+    function onUp() {
+        handle.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+}
+
+// ─── Row (vertical) pane resize inside a rail ────────────────────────────────
+function startRowDrag(e, topId, bottomId) {
+    e.preventDefault();
+    const top    = document.getElementById(topId);
+    const bottom = document.getElementById(bottomId);
+    const startY = e.clientY;
+    const startTopH    = top.getBoundingClientRect().height;
+    const startBottomH = bottom.getBoundingClientRect().height;
+
+    const handle = e.currentTarget;
+    handle.classList.add('dragging');
+    document.body.style.cursor = 'row-resize';
+
+    function onMove(ev) {
+        const delta = ev.clientY - startY;
+        const minT = parseInt(top.style.minHeight)    || 0;
+        const minB = parseInt(bottom.style.minHeight) || 0;
+        const newTop    = Math.max(minT, startTopH    + delta);
+        const newBottom = Math.max(minB, startBottomH - delta);
+        // only set explicit height on the top; bottom uses flex-1 where applicable,
+        // but we set it too so the row is pinned when the bottom isn't flex-1
+        top.style.height    = newTop    + 'px';
+        bottom.style.height = newBottom + 'px';
+        // remove flex-1 from bottom once explicitly sized
+        bottom.style.flex = 'none';
+    }
+    function onUp() {
+        handle.classList.remove('dragging');
+        document.body.style.cursor = '';
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+    }
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+}
+
+// ─── Rail section expand/collapse ────────────────────────────────────────────
+function toggleSection(id) {
+    const section = document.getElementById(id);
+    section.classList.toggle('rail-section--collapsed');
+    const chevron = section.querySelector('button .material-symbols-outlined');
+    chevron.textContent = section.classList.contains('rail-section--collapsed')
+        ? 'chevron_right' : 'expand_more';
+}
+
+// ─── Tab switching ───────────────────────────────────────────────────────────
+const TAB_IDS = ['chat','emergent','deepnet','exp014'];
+function switchTab(id) {
+    TAB_IDS.forEach(t => {
+        const el = document.getElementById('tab-' + t);
+        if (el) {
+            const active = t === id;
+            el.classList.toggle('bg-surface-container-highest', active);
+            el.classList.toggle('text-on-surface', active);
+            el.classList.toggle('border-t', active);
+            el.classList.toggle('border-t-primary', active);
+            el.classList.toggle('text-on-surface-variant', !active);
+        }
+    });
+}
+
+// ─── Open resource in main tab ───────────────────────────────────────────────
+function openMainTab(kind, label) {
+    document.getElementById('view-chat').classList.add('hidden');
+    document.getElementById('view-experiment').classList.add('hidden');
+    const rv = document.getElementById('view-resource');
+    rv.classList.remove('hidden');
+    rv.querySelector('h2').textContent = label;
+}
+
+// ─── Open experiment pane ────────────────────────────────────────────────────
+function openExpPane(name, status) {
+    document.getElementById('view-chat').classList.add('hidden');
+    document.getElementById('view-resource').classList.add('hidden');
+    const ev = document.getElementById('view-experiment');
+    ev.classList.remove('hidden');
+    ev.querySelector('.font-mono.font-semibold').textContent = name;
+    switchTab('exp014');
+}
+
+// ─── Composer model/effort pickers ───────────────────────────────────────────
+function togglePicker(id) {
+    const dropdown = document.getElementById(id + '-dropdown');
+    dropdown.classList.toggle('hidden');
+}
+document.addEventListener('click', function(e) {
+    ['model-picker','effort-picker'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && !el.contains(e.target)) {
+            document.getElementById(id + '-dropdown').classList.add('hidden');
+        }
+    });
+});
+
+// ─── Idea drag-to-reorder ────────────────────────────────────────────────────
+let dragSrc = null;
+function ideaDragStart(e) {
+    dragSrc = e.currentTarget;
+    e.dataTransfer.effectAllowed = 'move';
+}
+function ideaDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const target = e.currentTarget;
+    if (target !== dragSrc) target.classList.add('drag-over');
+}
+function ideaDrop(e) {
+    e.preventDefault();
+    const target = e.currentTarget;
+    target.classList.remove('drag-over');
+    if (dragSrc && dragSrc !== target) {
+        const list = document.getElementById('ideas-list');
+        const items = [...list.children];
+        const srcIdx = items.indexOf(dragSrc);
+        const tgtIdx = items.indexOf(target);
+        if (srcIdx < tgtIdx) {
+            list.insertBefore(dragSrc, target.nextSibling);
+        } else {
+            list.insertBefore(dragSrc, target);
+        }
+    }
+    dragSrc = null;
+}
+function removeIdea(e) {
+    e.stopPropagation();
+    e.currentTarget.closest('.idea-entry').remove();
+}
+
+// ─── Status bar drag-to-reorder ──────────────────────────────────────────────
+let statusDragSrc = null;
+function statusDragStart(e) {
+    statusDragSrc = e.currentTarget;
+    e.dataTransfer.effectAllowed = 'move';
+}
+function statusDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (e.currentTarget !== statusDragSrc) e.currentTarget.classList.add('drag-over');
+}
+function statusDrop(e) {
+    e.preventDefault();
+    const target = e.currentTarget;
+    target.classList.remove('drag-over');
+    if (statusDragSrc && statusDragSrc !== target) {
+        const bar = document.getElementById('status-items');
+        const items = [...bar.children];
+        const srcIdx = items.indexOf(statusDragSrc);
+        const tgtIdx = items.indexOf(target);
+        if (srcIdx < tgtIdx) {
+            bar.insertBefore(statusDragSrc, target.nextSibling);
+        } else {
+            bar.insertBefore(statusDragSrc, target);
+        }
+    }
+    statusDragSrc = null;
+}
+</script>
+
+</body></html>

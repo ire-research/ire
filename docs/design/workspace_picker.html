@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>IRE - Workspace Picker</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+    .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+    body { font-family: 'Inter', sans-serif; }
+
+    * {
+        scrollbar-width: thin;
+        scrollbar-color: #3a3b43 transparent;
+    }
+    *::-webkit-scrollbar { width: 4px; height: 4px; }
+    *::-webkit-scrollbar-track { background: transparent; }
+    *::-webkit-scrollbar-thumb { background: #3a3b43; border-radius: 2px; }
+    *::-webkit-scrollbar-thumb:hover { background: #474750; }
+    *::-webkit-scrollbar-corner { background: transparent; }
+</style>
+<script id="tailwind-config">
+    tailwind.config = {
+        darkMode: "class",
+        theme: {
+            extend: {
+                colors: {
+                    "surface-dim": "#0e0e11",
+                    "on-tertiary-container": "#55575a",
+                    "surface-container-lowest": "#000000",
+                    "secondary-dim": "#9d9da6",
+                    "tertiary-container": "#ebebef",
+                    "surface": "#0e0e11",
+                    "on-primary": "#3f4043",
+                    "on-secondary": "#1f2027",
+                    "on-surface": "#e6e4ef",
+                    "on-secondary-fixed": "#3e3f47",
+                    "error-dim": "#b95463",
+                    "on-background": "#e6e4ef",
+                    "on-tertiary-fixed": "#484a4d",
+                    "inverse-surface": "#fbf8fc",
+                    "outline": "#75757e",
+                    "surface-container-low": "#131317",
+                    "on-secondary-fixed-variant": "#5a5b63",
+                    "secondary-fixed-dim": "#d4d3dd",
+                    "secondary-fixed": "#e3e1ec",
+                    "surface-tint": "#c6c6c9",
+                    "primary": "#c6c6c9",
+                    "surface-variant": "#24252d",
+                    "surface-container-highest": "#24252d",
+                    "on-secondary-container": "#bfbec8",
+                    "primary-fixed-dim": "#d4d4d7",
+                    "on-surface-variant": "#abaab4",
+                    "on-primary-container": "#d0d0d3",
+                    "error-container": "#7f2737",
+                    "background": "#0e0e11",
+                    "tertiary": "#f9f9fd",
+                    "on-tertiary-fixed-variant": "#65666a",
+                    "tertiary-dim": "#ebebef",
+                    "primary-fixed": "#e2e2e5",
+                    "surface-container": "#19191e",
+                    "secondary": "#9d9da6",
+                    "inverse-on-surface": "#555458",
+                    "surface-bright": "#2a2b35",
+                    "on-tertiary": "#5e5f62",
+                    "tertiary-fixed": "#f3f3f7",
+                    "error": "#ec7c8a",
+                    "outline-variant": "#474750",
+                    "secondary-container": "#3a3b43",
+                    "primary-dim": "#b8b8bb",
+                    "inverse-primary": "#5e5f62",
+                    "tertiary-fixed-dim": "#e5e5e9",
+                    "surface-container-high": "#1e1f26",
+                    "on-primary-fixed-variant": "#5a5b5e",
+                    "on-error-container": "#ff97a3",
+                    "primary-container": "#454749",
+                    "on-primary-fixed": "#3e3f42",
+                    "on-error": "#490013",
+                    "ok": "#10b981",
+                    "accent": "#E4E4E7",
+                    "accent-fg": "#0A0A0A"
+                },
+                borderRadius: {
+                    "DEFAULT": "0.125rem",
+                    "lg": "0.25rem",
+                    "xl": "0.5rem",
+                    "full": "0.75rem"
+                },
+                fontFamily: {
+                    "headline": ["Inter"],
+                    "display": ["Inter"],
+                    "body": ["Inter"],
+                    "label": ["Inter"],
+                    "mono": ["JetBrains Mono", "monospace"]
+                }
+            }
+        }
+    }
+</script>
+</head>
+<body class="bg-background text-on-surface h-screen flex flex-col overflow-hidden">
+
+<!-- Centered content -->
+<main class="flex-1 flex flex-col items-center justify-center overflow-y-auto px-6 py-10">
+    <div class="w-full max-w-[520px] flex flex-col gap-6">
+
+        <!-- Title -->
+        <div class="flex flex-col gap-2">
+            <h1 class="text-[22px] font-semibold text-on-surface tracking-tight leading-snug">Open or create a workspace.</h1>
+            <p class="text-[14px] text-on-surface-variant leading-relaxed">
+                Each workspace maps 1:1 to a Git repository. Your code, wiki, experiments, and Claude Code state live together in
+                <code class="font-mono text-[12px] px-1 py-0.5 bg-surface-container border border-outline-variant rounded">.ire/</code>.
+            </p>
+        </div>
+
+        <!-- Recent workspaces -->
+        <div class="flex flex-col gap-2">
+            <div class="flex items-center justify-between">
+                <span class="text-[12px] font-medium text-on-surface-variant">Recent</span>
+                <button class="text-on-surface-variant hover:text-on-surface transition-colors p-0.5">
+                    <span class="material-symbols-outlined text-[16px]">refresh</span>
+                </button>
+            </div>
+            <div class="flex flex-col border border-outline-variant rounded overflow-hidden">
+                <!-- Active row -->
+                <button class="flex items-center justify-between w-full px-4 py-3 bg-surface-container-low border-l-2 border-l-primary border-b border-b-outline-variant text-left hover:bg-surface-container-highest transition-colors group">
+                    <div class="flex flex-col gap-0.5 min-w-0">
+                        <span class="text-[14px] font-semibold text-on-surface truncate">transformer-ablations</span>
+                        <span class="font-mono text-[11px] text-on-surface-variant group-hover:text-on-surface transition-colors truncate">~/research/transformer-ablations · 2h ago</span>
+                    </div>
+                    <span class="material-symbols-outlined text-outline-variant text-[16px] group-hover:text-on-surface transition-colors shrink-0 ml-3">chevron_right</span>
+                </button>
+                <!-- Inactive rows -->
+                <button class="flex items-center justify-between w-full px-4 py-3 border-l-2 border-l-transparent border-b border-b-outline-variant text-left hover:bg-surface-container-low transition-colors group">
+                    <div class="flex flex-col gap-0.5 min-w-0">
+                        <span class="text-[14px] font-medium text-on-surface truncate">flow-matching-toy</span>
+                        <span class="font-mono text-[11px] text-on-surface-variant group-hover:text-on-surface transition-colors truncate">~/projects/flow-matching-toy · yesterday</span>
+                    </div>
+                    <span class="material-symbols-outlined text-outline-variant text-[16px] group-hover:text-on-surface transition-colors shrink-0 ml-3">chevron_right</span>
+                </button>
+                <button class="flex items-center justify-between w-full px-4 py-3 border-l-2 border-l-transparent border-b border-b-outline-variant text-left hover:bg-surface-container-low transition-colors group">
+                    <div class="flex flex-col gap-0.5 min-w-0">
+                        <span class="text-[14px] font-medium text-on-surface truncate">mech-interp-mlp</span>
+                        <span class="font-mono text-[11px] text-on-surface-variant group-hover:text-on-surface transition-colors truncate">~/research/mech-interp-mlp · 3 days ago</span>
+                    </div>
+                    <span class="material-symbols-outlined text-outline-variant text-[16px] group-hover:text-on-surface transition-colors shrink-0 ml-3">chevron_right</span>
+                </button>
+                <button class="flex items-center justify-between w-full px-4 py-3 border-l-2 border-l-transparent text-left hover:bg-surface-container-low transition-colors group">
+                    <div class="flex flex-col gap-0.5 min-w-0">
+                        <span class="text-[14px] font-medium text-on-surface truncate">datacomp-replication</span>
+                        <span class="font-mono text-[11px] text-on-surface-variant group-hover:text-on-surface transition-colors truncate">~/projects/datacomp-replication · 1 week ago</span>
+                    </div>
+                    <span class="material-symbols-outlined text-outline-variant text-[16px] group-hover:text-on-surface transition-colors shrink-0 ml-3">chevron_right</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex gap-3">
+            <button class="flex-1 h-9 border border-outline-variant rounded text-[14px] font-medium text-on-surface hover:bg-surface-container-low hover:border-outline transition-colors flex items-center justify-center gap-2">
+                <span class="material-symbols-outlined text-[16px] text-on-surface-variant">folder_open</span>
+                Open folder…
+            </button>
+            <button class="flex-1 h-9 border border-outline-variant rounded text-[14px] font-medium text-on-surface hover:bg-surface-container-low hover:border-outline transition-colors flex items-center justify-center gap-2">
+                <span class="material-symbols-outlined text-[16px] text-on-surface-variant">add</span>
+                New workspace…
+            </button>
+        </div>
+
+        <!-- Divider -->
+        <div class="w-full h-px bg-outline-variant"></div>
+
+        <!-- Status row -->
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+                <span class="w-1.5 h-1.5 rounded-full bg-ok"></span>
+                <span class="font-mono text-[11px] text-on-surface-variant">claude-code · authenticated</span>
+            </div>
+            <a href="#" class="text-[12px] text-on-surface-variant hover:text-on-surface transition-colors">
+                settings
+            </a>
+        </div>
+
+    </div>
+</main>
+
+</body></html>
