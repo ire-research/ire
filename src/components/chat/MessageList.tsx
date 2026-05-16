@@ -30,20 +30,15 @@ export function MessageList({ messages }: MessageListProps) {
   }, [messages.length]);
 
   if (messages.length === 0) {
-    return (
-      <div className="messages messages--empty">
-        <p>Start a conversation. Brainstorm ideas or kick off an experiment.</p>
-      </div>
-    );
+    return <div className="flex-1" />;
   }
 
   return (
-    <div className="messages">
+    <div className="space-y-6">
       {messages.map((m) =>
         m.role === "user" ? (
-          <div key={m.id} className="message message--user">
-            <div className="message__role">You</div>
-            <div className="message__text">
+          <div key={m.id} className="flex justify-end">
+            <div className="bg-surface-container text-on-surface px-4 py-3 rounded border border-outline-variant max-w-[560px] text-[14px] leading-relaxed">
               <MessageMarkdown content={m.text} />
             </div>
           </div>
@@ -57,37 +52,27 @@ export function MessageList({ messages }: MessageListProps) {
 }
 
 function AssistantBubble({ msg }: { msg: AssistantMessage }) {
-  const [thinkingOpen, setThinkingOpen] = useState(false);
   const thinkingRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (msg.isStreaming && thinkingOpen && thinkingRef.current) {
+    if (msg.isStreaming && thinkingRef.current) {
       thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight;
     }
-  }, [msg.thinking, msg.isStreaming, thinkingOpen]);
+  }, [msg.thinking, msg.isStreaming]);
 
   return (
-    <div className="message message--assistant">
-      <div className="message__role">IRE</div>
-
+    <div className="flex flex-col items-start max-w-[720px] space-y-4">
       {msg.thinking && (
-        <div className="thinking-block">
-          <button
-            className="thinking-block__toggle"
-            onClick={() => setThinkingOpen((v) => !v)}
-          >
-            {thinkingOpen ? "▾" : "▸"} Thinking
-          </button>
-          {thinkingOpen && (
-            <div ref={thinkingRef} className="thinking-block__content">
-              {msg.thinking}
-            </div>
-          )}
+        <div className="flex gap-3 text-on-surface-variant text-[13px] w-full">
+          <div className="w-px bg-outline-variant shrink-0 my-1" />
+          <div ref={thinkingRef} className="italic py-1 opacity-80 text-xs">
+            {msg.thinking}
+          </div>
         </div>
       )}
 
       {msg.tools && msg.tools.length > 0 && (
-        <div className="message__tools">
+        <div className="w-full space-y-2">
           {msg.tools.map((tool) =>
             isExperimentStart(tool.tool_name) ? (
               <ExperimentCard key={tool.tool_id} tool={tool} />
@@ -99,17 +84,13 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
       )}
 
       {msg.error ? (
-        <div className="message__text message__error">{msg.error}</div>
+        <div className="text-[14px] text-error">{msg.error}</div>
       ) : msg.text ? (
-        <div className="message__text">
+        <div className="text-on-surface text-[14px] leading-relaxed">
           <MessageMarkdown content={msg.text} />
         </div>
       ) : msg.isStreaming ? (
-        <div className="message__text">
-          <span className="typing-dot" />
-          <span className="typing-dot" />
-          <span className="typing-dot" />
-        </div>
+        <div className="text-on-surface-variant animate-pulse text-[14px]">▌</div>
       ) : null}
     </div>
   );
@@ -119,41 +100,37 @@ function ToolCard({ tool }: { tool: ToolCallState }) {
   const [expanded, setExpanded] = useState(false);
   const canExpand = !!(tool.input_full || tool.output_full);
 
-  return (
-    <div className="tool-card-wrapper">
-      <div
-        className={`tool-card${canExpand ? " tool-card--clickable" : ""}`}
-        onClick={() => canExpand && setExpanded((v) => !v)}
-      >
-        <span className="tool-card__name">[{tool.tool_name}]</span>
-        {tool.input_preview && (
-          <span className="tool-card__input"> {tool.input_preview}</span>
-        )}
-        {tool.isDone && tool.output_preview && (
-          <>
-            <span className="tool-card__sep"> ▸ </span>
-            <span className="tool-card__preview">{tool.output_preview}</span>
-          </>
-        )}
-        {!tool.isDone && <span className="tool-card__running"> …</span>}
-        {canExpand && (
-          <span className="tool-card__chevron">{expanded ? " ▾" : " ▸"}</span>
+  if (tool.isDone) {
+    return (
+      <div className="w-full flex flex-col">
+        <div
+          className="w-full bg-surface-container-low border border-outline-variant rounded px-3 py-2 flex items-center gap-3 text-xs cursor-pointer hover:bg-surface-container transition-colors"
+          onClick={() => canExpand && setExpanded((v) => !v)}
+        >
+          <span className="material-symbols-outlined text-ok text-[16px]">check_circle</span>
+          <span className="font-mono text-on-surface-variant flex-1">{tool.tool_name}</span>
+        </div>
+        {expanded && (
+          <div className="p-3 bg-surface-container-lowest font-mono text-[11px] text-on-surface-variant overflow-x-auto h-32 leading-relaxed">
+            {tool.output_full || tool.input_full}
+          </div>
         )}
       </div>
+    );
+  }
+
+  return (
+    <div className="w-full bg-surface-container border border-warn/40 rounded flex flex-col overflow-hidden">
+      <div
+        className="bg-surface-container-high px-3 py-2 flex items-center gap-3 text-xs border-b border-warn/20 cursor-pointer"
+        onClick={() => canExpand && setExpanded((v) => !v)}
+      >
+        <span className="material-symbols-outlined text-warn text-[16px] animate-spin">progress_activity</span>
+        <span className="font-mono text-warn flex-1">{tool.tool_name}</span>
+      </div>
       {expanded && (
-        <div className="tool-card__expanded">
-          {tool.input_full && (
-            <>
-              <div className="tool-card__section-label">Input</div>
-              <pre className="tool-card__section-pre">{tool.input_full}</pre>
-            </>
-          )}
-          {tool.output_full && (
-            <>
-              <div className="tool-card__section-label">Output</div>
-              <pre className="tool-card__section-pre">{tool.output_full}</pre>
-            </>
-          )}
+        <div className="p-3 bg-surface-container-lowest font-mono text-[11px] text-on-surface-variant overflow-x-auto h-32 leading-relaxed">
+          {tool.output_full || tool.input_full}
         </div>
       )}
     </div>

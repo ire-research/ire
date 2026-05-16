@@ -7,6 +7,22 @@ interface Props {
   tool: ToolCallState;
 }
 
+function dotClass(status: string): string {
+  if (status === "starting" || status === "running") {
+    return "w-2 h-2 rounded-full bg-warn animate-pulse shrink-0";
+  }
+  if (status === "completed") {
+    return "w-2 h-2 rounded-full bg-ok shrink-0";
+  }
+  return "w-2 h-2 rounded-full bg-error shrink-0";
+}
+
+function statusColorClass(status: string): string {
+  if (status === "starting" || status === "running") return "text-warn text-[10px] uppercase";
+  if (status === "completed") return "text-ok text-[10px] uppercase";
+  return "text-error text-[10px] uppercase";
+}
+
 export function ExperimentCard({ tool }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [cancelling, setCancelling] = useState(false);
@@ -28,29 +44,29 @@ export function ExperimentCard({ tool }: Props) {
   };
 
   return (
-    <div className="experiment-card">
+    <div className="w-full border border-outline-variant rounded overflow-hidden">
       <div
-        className="experiment-card__header"
+        className="flex items-center gap-3 px-3 py-2 bg-surface-container-low cursor-pointer text-xs"
         onClick={() => setExpanded((v) => !v)}
         role="button"
         tabIndex={0}
         onKeyDown={(e) => e.key === "Enter" && setExpanded((v) => !v)}
       >
-        <span className={`experiment-card__dot experiment-card__dot--${status}`} />
-        <span className="experiment-card__label">⚗ Experiment</span>
-        <span className={`experiment-card__status experiment-card__status--${status}`}>
-          {statusLabel(status)}
+        <span className={dotClass(status)} />
+        <span className="font-mono text-on-surface-variant flex-1">
+          ⚗ {tool.tool_name || "Experiment"}
         </span>
+        <span className={statusColorClass(status)}>{statusLabel(status)}</span>
         {tool.experimentPid !== undefined && (
-          <span className="experiment-card__pid">PID {tool.experimentPid}</span>
+          <span className="text-[10px] text-on-surface-variant/60">PID {tool.experimentPid}</span>
         )}
         {tool.experimentExitCode !== undefined && status === "failed" && (
-          <span className="experiment-card__exit">exit {tool.experimentExitCode}</span>
+          <span className="text-[10px] text-on-surface-variant/60">exit {tool.experimentExitCode}</span>
         )}
-        <span className="experiment-card__chevron">{expanded ? "▾" : "▸"}</span>
+        <span className="text-on-surface-variant">{expanded ? "▾" : "▸"}</span>
         {isLive && tool.experimentUuid && (
           <button
-            className="experiment-card__cancel"
+            className="text-[11px] text-on-surface-variant border border-outline-variant px-1.5 py-0.5 rounded hover:border-error hover:text-error transition-colors"
             disabled={cancelling}
             onClick={handleCancel}
           >
@@ -61,13 +77,15 @@ export function ExperimentCard({ tool }: Props) {
 
       {expanded && (
         lines.length > 0 ? (
-          <div className="experiment-card__log-tail">
+          <div className="p-3 bg-surface-container-lowest font-mono text-[11px] text-on-surface-variant leading-relaxed max-h-32 overflow-y-auto">
             {lines.slice(-10).map((line, i) => (
-              <div key={i} className="experiment-card__log-line">{line}</div>
+              <div key={i}>{line}</div>
             ))}
           </div>
         ) : (
-          <div className="experiment-card__empty">No output yet.</div>
+          <div className="p-3 bg-surface-container-lowest font-mono text-[11px] text-on-surface-variant">
+            No output yet.
+          </div>
         )
       )}
     </div>
