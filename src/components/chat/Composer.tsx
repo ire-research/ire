@@ -12,6 +12,7 @@ export function Composer({ onSend, disabled }: ComposerProps) {
   const [effortOpen, setEffortOpen] = useState(false);
   const modelRef = useRef<HTMLDivElement>(null);
   const effortRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { model, effort, setModel, setEffort } = useChatOptions();
   const modelLabel = MODELS.find((m) => m.id === model)?.label ?? model;
@@ -39,6 +40,14 @@ export function Composer({ onSend, disabled }: ComposerProps) {
     return () => document.removeEventListener("mousedown", handleClick);
   }, [effortOpen]);
 
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 240)}px`;
+    el.style.overflowY = el.scrollHeight > 240 ? "auto" : "hidden";
+  }, [text]);
+
   const handleSend = () => {
     const trimmed = text.trim();
     if (!trimmed || disabled) return;
@@ -56,6 +65,7 @@ export function Composer({ onSend, disabled }: ComposerProps) {
   return (
     <div className="bg-surface-container border border-outline-variant rounded-lg shadow-lg shadow-black/30 flex flex-col overflow-visible">
       <textarea
+        ref={textareaRef}
         id="composer-textarea"
         className="w-full bg-transparent border-none text-on-surface text-[14px] focus:ring-0 px-3 py-2.5 placeholder-on-surface-variant/50 outline-none resize-none"
         placeholder="Message IRE…"
@@ -111,10 +121,6 @@ export function Composer({ onSend, disabled }: ComposerProps) {
               ))}
             </div>
           </div>
-          {/* Slash button */}
-          <button className="p-1.5 text-on-surface-variant hover:bg-surface-container-high rounded hover:text-on-surface transition-colors font-mono text-[11px]">
-            /
-          </button>
         </div>
         {/* Right: hint + send */}
         <div className="flex items-center gap-2">

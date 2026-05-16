@@ -243,7 +243,7 @@ export function ChatPane() {
 
   if (activeTab.kind === "preview") {
     return (
-      <section className="flex flex-col flex-1 overflow-hidden bg-background">
+      <section className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
         <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTab} onClose={handleCloseTab} onNew={handleNewTab} />
         <div className="flex-1 overflow-hidden relative">
           <ResourcePreviewPane title={activeTab.label} content={previewContent} />
@@ -252,7 +252,7 @@ export function ChatPane() {
     );
   } else if (activeTab.kind === "experiment") {
     return (
-      <section className="flex flex-col flex-1 overflow-hidden bg-background">
+      <section className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
         <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTab} onClose={handleCloseTab} onNew={handleNewTab} />
         <div className="flex-1 overflow-hidden relative">
           <div className="absolute inset-0 overflow-y-auto px-4 py-4 pb-8">
@@ -264,7 +264,7 @@ export function ChatPane() {
   }
 
   return (
-    <section className="flex flex-col flex-1 overflow-hidden bg-background">
+    <section className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
       <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTab} onClose={handleCloseTab} onNew={handleNewTab} />
       <div className="flex items-center justify-end px-4 h-8 shrink-0 border-b border-outline-variant/30">
         {activeTab.isStreaming && (

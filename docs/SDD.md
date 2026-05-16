@@ -134,10 +134,12 @@ my_research_project/
 │       ├── _SYSTEM.md               # IRE framework context — injected first into every CC turn
 │       ├── _index.md                # Master index (path → one-line summary)
 │       ├── _schema.md               # Conventions for CC
-│       ├── notes.md                 # User notes (cleaned by ingestion)
-│       ├── ideas.md                 # User ideas (cleaned by ingestion)
+│       ├── notes.md                 # User notes
+│       ├── ideas.json               # User ideas (`{ id, text, trashed, order }`)
+│       ├── pulse/
+│       │   ├── RESEARCH-QUESTION.md # Current research question
+│       │   └── THIS-WEEK.md         # This week's focus
 │       ├── status/
-│       │   ├── pulse.md             # Research question + blocker + focus banner
 │       │   ├── long-term.md         # Agent-written architectural decisions
 │       │   ├── failures.md          # Structured "what didn't work"
 │       │   └── short-term/
@@ -224,7 +226,7 @@ On startup, IRE reads `~/.config/ire/config.json` and applies the persisted them
 2. Backend:
    - `git init` if no `.git/`.
    - Scaffold `.ire/` per [§4](#4-directory-layout).
-   - Write seed files: empty `notes.md`, empty `ideas.md`, `pulse.md` with placeholders, `_schema.md` (canned), `_SYSTEM.md` (canned), `_index.md` (auto-built from the seed).
+   - Write seed files: empty `notes.md`, empty `ideas.json`, split `pulse/RESEARCH-QUESTION.md` / `pulse/THIS-WEEK.md` placeholders, `_schema.md` (canned), `_SYSTEM.md` (canned), `_index.md` (auto-built from the seed).
    - Append IRE entries to `.gitignore` (create if missing).
    - `git add .ire/wiki .gitignore && git commit -m "Initialize IRE workspace"`.
 3. Continue from step 3 of [§5.2](#52-open-existing).
@@ -273,7 +275,8 @@ No CAS, no advisory file lock, no WAL — single-instance is enforced by `.lock`
 `_index.md` is a flat markdown list:
 ```
 - [notes.md](./notes.md) — running user notes
-- [status/pulse.md](./status/pulse.md) — current research question + blocker
+- [pulse/RESEARCH-QUESTION.md](./pulse/RESEARCH-QUESTION.md) — current research question
+- [pulse/THIS-WEEK.md](./pulse/THIS-WEEK.md) — this week's focus
 - [resources/attention-is-all-you-need.md](./resources/attention-is-all-you-need.md) — Vaswani et al. (2017): self-attention transformer …
 ```
 
@@ -286,7 +289,7 @@ Wiki paths split into two classes based on **who decides when the change becomes
 | Class | Paths | Commit trigger |
 |---|---|---|
 | **Auto-tracked** | `status/**`, `_schema.md`, `_index.md` | Every `WikiStore` write commits immediately. |
-| **User-tracked** | `notes.md`, `ideas.md`, `resources/**` | Written to disk on every change, but **only committed** when the user explicitly submits (notes/ideas Submit button) or approves (resource summary review). |
+| **User-tracked** | `notes.md`, `ideas.json`, `resources/**` | Written to disk on every change, but **only committed** when the user explicitly submits or approves (resource summary review). |
 
 Rationale: memory and operational state should be durably versioned without human-in-the-loop friction; user-facing artefacts deserve an explicit commit gesture so the user can review and edit before the change becomes part of git history.
 
@@ -369,7 +372,7 @@ No CC turn is triggered. CC reads `notes.md` only if the user explicitly request
 
 ### 8.2 Ideas ingestion
 
-Identical to notes ingestion ([§8.1](#81-notes-ingestion)), target `wiki/ideas.md`. No CC turn is triggered.
+Ideas are stored directly in `wiki/ideas.json` through `read_ideas` / `save_ideas_json`. Clicking Add in `IdeasPane` opens an inline draft card; pressing Enter writes a new `{ id, text, trashed: false, order }` entry and reorders active ideas. Clicking the trash icon soft-deletes by setting `trashed: true`; trashed ideas remain in JSON but are hidden from the pane. Drag-to-reorder rewrites active `order` values. No CC turn is triggered.
 
 ### 8.3 Resource ingestion
 
@@ -705,27 +708,28 @@ No table for chat messages — the CC session is the source of truth, and `--res
 ### 13.1 Layout
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│ Top bar:    [Workspace name]  [Mode: Brainstorm | Experiment]   ⚙   │
-├─────────────┬───────────────────────────────────────┬───────────────┤
-│ ▸ FOCUS     │                                       │ ▸ Notes       │
-│  pulse.md   │                                       │  notes.md     │
-│  [edit/pre] │                                       │  [edit/pre]   │
-│             │     Central pane: Chat / Preview      │  [Submit]     │
-├─────────────┤     - streaming text                  ├───────────────┤
-│ ▸ Resources │     - thinking blocks (collapsible)   │ ▸ Ideas       │
-│  list view  │     - tool cards (Read, Bash, …)      │  ideas.md     │
-│  click→pane │     - experiment status cards         │  [edit/pre]   │
-│             │     [input box]                       │  [Submit]     │
-│             │                                       │               │
-│             │                                       │ ▸ Resource    │
-│             │                                       │  url + Submit │
-└─────────────┴───────────────────────────────────────┴───────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ Navbar (h-10):  [running N exp badge]            [close] [⚙ settings]│
+├──────────────────┬──────────────────────────────┬────────────────────┤
+│ Left rail 280px  │   ChatPane (flex-1)           │ Right rail 320px   │
+│  FocusPane       │   - tab bar                  │  NotesPane         │
+│  - Research Q.   │   - message list              │  - inline edit     │
+│  - This Week     │   - composer                 │  IdeasPane         │
+│  ResourcesSection│   - experiment tab view      │  - draggable cards │
+│  ExperimentsSection   (kind="experiment")        │  AddResourceSection│
+│  - experiment list                               │  - URL input       │
+└──────────────────┴──────────────────────────────┴────────────────────┘
+│ StatusBar: git branch + diff · CPU · GPU · RAM · hostname · cc-conn  │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-- All splits use `react-resizable-panels`. Each pane has a collapse button.
-- The **Focus banner** is the top of the left column (`pulse.md`'s `focus` field), permanently visible unless the whole left column is collapsed.
-- Markdown panes have a single toggle: **Edit** (textarea) ↔ **Preview** (rendered). No side-by-side.
+- The body uses `react-resizable-panels` group `body` with panels `left`, `center`, and `right`. Left/right default to 280px/320px and clamp to 160-420px / 180-440px. The center panel takes the remaining space and has a 320px minimum.
+- The left rail is a vertical `react-resizable-panels` group `left` with panels `pulse`, `resources`, and `experiments`; row handles sit between Focus / Resources and Resources / Experiments.
+- The right rail is a vertical `react-resizable-panels` group `right` with panels `notes`, `ideas`, and `resource-input`; row handles sit between Notes / Ideas and Ideas / Add resource.
+- `ResourcesSection` and `ExperimentsSection` always render their title rows with the Material Symbols icons `description` and `science`. Empty lists show `no resources yet` and `no experiments yet`.
+- `IdeasPane` renders active ideas sorted by `order`, opens an inline draft card on Add, saves the draft to `ideas.json` on Enter, and hides trashed ideas by persisting `trashed: true`.
+- `FocusPane` and `NotesPane` use **inline editing**: clicking a field activates a textarea in place; blur/Enter saves. No separate Edit/Preview toggle.
+- The bottom `StatusBar` polls `get_system_status` every 5 s and displays real system metrics.
 
 ### 13.2 Chat rendering
 
@@ -745,16 +749,16 @@ No table for chat messages — the CC session is the source of truth, and `--res
 - Experiment cards are special: collapsed by default; clicking the header toggles a log body. The header contains a status dot (blinking green while `starting`/`running`, solid green for `completed`, solid red for `failed`/`cancelled`), a text status pill, a chevron (▸/▾), and a **Cancel** button (visible only while `starting` or `running`). Expanded body shows the last 10 log lines streamed live from the experiment, or "No output yet." if none have arrived. The Cancel button calls `e.stopPropagation()` so it does not toggle the card.
 
 **Composer footer.** Below the textarea, a footer bar holds two dropdown selectors and the Send button. Both dropdowns share the same visual style (a small pill button that opens a menu above it):
+- The textarea starts at 52px high, grows with content, caps at 240px, then scrolls internally.
 - **Model** — selects the Claude model; options come from `MODELS` in `state/chatOptions.ts` (Haiku 4.5, Sonnet 4.6, Opus 4.7). Default: Haiku 4.5.
 - **Effort** — selects the thinking-budget level; options come from `EFFORT_LEVELS` (Low → Med → High → XHigh → Max). Default: **Low**. Persisted to `.ire/workspace.json` (debounced 1 s) and rehydrated on workspace open.
 Both values are passed as `options: { model, effort }` on every `chat_send` invocation.
 
 ### 13.3 Edit/preview toggle behaviour
 
-- Default state per pane: **Preview**.
-- Switching to Edit loads the raw file contents.
-- Switching back to Preview without Submit **discards** local edits (with a confirm if dirty).
-- Submit runs the corresponding ingestion pipeline ([§8](#8-pipelines)) **and commits** the cleaned `notes.md` / `ideas.md` (+ index) to git with a templated message.
+- Resource preview tabs open in **Preview** by default. Switching to Edit loads the raw file contents; switching back to Preview without Submit discards local edits (with a confirm if dirty). Submit calls `save_wiki_file`.
+- `NotesPane` edits `notes.md` inline and saves through `save_notes` on blur / Ctrl+Enter.
+- `IdeasPane` does not use markdown edit/preview. It writes the structured `ideas.json` list directly via `save_ideas_json`.
 
 ### 13.4 Resource list
 
@@ -779,8 +783,8 @@ The UI supports dark and light themes. Dark is the default. A toggle button in t
   "panel_layout": {
     "groups": {
       "body":  { "left": 22, "center": 56, "right": 22 },
-      "left":  { "pulse": 55, "resources": 45 },
-      "right": { "notes": 40, "ideas": 40, "resource-input": 20 }
+      "left":  { "pulse": 33.33, "resources": 33.33, "experiments": 33.34 },
+      "right": { "notes": 33.33, "ideas": 33.33, "resource-input": 33.34 }
     }
   },
   "last_opened": "2026-05-06T10:14:00Z",
@@ -834,7 +838,8 @@ Stores preferences that apply across all workspaces. Path: `$XDG_CONFIG_HOME/ire
 | `read_wiki_file` | `{ path }` | `{ content, frontmatter }` |
 | `save_wiki_file` | `{ path, content }` | `{}` (atomic write + user commit for the given wiki-relative path) |
 | `save_notes` | `{ content }` | `{}` (kicks ingestion + user commit on success) |
-| `save_ideas` | `{ content }` | `{}` (kicks ingestion + user commit on success) |
+| `read_ideas` | — | `IdeaItem[]` from `ideas.json` |
+| `save_ideas_json` | `{ ideas }` | `{}` (writes `ideas.json`) |
 | `submit_resource` | `{ url }` | `{ resource_id }` |
 | `index_resource` | `{ resource_id }` | `{}` (commits `resources/<slug>.md` + `_index.md`) |
 | `discard_resource` | `{ resource_id }` | `{}` (deletes file, marks rejected) |
@@ -848,7 +853,8 @@ Stores preferences that apply across all workspaces. Path: `$XDG_CONFIG_HOME/ire
 | `save_workspace_state` | `{ state: PersistedWorkspace }` | `{}` (debounced from frontend; atomic write) |
 | `read_user_config` | — | `UserConfig` (theme + recent workspaces from `~/.config/ire/config.json`) |
 | `save_user_config` | `{ config: UserConfig }` | `{}` (writes full config; called on theme toggle) |
-| `update_pulse_focus` | `{ focus }` | `{}` (replaces `**Focus:** …` line in `status/pulse.md`; auto-committed) |
+| `read_pulse` | — | `{ research_question, this_week }` |
+| `save_pulse_field` | `{ field: "research_question" \| "this_week", content }` | `{}` (writes the matching split pulse file) |
 
 ### 14.2 Events (backend → frontend)
 
@@ -993,7 +999,7 @@ Each phase ends with a demoable milestone.
 
 **Phase 1 — Workspace lifecycle.** Implement setup screen, binary discovery, `init_workspace`, `open_workspace`, `.lock`, `close_workspace`. Scaffold `.ire/` with seed wiki. *Milestone:* user can pick or init a workspace; `.ire/` materialises; lock works across restarts. ✅
 
-**Phase 2 — Wiki store + memory tools (no CC yet).** `WikiStore` with atomic writes, `_index.md` regeneration, `log.md` append. SQLite migrations. Frontend reads `pulse.md`, `notes.md`, `ideas.md` and renders edit/preview. *Milestone:* user can manually edit notes and see them persisted; `wiki-changed` events propagate. ✅
+**Phase 2 — Wiki store + memory tools (no CC yet).** `WikiStore` with atomic writes, `_index.md` regeneration, `log.md` append. SQLite migrations. Frontend reads split pulse files, `notes.md`, and `ideas.json`. *Milestone:* user can manually edit notes and see them persisted; `wiki-changed` events propagate. ✅
 
 **Phase 3 — CC subprocess layer.** Binary discovery + spawn + NDJSON parser + session management. A debug "Send" button next to the chat pane that sends a raw message and renders streaming text only (no tool cards yet). No MCP yet. *Milestone:* user can chat with CC inside the central pane, multi-turn via `--resume`. ✅
 
@@ -1003,7 +1009,7 @@ Each phase ends with a demoable milestone.
 
 **Phase 6 — Experiments.** `experiment.start`, detached subprocess, monitor, wake-up turn composition. Experiment cards in chat with live log tail. *Milestone:* CC can run a Python script ablation, tell the user "I'll be back", and resume with results when the script exits. ✅
 
-**Phase 7 — Polish.** `workspace.json` persistence (theme + per-group panel layouts via `read_workspace_state` / `save_workspace_state`, debounced 1 s, hydrated before the Layout mounts). Error toast stack (top-right) wired to a frontend `useToasts` zustand store; subscribes to the backend `error` event and replaces silent `console.error` calls in user-facing flows. Cancel button on `ExperimentCard` (visible while status is `starting` or `running`) calls `experiment_cancel`. Inline focus-banner editor: click the banner to edit, Enter / blur saves through `update_pulse_focus`, Escape cancels. *Milestone:* layout, theme, and focus survive restart; user-visible failures surface as toasts; experiments can be cancelled from the chat.
+**Phase 7 — Polish.** `workspace.json` persistence (theme + per-group panel layouts via `read_workspace_state` / `save_workspace_state`, debounced 1 s, hydrated before the Layout mounts). Error toast stack (top-right) wired to a frontend `useToasts` zustand store; subscribes to the backend `error` event and replaces silent `console.error` calls in user-facing flows. Cancel button on `ExperimentCard` (visible while status is `starting` or `running`) calls `experiment_cancel`. Inline focus editor saves split fields through `save_pulse_field`. *Milestone:* layout, theme, and focus survive restart; user-visible failures surface as toasts; experiments can be cancelled from the chat.
 
 ---
 

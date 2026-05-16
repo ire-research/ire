@@ -21,10 +21,6 @@ function getStatusPill(status: string): { text: string; textColor: string; borde
 }
 
 export function ExperimentsSection({ experiments, onOpen }: Props) {
-  if (experiments.length === 0) {
-    return <div />;
-  }
-
   return (
     <div className="overflow-y-auto flex-1 py-1">
       <div className="flex items-center gap-2 px-4 py-2 text-on-surface-variant text-[14px]">
@@ -32,21 +28,25 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
         Experiments
       </div>
       <div className="px-4 pb-1 space-y-0.5">
-        {experiments.map((exp) => {
-          const pill = getStatusPill(exp.status);
-          return (
-            <button
-              key={exp.uuid}
-              onClick={() => onOpen(exp.uuid, exp.name)}
-              className="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-surface-container-high transition-colors cursor-pointer"
-            >
-              <span className="font-mono text-[13px] text-on-surface truncate pr-2">{exp.name}</span>
-              <span className={`text-[10px] uppercase border ${pill.borderColor} px-1 rounded ${pill.textColor} ${pill.bgColor} shrink-0`}>
-                {pill.text}
-              </span>
-            </button>
-          );
-        })}
+        {experiments.length > 0 ? (
+          experiments.map((exp) => {
+            const pill = getStatusPill(exp.status);
+            return (
+              <button
+                key={exp.uuid}
+                onClick={() => onOpen(exp.uuid, exp.name)}
+                className="w-full flex items-center justify-between px-2 py-1.5 rounded hover:bg-surface-container-high transition-colors cursor-pointer"
+              >
+                <span className="font-mono text-[13px] text-on-surface truncate pr-2">{exp.name}</span>
+                <span className={`text-[10px] uppercase border ${pill.borderColor} px-1 rounded ${pill.textColor} ${pill.bgColor} shrink-0`}>
+                  {pill.text}
+                </span>
+              </button>
+            );
+          })
+        ) : (
+          <p className="px-2 py-1.5 text-[13px] text-on-surface-variant italic">no experiments yet</p>
+        )}
       </div>
     </div>
   );

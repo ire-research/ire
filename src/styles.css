@@ -16,7 +16,46 @@
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* field-sizing for auto-resize textarea */
+.drag-handle-col {
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 120ms ease-out;
+  position: relative;
+  z-index: 10;
+}
+.drag-handle-col:hover,
+.drag-handle-col:active { background: #474750; }
+.drag-handle-col::after {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
+}
+
+.drag-handle-row {
+  height: 4px;
+  cursor: row-resize;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background 120ms ease-out;
+  position: relative;
+  z-index: 10;
+  width: 100%;
+}
+.drag-handle-row:hover,
+.drag-handle-row:active { background: #474750; }
+.drag-handle-row::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}
+
+/* Auto-resizing composer textarea */
 #composer-textarea {
+  min-height: 52px;
+  max-height: 240px;
+  overflow-y: auto;
+  resize: none;
   field-sizing: content;
 }

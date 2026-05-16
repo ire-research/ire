@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Group, Panel, Separator } from "react-resizable-panels";
 import { ipc, onWikiChanged } from "../ipc";
 import { useWorkspace } from "../state/workspace";
 import { useChatOptions } from "../state/chatOptions";
@@ -13,6 +14,8 @@ export function Layout() {
   const phase = useWorkspace((s) => s.phase);
   const setPhase = useWorkspace((s) => s.setPhase);
   const toPersisted = useWorkspace((s) => s.toPersisted);
+  const panelLayout = useWorkspace((s) => s.panelLayout);
+  const setGroupLayout = useWorkspace((s) => s.setGroupLayout);
   const effort = useChatOptions((s) => s.effort);
 
   const [pulseObject, setPulseObject] = useState<PulseContent>({ research_question: "", this_week: "" });
@@ -88,13 +91,26 @@ export function Layout() {
   };
 
   const handleSaveIdeas = async (updatedIdeas: IdeaItem[]) => {
-    await ipc.saveIdeasJson(updatedIdeas).catch((e) => toastError("save ideas", e));
+    try {
+      await ipc.saveIdeasJson(updatedIdeas);
+      setIdeas(updatedIdeas);
+    } catch (e) {
+      toastError("save ideas", e);
+    }
   };
 
   const railResources = resources.map((r) => ({
     label: r.title ?? r.url,
     wikiPath: r.wiki_path ?? "",
   }));
+  const storedBodyLayout = panelLayout.groups?.body;
+  const bodyLayout =
+    storedBodyLayout &&
+    Number.isFinite(storedBodyLayout.left) &&
+    Number.isFinite(storedBodyLayout.center) &&
+    Number.isFinite(storedBodyLayout.right)
+      ? storedBodyLayout
+      : undefined;
 
   return (
     <div className="flex flex-col h-screen bg-background text-on-surface overflow-hidden">
@@ -124,16 +140,44 @@ export function Layout() {
         </div>
       </header>
       {/* Main content: rails + center */}
-      <div className="flex flex-1 overflow-hidden">
-        <LeftRail pulse={pulseObject} resources={railResources} />
-        <ChatPane />
-        <RightRail
-          notes={notesContent}
-          ideas={ideas}
-          onSaveNotes={handleSaveNotes}
-          onSaveIdeas={handleSaveIdeas}
-        />
-      </div>
+      <Group
+        id="body"
+        orientation="horizontal"
+        className="flex-1 overflow-hidden"
+        defaultLayout={bodyLayout}
+        onLayoutChanged={(layout) => setGroupLayout("body", layout)}
+      >
+        <Panel
+          id="left"
+          className="h-full"
+          defaultSize="280px"
+          minSize="160px"
+          maxSize="420px"
+          groupResizeBehavior="preserve-pixel-size"
+        >
+          <LeftRail pulse={pulseObject} resources={railResources} />
+        </Panel>
+        <Separator id="body-left-center" className="drag-handle-col" />
+        <Panel id="center" className="h-full min-w-0" minSize="320px">
+          <ChatPane />
+        </Panel>
+        <Separator id="body-center-right" className="drag-handle-col" />
+        <Panel
+          id="right"
+          className="h-full"
+          defaultSize="320px"
+          minSize="180px"
+          maxSize="440px"
+          groupResizeBehavior="preserve-pixel-size"
+        >
+          <RightRail
+            notes={notesContent}
+            ideas={ideas}
+            onSaveNotes={handleSaveNotes}
+            onSaveIdeas={handleSaveIdeas}
+          />
+        </Panel>
+      </Group>
       {/* Bottom status bar */}
       <StatusBar />
     </div>

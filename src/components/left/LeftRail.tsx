@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { Group, Panel, Separator } from "react-resizable-panels";
 import type { ExperimentRow, PulseContent } from "../../types";
 import { ipc } from "../../ipc";
 import { useChat } from "../../state/chat";
+import { useWorkspace } from "../../state/workspace";
 import { FocusPane } from "./FocusPane";
 import { ResourcesSection } from "./ResourcesSection";
 import { ExperimentsSection } from "./ExperimentsSection";
@@ -20,6 +22,15 @@ export function LeftRail({ pulse, resources }: Props) {
   const [experiments, setExperiments] = useState<ExperimentRow[]>([]);
   const openPreviewTab = useChat((s) => s.openPreviewTab);
   const openExperimentTab = useChat((s) => s.openExperimentTab);
+  const groupLayout = useWorkspace((s) => s.panelLayout.groups?.left);
+  const setGroupLayout = useWorkspace((s) => s.setGroupLayout);
+  const defaultLayout =
+    groupLayout &&
+    Number.isFinite(groupLayout.pulse) &&
+    Number.isFinite(groupLayout.resources) &&
+    Number.isFinite(groupLayout.experiments)
+      ? groupLayout
+      : undefined;
 
   useEffect(() => {
     const loadExperiments = async () => {
@@ -39,30 +50,26 @@ export function LeftRail({ pulse, resources }: Props) {
   }, []);
 
   return (
-    <nav
-      className="bg-surface-container-low border-r border-outline-variant flex flex-col overflow-hidden"
-      style={{ width: 280, minWidth: 160, maxWidth: 420 }}
-    >
-      {/* Focus: top third */}
-      <div className="flex flex-col overflow-hidden" style={{ minHeight: 80, height: "calc((100vh - 64px) / 3)" }}>
-        <FocusPane pulse={pulse} />
-      </div>
-
-      {/* Divider */}
-      <div className="h-px bg-outline-variant shrink-0"></div>
-
-      {/* Resources: middle third */}
-      <div className="flex flex-col overflow-hidden" style={{ minHeight: 60, height: "calc((100vh - 64px) / 3)" }}>
-        <ResourcesSection resources={resources} onOpen={openPreviewTab} />
-      </div>
-
-      {/* Divider */}
-      <div className="h-px bg-outline-variant shrink-0"></div>
-
-      {/* Experiments: flex-1 (takes remaining space) */}
-      <div className="flex flex-col overflow-hidden flex-1" style={{ minHeight: 60 }}>
-        <ExperimentsSection experiments={experiments} onOpen={openExperimentTab} />
-      </div>
+    <nav className="h-full bg-surface-container-low border-r border-outline-variant flex flex-col overflow-hidden">
+      <Group
+        id="left"
+        orientation="vertical"
+        className="flex-1 overflow-hidden"
+        defaultLayout={defaultLayout}
+        onLayoutChanged={(layout) => setGroupLayout("left", layout)}
+      >
+        <Panel id="pulse" className="flex flex-col overflow-hidden" defaultSize={33.33} minSize="80px">
+          <FocusPane pulse={pulse} />
+        </Panel>
+        <Separator id="left-focus-resources" className="drag-handle-row border-t border-outline-variant" />
+        <Panel id="resources" className="flex flex-col overflow-hidden" defaultSize={33.33} minSize="60px">
+          <ResourcesSection resources={resources} onOpen={openPreviewTab} />
+        </Panel>
+        <Separator id="left-resources-experiments" className="drag-handle-row border-t border-outline-variant" />
+        <Panel id="experiments" className="flex flex-col overflow-hidden" defaultSize={33.34} minSize="60px">
+          <ExperimentsSection experiments={experiments} onOpen={openExperimentTab} />
+        </Panel>
+      </Group>
     </nav>
   );
 }
