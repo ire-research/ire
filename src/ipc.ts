@@ -92,6 +92,8 @@ export const ipc = {
     invoke("experiment_logs", { uuid, kb }),
   experimentCancel: (uuid: string): Promise<void> =>
     invoke("experiment_cancel", { uuid }),
+  experimentDelete: (uuid: string): Promise<void> =>
+    invoke("experiment_delete", { uuid }),
   readUserConfig: (): Promise<UserConfig> => invoke("read_user_config"),
   saveUserConfig: (config: UserConfig): Promise<void> =>
     invoke("save_user_config", { config }),

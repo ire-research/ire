@@ -92,10 +92,10 @@ export function SetupScreen({ status, onRefresh }: Props) {
                 No recent workspaces
               </div>
             ) : (
-              recentWorkspaces.map((path, index) => {
+              recentWorkspaces.slice(0, 5).map((path, index) => {
                 const name = path.split("/").filter(Boolean).pop() ?? path;
                 const isActive = index === 0;
-                const isLast = index === recentWorkspaces.length - 1;
+                const isLast = index === Math.min(recentWorkspaces.length, 5) - 1;
                 return (
                   <button
                     key={path}

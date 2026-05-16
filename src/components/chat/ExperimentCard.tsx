@@ -76,17 +76,34 @@ export function ExperimentCard({ tool }: Props) {
       </div>
 
       {expanded && (
-        lines.length > 0 ? (
-          <div className="p-3 bg-surface-container-lowest font-mono text-[11px] text-on-surface-variant leading-relaxed max-h-32 overflow-y-auto">
-            {lines.slice(-10).map((line, i) => (
-              <div key={i}>{line}</div>
-            ))}
-          </div>
-        ) : (
-          <div className="p-3 bg-surface-container-lowest font-mono text-[11px] text-on-surface-variant">
-            No output yet.
-          </div>
-        )
+        <div className="bg-surface-container-lowest border-t border-outline-variant font-mono text-[11px] leading-relaxed">
+          {tool.input_full && (
+            <div className="grid grid-cols-[42px_minmax(0,1fr)] border-b border-outline-variant">
+              <div className="px-3 py-2 text-on-surface-variant/60 uppercase">IN</div>
+              <pre className="px-3 py-2 text-on-surface-variant whitespace-pre-wrap break-words overflow-x-auto">{tool.input_full}</pre>
+            </div>
+          )}
+          {lines.length > 0 ? (
+            <div className="grid grid-cols-[42px_minmax(0,1fr)]">
+              <div className="px-3 py-2 text-on-surface-variant/60 uppercase">OUT</div>
+              <div className="px-3 py-2 text-on-surface-variant max-h-32 overflow-y-auto">
+                {lines.slice(-10).map((line, i) => (
+                  <div key={i}>{line}</div>
+                ))}
+              </div>
+            </div>
+          ) : tool.output_full ? (
+            <div className="grid grid-cols-[42px_minmax(0,1fr)]">
+              <div className="px-3 py-2 text-on-surface-variant/60 uppercase">OUT</div>
+              <pre className="px-3 py-2 text-on-surface-variant whitespace-pre-wrap break-words overflow-x-auto">{tool.output_full}</pre>
+            </div>
+          ) : (
+            <div className="grid grid-cols-[42px_minmax(0,1fr)]">
+              <div className="px-3 py-2 text-on-surface-variant/60 uppercase">OUT</div>
+              <div className="px-3 py-2 text-on-surface-variant/40">No output yet.</div>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

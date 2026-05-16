@@ -34,6 +34,8 @@ interface ChatStore {
   updateExperimentStatus: (uuid: string, status: ExperimentStatus, exitCode?: number) => void;
   /** Append a log line to the experiment card with the given UUID. */
   appendExperimentLog: (uuid: string, line: string) => void;
+  /** Remove a tool card by tool_id from all messages across all tabs. */
+  removeTool: (toolId: string) => void;
 }
 
 let seq = 0;
@@ -335,6 +337,19 @@ export const useChat = create<ChatStore>((set) => ({
       }
       return s;
     }),
+
+  removeTool: (toolId) =>
+    set((s) => ({
+      tabs: s.tabs.map((tab) => ({
+        ...tab,
+        messages: tab.messages.map((m) => {
+          if (m.role !== "assistant") return m;
+          const am = m as AssistantMessage;
+          if (!am.tools?.some((t) => t.tool_id === toolId)) return m;
+          return { ...am, tools: am.tools.filter((t) => t.tool_id !== toolId) };
+        }),
+      })),
+    })),
 }));
 
 export { MAIN_TAB_ID };

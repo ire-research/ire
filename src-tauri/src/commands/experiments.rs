@@ -69,6 +69,19 @@ pub fn experiment_cancel(
     Ok(())
 }
 
+#[tauri::command]
+pub fn experiment_delete(
+    active: State<'_, ActiveWorkspace>,
+    uuid: String,
+) -> Result<(), String> {
+    let workspace_path = {
+        let guard = active.0.lock().map_err(|e| e.to_string())?;
+        guard.as_ref().ok_or("no workspace open")?.state.path.clone()
+    };
+    let ire_dir = workspace_path.join(".ire");
+    db::delete_experiment(&ire_dir, &uuid).map_err(|e| e.to_string())
+}
+
 fn read_tail(path: &std::path::Path, max_bytes: u64) -> String {
     let Ok(content) = fs::read(path) else { return String::new() };
     let len = content.len() as u64;

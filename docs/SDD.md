@@ -579,9 +579,8 @@ enum StreamEvent {
     Init { session_id: String },
     TextDelta { text: String },
     ThinkingDelta { text: String },
-    ToolStart { tool_id: String, tool_name: String, input_preview: Option<String> },
-    ToolInputDelta { tool_id: String, partial_json: String },
-    ToolDone { tool_id: String, output_preview: Option<String> },
+    ToolStart { tool_id: String, tool_name: String, input_preview: Option<String>, input_full: Option<String> },
+    ToolDone { tool_id: String, output_preview: Option<String>, output_full: Option<String> },
     Result { text: Option<String>, session_id: String },
     Error { message: String },
     Done,
@@ -744,8 +743,8 @@ No table for chat messages — the CC session is the source of truth, and `--res
 
 **Messages.** Text is streamed character-by-character into the latest assistant bubble.
 - Both user and assistant text are rendered through `MessageMarkdown` (`react-markdown` + `remark-gfm` + `remark-math` + `rehype-katex`). GitHub-flavoured markdown — tables, fenced code, task lists — and LaTeX (`$…$`, `$$…$$`) display inline. KaTeX CSS is imported once in `main.tsx`. Inline HTML is intentionally **not** enabled (no `rehype-raw`); raw HTML in the model output is shown as text or inside a fenced code block, never injected into the DOM.
-- Thinking blocks render as a collapsed-by-default accordion ("Thinking…"). Content is plain text (not markdown-parsed) since thinking traces are rarely well-formed markdown.
-- Tool calls render as cards: `[Read] path/to/file ▸ output preview`. Clicking expands the full output.
+- Thinking blocks render as a collapsed-by-default accordion whose only collapsed label is `thinking...`. Clicking the label expands or collapses the full thinking content. Content is plain text (not markdown-parsed) since thinking traces are rarely well-formed markdown.
+- Tool calls render as compact cards. Clicking expands a Claude-Code-style I/O panel with labeled `IN` and `OUT` monospace fields when the tool input/output is available.
 - Experiment cards are special: collapsed by default; clicking the header toggles a log body. The header contains a status dot (blinking green while `starting`/`running`, solid green for `completed`, solid red for `failed`/`cancelled`), a text status pill, a chevron (▸/▾), and a **Cancel** button (visible only while `starting` or `running`). Expanded body shows the last 10 log lines streamed live from the experiment, or "No output yet." if none have arrived. The Cancel button calls `e.stopPropagation()` so it does not toggle the card.
 
 **Composer footer.** Below the textarea, a footer bar holds two dropdown selectors and the Send button. Both dropdowns share the same visual style (a small pill button that opens a menu above it):

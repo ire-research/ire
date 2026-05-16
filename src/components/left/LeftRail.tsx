@@ -67,7 +67,11 @@ export function LeftRail({ pulse, resources }: Props) {
         </Panel>
         <Separator id="left-resources-experiments" className="drag-handle-row border-t border-outline-variant" />
         <Panel id="experiments" className="flex flex-col overflow-hidden" defaultSize={33.34} minSize="60px">
-          <ExperimentsSection experiments={experiments} onOpen={openExperimentTab} />
+          <ExperimentsSection
+            experiments={experiments}
+            onOpen={openExperimentTab}
+            onDelete={(uuid) => setExperiments((prev) => prev.filter((e) => e.uuid !== uuid))}
+          />
         </Panel>
       </Group>
     </nav>

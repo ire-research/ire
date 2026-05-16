@@ -25,9 +25,11 @@ interface MessageListProps {
 export function MessageList({ messages }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  const lastMsg = messages[messages.length - 1];
+  const lastMsgText = lastMsg && "text" in lastMsg ? lastMsg.text : "";
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+  }, [messages.length, lastMsgText]);
 
   if (messages.length === 0) {
     return <div className="flex-1" />;
@@ -38,8 +40,8 @@ export function MessageList({ messages }: MessageListProps) {
       {messages.map((m) =>
         m.role === "user" ? (
           <div key={m.id} className="flex justify-end">
-            <div className="bg-surface-container text-on-surface px-4 py-3 rounded border border-outline-variant max-w-[560px] text-[14px] leading-relaxed">
-              <MessageMarkdown content={m.text} />
+            <div className="bg-surface-container text-on-surface px-4 py-3 rounded border border-outline-variant max-w-[560px] text-[14px] leading-relaxed whitespace-pre-wrap">
+              {m.text}
             </div>
           </div>
         ) : (
@@ -52,21 +54,36 @@ export function MessageList({ messages }: MessageListProps) {
 }
 
 function AssistantBubble({ msg }: { msg: AssistantMessage }) {
+  const [thinkingOpen, setThinkingOpen] = useState(false);
   const thinkingRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (msg.isStreaming && thinkingRef.current) {
+    if (msg.isStreaming && thinkingOpen && thinkingRef.current) {
       thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight;
     }
-  }, [msg.thinking, msg.isStreaming]);
+  }, [msg.thinking, msg.isStreaming, thinkingOpen]);
 
   return (
     <div className="flex flex-col items-start max-w-[720px] space-y-4">
       {msg.thinking && (
         <div className="flex gap-3 text-on-surface-variant text-[13px] w-full">
           <div className="w-px bg-outline-variant shrink-0 my-1" />
-          <div ref={thinkingRef} className="italic py-1 opacity-80 text-xs">
-            {msg.thinking}
+          <div className="flex-1 min-w-0">
+            <button
+              type="button"
+              className="italic py-1 opacity-80 text-xs hover:text-on-surface transition-colors"
+              onClick={() => setThinkingOpen((v) => !v)}
+            >
+              thinking...
+            </button>
+            {thinkingOpen && (
+              <div
+                ref={thinkingRef}
+                className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed"
+              >
+                {msg.thinking}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -99,40 +116,52 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
 function ToolCard({ tool }: { tool: ToolCallState }) {
   const [expanded, setExpanded] = useState(false);
   const canExpand = !!(tool.input_full || tool.output_full);
-
-  if (tool.isDone) {
-    return (
-      <div className="w-full flex flex-col">
-        <div
-          className="w-full bg-surface-container-low border border-outline-variant rounded px-3 py-2 flex items-center gap-3 text-xs cursor-pointer hover:bg-surface-container transition-colors"
-          onClick={() => canExpand && setExpanded((v) => !v)}
-        >
-          <span className="material-symbols-outlined text-ok text-[16px]">check_circle</span>
-          <span className="font-mono text-on-surface-variant flex-1">{tool.tool_name}</span>
-        </div>
-        {expanded && (
-          <div className="p-3 bg-surface-container-lowest font-mono text-[11px] text-on-surface-variant overflow-x-auto h-32 leading-relaxed">
-            {tool.output_full || tool.input_full}
-          </div>
-        )}
-      </div>
-    );
-  }
+  const input = formatToolInput(tool);
 
   return (
-    <div className="w-full bg-surface-container border border-warn/40 rounded flex flex-col overflow-hidden">
+    <div className="w-full flex flex-col">
       <div
-        className="bg-surface-container-high px-3 py-2 flex items-center gap-3 text-xs border-b border-warn/20 cursor-pointer"
+        className="w-full bg-surface-container-low border border-outline-variant rounded px-3 py-2 flex items-center gap-3 text-xs cursor-pointer hover:bg-surface-container transition-colors"
         onClick={() => canExpand && setExpanded((v) => !v)}
       >
-        <span className="material-symbols-outlined text-warn text-[16px] animate-spin">progress_activity</span>
-        <span className="font-mono text-warn flex-1">{tool.tool_name}</span>
+        <span className="material-symbols-outlined text-on-surface-variant text-[16px]">build</span>
+        <span className="font-mono text-on-surface-variant flex-1">{tool.tool_name}</span>
       </div>
       {expanded && (
-        <div className="p-3 bg-surface-container-lowest font-mono text-[11px] text-on-surface-variant overflow-x-auto h-32 leading-relaxed">
-          {tool.output_full || tool.input_full}
+        <div className="bg-surface-container-lowest border-x border-b border-outline-variant rounded-b overflow-hidden font-mono text-[11px] leading-relaxed">
+          {input && <ToolIoField label="IN" content={input} />}
+          {tool.output_full && <ToolIoField label="OUT" content={tool.output_full} />}
         </div>
       )}
     </div>
   );
+}
+
+function ToolIoField({ label, content }: { label: string; content: string }) {
+  return (
+    <div className="grid grid-cols-[42px_minmax(0,1fr)] border-t border-outline-variant first:border-t-0">
+      <div className="px-3 py-2 text-on-surface-variant/60 uppercase">{label}</div>
+      <pre className="px-3 py-2 text-on-surface-variant whitespace-pre-wrap break-words overflow-x-auto">{content}</pre>
+    </div>
+  );
+}
+
+function formatToolInput(tool: ToolCallState): string | null {
+  if (!tool.input_full) return null;
+
+  try {
+    const parsed = JSON.parse(tool.input_full);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      if (typeof parsed.command === "string" && parsed.command.length > 0) {
+        return parsed.command;
+      }
+
+      const values = Object.values(parsed).filter((value): value is string => typeof value === "string" && value.length > 0);
+      if (values.length === 1) return values[0];
+    }
+  } catch {
+    // Fall back to the raw input below.
+  }
+
+  return tool.input_full;
 }
