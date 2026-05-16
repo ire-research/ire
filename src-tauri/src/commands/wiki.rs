@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::wiki::WikiStore;
@@ -49,21 +49,6 @@ pub fn save_notes(
 }
 
 #[tauri::command]
-pub fn save_ideas(
-    content: String,
-    active: State<'_, ActiveWorkspace>,
-    app: tauri::AppHandle,
-) -> Result<(), String> {
-    tracing::info!(bytes = content.len(), "save_ideas");
-    let store = wiki_store(&active)?;
-    store.write("ideas.md", &content, &app).map_err(|e| e.to_string())?;
-    let first_50: String = content.chars().take(50).collect();
-    store.user_commit(&["ideas.md"], &format!("ideas: {}", first_50.trim()));
-    tracing::info!("ideas.md saved and committed");
-    Ok(())
-}
-
-#[tauri::command]
 pub fn save_wiki_file(
     path: String,
     content: String,
@@ -78,48 +63,66 @@ pub fn save_wiki_file(
     Ok(())
 }
 
+#[derive(Debug, Serialize)]
+pub struct PulseContent {
+    pub research_question: String,
+    pub this_week: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct IdeaItem {
+    pub id: String,
+    pub text: String,
+    pub trashed: bool,
+    pub order: i64,
+}
+
 #[tauri::command]
-pub fn update_pulse_focus(
-    focus: String,
+pub fn read_pulse(active: State<'_, ActiveWorkspace>) -> Result<PulseContent, String> {
+    let store = wiki_store(&active)?;
+    let rq = store.read("pulse/RESEARCH-QUESTION.md")
+        .map(|(c, _)| c)
+        .unwrap_or_default();
+    let tw = store.read("pulse/THIS-WEEK.md")
+        .map(|(c, _)| c)
+        .unwrap_or_default();
+    Ok(PulseContent { research_question: rq, this_week: tw })
+}
+
+#[tauri::command]
+pub fn save_pulse_field(
+    field: String,
+    content: String,
     active: State<'_, ActiveWorkspace>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    tracing::info!(focus = %focus, "update_pulse_focus");
+    let path = match field.as_str() {
+        "research_question" => "pulse/RESEARCH-QUESTION.md",
+        "this_week" => "pulse/THIS-WEEK.md",
+        _ => return Err(format!("unknown field: {field}")),
+    };
     let store = wiki_store(&active)?;
-    let (current, _) = store
-        .read("status/pulse.md")
-        .map_err(|e| e.to_string())?;
-    let updated = replace_focus_line(&current, &focus);
-    store
-        .write("status/pulse.md", &updated, &app)
-        .map_err(|e| e.to_string())?;
-    Ok(())
+    store.write(path, &content, &app).map_err(|e| e.to_string())
 }
 
-/// Replace (or append) the `**Focus:** ...` line in pulse.md.
-fn replace_focus_line(content: &str, focus: &str) -> String {
-    let new_line = format!("**Focus:** {}", focus.trim());
-    let mut found = false;
-    let mut out: Vec<String> = content
-        .lines()
-        .map(|l| {
-            if l.trim_start().starts_with("**Focus:**") {
-                found = true;
-                new_line.clone()
-            } else {
-                l.to_string()
-            }
-        })
-        .collect();
-    if !found {
-        if !out.is_empty() && !out.last().unwrap().is_empty() {
-            out.push(String::new());
-        }
-        out.push(new_line);
+#[tauri::command]
+pub fn read_ideas(active: State<'_, ActiveWorkspace>) -> Result<Vec<IdeaItem>, String> {
+    let store = wiki_store(&active)?;
+    let path = store.wiki_root.join("ideas.json");
+    if !path.exists() {
+        return Ok(vec![]);
     }
-    let mut joined = out.join("\n");
-    if content.ends_with('\n') && !joined.ends_with('\n') {
-        joined.push('\n');
-    }
-    joined
+    let raw = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    serde_json::from_str(&raw).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn save_ideas_json(
+    ideas: Vec<IdeaItem>,
+    active: State<'_, ActiveWorkspace>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let store = wiki_store(&active)?;
+    let json = serde_json::to_string_pretty(&ideas).map_err(|e| e.to_string())?;
+    store.write("ideas.json", &json, &app).map_err(|e| e.to_string())
 }
