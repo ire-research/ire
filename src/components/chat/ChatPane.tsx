@@ -14,7 +14,7 @@ import {
 import { MessageList } from "./MessageList";
 import { Composer } from "./Composer";
 import { TabBar } from "./TabBar";
-import { MarkdownPane } from "../MarkdownPane";
+import { ResourcePreviewPane } from "./ResourcePreviewPane";
 import { ExperimentTabView } from "./ExperimentTabView";
 import type { Tab } from "../../types";
 
@@ -245,14 +245,9 @@ export function ChatPane() {
     return (
       <section className="flex flex-col flex-1 overflow-hidden bg-background">
         <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTab} onClose={handleCloseTab} onNew={handleNewTab} />
-        <MarkdownPane
-          title={activeTab.label}
-          content={previewContent}
-          showSubmit
-          onSubmit={(content) =>
-            ipc.saveWikiFile(activeTab.wikiPath!, content).catch((e) => toastError("save wiki file", e))
-          }
-        />
+        <div className="flex-1 overflow-hidden relative">
+          <ResourcePreviewPane title={activeTab.label} content={previewContent} />
+        </div>
       </section>
     );
   } else if (activeTab.kind === "experiment") {
