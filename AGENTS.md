@@ -66,13 +66,9 @@ This compiles both Rust and TypeScript. It must succeed with zero errors and zer
 
 ### 6. Documentation Synchronization
 
-**Keep `docs/SDD.md`, `src-tauri/assets/seed/_SYSTEM.md`, `docs/CHANGELOG.md`, and `docs/DECISIONS.md` in lockstep. Every implementation divergence muat be reflected in these files immediately.**
+**Keep `docs/SDD.md` and `src-tauri/assets/seed/_SYSTEM.md` in lockstep. Every implementation divergence must be reflected in these files immediately.**
 
 - The SDD is the architectural source of truth — it must reflect the current implementation to the detail level (exact CLI flags, event names, field names, etc.). When code diverges (flags removed, flow changed, commands altered, new features added), update the SDD **immediately** in the same commit. If a SDD section describes the old behavior, update it to match the new behavior.
-
-- After every major change, read `docs/CHANGELOG.md` and `docs/DECISIONS.md` and update them if needed:
-    - **CHANGELOG.md** — add an entry under `## Unreleased` for any user- or developer-visible change: new features, behavior changes, and bug fixes. Internal-only refactors don't warrant an entry. Use the existing Added / Changed / Fixed subsections.
-    - **DECISIONS.md** — add a dated entry for any non-obvious design choice: when you picked one approach over alternatives, worked around a constraint, or resolved a spec conflict. If the reasoning would help a future reader understand why the code looks the way it does, write it down. Skip entries for straightforward implementation details.
 
 - `src-tauri/assets/seed/_SYSTEM.md` is the general-purpose system prompt injected into every CC turn regardless of mode. Keep it accurate:
     - **Do not document MCP tools here.** Tools are advertised automatically via MCP server handshaking — duplicating them in `_SYSTEM.md` wastes context and gets stale.

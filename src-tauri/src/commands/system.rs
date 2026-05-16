@@ -66,11 +66,8 @@ pub fn get_system_status(active: State<'_, ActiveWorkspace>) -> Result<SystemSta
         .or_else(|_| std::env::var("USERNAME"))
         .unwrap_or_else(|_| "user".to_string());
 
-    let display_path = workspace_path.to_string_lossy()
-        .replace(&std::env::var("HOME").unwrap_or_default(), "~");
-
     Ok(SystemStatus {
-        workspace_path: display_path,
+        workspace_path: workspace_path.to_string_lossy().into_owned(),
         git_branch,
         git_insertions,
         git_deletions,

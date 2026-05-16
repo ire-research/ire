@@ -1,1 +1,1 @@
-_What is the concrete focus this week?_
+What is the concrete focus this week?

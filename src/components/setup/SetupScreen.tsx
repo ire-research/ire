@@ -83,15 +83,8 @@ export function SetupScreen({ status, onRefresh }: Props) {
 
         {/* Recent workspaces */}
         <div className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center">
             <span className="text-[12px] font-medium text-on-surface-variant">Recent</span>
-            <button
-              className="text-on-surface-variant hover:text-on-surface transition-colors p-0.5"
-              onClick={onRefresh}
-              disabled={busy}
-            >
-              <span className="material-symbols-outlined text-[16px]">refresh</span>
-            </button>
           </div>
           <div className="flex flex-col border border-outline-variant rounded overflow-hidden">
             {recentWorkspaces.length === 0 ? (
@@ -168,7 +161,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
         <div className="w-full h-px bg-outline-variant"></div>
 
         {/* Status row */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center">
           <div className="flex items-center gap-2">
             <span
               className={`w-1.5 h-1.5 rounded-full ${
@@ -192,9 +185,6 @@ export function SetupScreen({ status, onRefresh }: Props) {
               )}
             </span>
           </div>
-          <a href="#" className="text-[12px] text-on-surface-variant hover:text-on-surface transition-colors">
-            settings
-          </a>
         </div>
 
         {/* Error display */}

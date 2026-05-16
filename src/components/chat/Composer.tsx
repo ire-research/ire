@@ -6,8 +6,27 @@ interface ComposerProps {
   disabled?: boolean;
 }
 
+const PLACEHOLDER_SENTENCES = [
+  "Advancing science...",
+  "Answering big questions...",
+  "Accelerating discovery...",
+  "Exploring the unknown...",
+  "Pushing knowledge forward...",
+  "Investigating new ideas...",
+  "Connecting the dots...",
+  "Uncovering new knowledge...",
+  "Discovering what matters...",
+  "Research without limits...",
+  "Think deeper...",
+  "Explore further...",
+  "Discover faster...",
+];
+
 export function Composer({ onSend, disabled }: ComposerProps) {
   const [text, setText] = useState("");
+  const [placeholder] = useState(
+    () => PLACEHOLDER_SENTENCES[Math.floor(Math.random() * PLACEHOLDER_SENTENCES.length)],
+  );
   const [modelOpen, setModelOpen] = useState(false);
   const [effortOpen, setEffortOpen] = useState(false);
   const modelRef = useRef<HTMLDivElement>(null);
@@ -68,7 +87,7 @@ export function Composer({ onSend, disabled }: ComposerProps) {
         ref={textareaRef}
         id="composer-textarea"
         className="w-full bg-transparent border-none text-on-surface text-[14px] focus:ring-0 px-3 py-2.5 placeholder-on-surface-variant/50 outline-none resize-none"
-        placeholder="Message IRE…"
+        placeholder={placeholder}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}

@@ -1,1 +1,1 @@
-_What are you trying to figure out?_
+What are you trying to figure out?

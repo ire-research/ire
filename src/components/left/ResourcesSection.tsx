@@ -5,12 +5,12 @@ interface Props {
 
 export function ResourcesSection({ resources, onOpen }: Props) {
   return (
-    <div className="overflow-y-auto flex-1 py-1">
-      <div className="flex items-center gap-2 px-4 py-2 text-on-surface-variant text-[14px]">
+    <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
+      <div className="flex items-center gap-2 py-1 mb-2 text-on-surface-variant text-[14px]">
         <span className="material-symbols-outlined text-[16px] shrink-0">description</span>
         Resources
       </div>
-      <div className="px-4 pb-1 space-y-0.5">
+      <div className="space-y-0.5">
         {resources.length > 0 ? (
           resources.map((resource) => (
             <button
@@ -22,7 +22,7 @@ export function ResourcesSection({ resources, onOpen }: Props) {
             </button>
           ))
         ) : (
-          <p className="px-2 py-1.5 text-[13px] text-on-surface-variant italic">no resources yet</p>
+          <p className="text-[13px] text-on-surface-variant italic">no resources yet</p>
         )}
       </div>
     </div>

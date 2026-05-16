@@ -709,7 +709,7 @@ No table for chat messages — the CC session is the source of truth, and `--res
 
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
-│ Navbar (h-10):  [running N exp badge]            [close] [⚙ settings]│
+│ Navbar (h-10):  full workspace path [running N exp]     [close] [⚙] │
 ├──────────────────┬──────────────────────────────┬────────────────────┤
 │ Left rail 280px  │   ChatPane (flex-1)           │ Right rail 320px   │
 │  FocusPane       │   - tab bar                  │  NotesPane         │
@@ -719,17 +719,17 @@ No table for chat messages — the CC session is the source of truth, and `--res
 │  ExperimentsSection   (kind="experiment")        │  AddResourceSection│
 │  - experiment list                               │  - URL input       │
 └──────────────────┴──────────────────────────────┴────────────────────┘
-│ StatusBar: git branch + diff · CPU · GPU · RAM · hostname · cc-conn  │
+│ StatusBar: full workspace path + git diff · CPU · GPU · RAM · host   │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-- The body uses `react-resizable-panels` group `body` with panels `left`, `center`, and `right`. Left/right default to 280px/320px and clamp to 160-420px / 180-440px. The center panel takes the remaining space and has a 320px minimum.
+- The body uses `react-resizable-panels` group `body` with panels `left`, `center`, and `right`. Left/right default to 280px/320px, have no maximum width, and keep minimum widths of 160px / 180px. The center panel takes the remaining space and has a 320px minimum.
 - The left rail is a vertical `react-resizable-panels` group `left` with panels `pulse`, `resources`, and `experiments`; row handles sit between Focus / Resources and Resources / Experiments.
 - The right rail is a vertical `react-resizable-panels` group `right` with panels `notes`, `ideas`, and `resource-input`; row handles sit between Notes / Ideas and Ideas / Add resource.
-- `ResourcesSection` and `ExperimentsSection` always render their title rows with the Material Symbols icons `description` and `science`. Empty lists show `no resources yet` and `no experiments yet`.
+- `ResourcesSection` and `ExperimentsSection` use the same outer pane padding as `NotesPane` and `IdeasPane`, and always render their title rows with the Material Symbols icons `description` and `science`. Empty lists show `no resources yet` and `no experiments yet`.
 - `IdeasPane` renders active ideas sorted by `order`, opens an inline draft card on Add, saves the draft to `ideas.json` on Enter, and hides trashed ideas by persisting `trashed: true`.
 - `FocusPane` and `NotesPane` use **inline editing**: clicking a field activates a textarea in place; blur/Enter saves. No separate Edit/Preview toggle.
-- The bottom `StatusBar` polls `get_system_status` every 5 s and displays real system metrics.
+- The top navbar shows the full workspace path on the far left as the project title. The bottom `StatusBar` polls `get_system_status` every 5 s and displays the full workspace path, git branch/diff, and real system metrics. The GPU slot is always visible; when GPU data is unavailable, it renders `n/a`.
 
 ### 13.2 Chat rendering
 
@@ -750,6 +750,7 @@ No table for chat messages — the CC session is the source of truth, and `--res
 
 **Composer footer.** Below the textarea, a footer bar holds two dropdown selectors and the Send button. Both dropdowns share the same visual style (a small pill button that opens a menu above it):
 - The textarea starts at 52px high, grows with content, caps at 240px, then scrolls internally.
+- Each composer instance samples one placeholder sentence from the built-in research/discovery prompt list when it mounts, and keeps that placeholder stable until the composer is remounted.
 - **Model** — selects the Claude model; options come from `MODELS` in `state/chatOptions.ts` (Haiku 4.5, Sonnet 4.6, Opus 4.7). Default: Haiku 4.5.
 - **Effort** — selects the thinking-budget level; options come from `EFFORT_LEVELS` (Low → Med → High → XHigh → Max). Default: **Low**. Persisted to `.ire/workspace.json` (debounced 1 s) and rehydrated on workspace open.
 Both values are passed as `options: { model, effort }` on every `chat_send` invocation.

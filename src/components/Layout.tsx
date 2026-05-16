@@ -103,6 +103,7 @@ export function Layout() {
     label: r.title ?? r.url,
     wikiPath: r.wiki_path ?? "",
   }));
+  const workspacePath = phase.kind === "ready" ? phase.workspace.path : "";
   const storedBodyLayout = panelLayout.groups?.body;
   const bodyLayout =
     storedBodyLayout &&
@@ -116,7 +117,14 @@ export function Layout() {
     <div className="flex flex-col h-screen bg-background text-on-surface overflow-hidden">
       {/* Top NavBar */}
       <header className="flex items-center justify-between px-3 h-10 w-full bg-background border-b border-outline-variant shrink-0">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 min-w-0">
+          <div
+            className="flex items-center gap-1.5 min-w-0 text-xs font-medium text-on-surface"
+            title={workspacePath}
+          >
+            <span className="material-symbols-outlined text-[16px] text-primary shrink-0">folder</span>
+            <span className="truncate max-w-[360px]">{workspacePath}</span>
+          </div>
           {runningCount > 0 && (
             <div className="flex items-center gap-2 border border-warn/30 text-warn px-2 py-0.5 rounded text-xs bg-warn/5">
               <span className="w-1.5 h-1.5 rounded-full bg-warn animate-pulse" />
@@ -124,12 +132,12 @@ export function Layout() {
             </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 shrink-0">
           <button
-            className="text-on-surface-variant hover:text-on-surface transition-colors text-xs px-2 py-1"
+            className="h-7 border border-outline-variant rounded px-3 text-xs font-medium text-on-surface-variant hover:bg-surface-container-low hover:border-outline transition-colors"
             onClick={handleClose}
           >
-            close workspace
+            close
           </button>
           <button
             className="text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center p-1"
@@ -152,7 +160,6 @@ export function Layout() {
           className="h-full"
           defaultSize="280px"
           minSize="160px"
-          maxSize="420px"
           groupResizeBehavior="preserve-pixel-size"
         >
           <LeftRail pulse={pulseObject} resources={railResources} />
@@ -167,7 +174,6 @@ export function Layout() {
           className="h-full"
           defaultSize="320px"
           minSize="180px"
-          maxSize="440px"
           groupResizeBehavior="preserve-pixel-size"
         >
           <RightRail
