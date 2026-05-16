@@ -5,18 +5,12 @@ import { useChat } from "../state/chat";
 import { useWorkspace } from "../state/workspace";
 import { useChatOptions } from "../state/chatOptions";
 import { toastError } from "../state/toasts";
-import type { ResourceItem } from "../types";
+import type { PulseContent, ResourceItem } from "../types";
 import { ChatPane } from "./chat/ChatPane";
-import { FocusBanner } from "./FocusBanner";
+import { FocusPane } from "./left/FocusPane";
 import { MarkdownPane } from "./MarkdownPane";
 import { ResourceInput } from "./ResourceInput";
 import { ResourcesList } from "./ResourcesList";
-
-function parseFocus(pulse: string): string {
-  const match = pulse.match(/\*\*Focus:\*\*\s*(.+)/);
-  return match ? match[1].trim() : "";
-}
-
 
 export function Layout() {
   const openPreviewTab = useChat((s) => s.openPreviewTab);
@@ -31,6 +25,7 @@ export function Layout() {
   const groups = panelLayout.groups ?? {};
 
   const [pulseContent, setPulseContent] = useState("");
+  const [pulseObject, setPulseObject] = useState<PulseContent>({ research_question: "", this_week: "" });
   const [notesContent, setNotesContent] = useState("");
   const [ideasContent, setIdeasContent] = useState("");
   const [resources, setResources] = useState<ResourceItem[]>([]);
@@ -42,9 +37,11 @@ export function Layout() {
       ipc.readWikiFile("status/pulse.md"),
       ipc.readWikiFile("notes.md"),
       ipc.readWikiFile("ideas.md"),
+      ipc.readPulse(),
     ])
-      .then(([pulse, notes, ideas]) => {
+      .then(([pulse, notes, ideas, pulseData]) => {
         setPulseContent(pulse.content);
+        setPulseObject(pulseData);
         setNotesContent(notes.content);
         setIdeasContent(ideas.content);
       })
@@ -60,6 +57,7 @@ export function Layout() {
     const unlisten = onWikiChanged(({ path }) => {
       if (path === "status/pulse.md") {
         ipc.readWikiFile("status/pulse.md").then((f) => setPulseContent(f.content));
+        ipc.readPulse().then((p) => setPulseObject(p)).catch((e) => toastError("load pulse", e));
       } else if (path === "notes.md") {
         ipc.readWikiFile("notes.md").then((f) => setNotesContent(f.content));
       } else if (path === "ideas.md") {
@@ -146,7 +144,7 @@ export function Layout() {
           collapsible
           className="column column--left"
         >
-          <FocusBanner focus={parseFocus(pulseContent)} />
+          <FocusPane pulse={pulseObject} />
           <Group
             id="left"
             orientation="vertical"
