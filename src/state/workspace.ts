@@ -13,18 +13,13 @@ type Phase =
   | { kind: "setup"; status: SetupStatus }
   | { kind: "ready"; workspace: WorkspaceInfo };
 
-type Theme = "dark" | "light";
-
 interface WorkspaceStore {
   phase: Phase;
   mode: ChatMode;
-  theme: Theme;
   panelLayout: PanelLayouts;
   recentWorkspaces: string[];
   setMode: (mode: ChatMode) => void;
   setPhase: (phase: Phase) => void;
-  setTheme: (theme: Theme) => void;
-  toggleTheme: () => void;
   setGroupLayout: (groupId: string, layout: Record<string, number>) => void;
   setRecentWorkspaces: (paths: string[]) => void;
   pushRecentWorkspace: (path: string) => void;
@@ -36,14 +31,10 @@ interface WorkspaceStore {
 export const useWorkspace = create<WorkspaceStore>((set, get) => ({
   phase: { kind: "loading" },
   mode: "brainstorm",
-  theme: "dark",
   panelLayout: {},
   recentWorkspaces: [],
   setMode: (mode) => set({ mode }),
   setPhase: (phase) => set({ phase }),
-  setTheme: (theme) => set({ theme }),
-  toggleTheme: () =>
-    set((s) => ({ theme: s.theme === "dark" ? "light" : "dark" })),
   setGroupLayout: (groupId, layout) =>
     set((s) => ({
       panelLayout: {
@@ -62,7 +53,6 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => ({
   },
   hydrateFromUserConfig: (config) => {
     set({
-      theme: config.theme === "light" ? "light" : "dark",
       recentWorkspaces: config.recent_workspaces ?? [],
     });
   },

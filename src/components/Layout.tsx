@@ -22,12 +22,9 @@ export function Layout() {
   const openPreviewTab = useChat((s) => s.openPreviewTab);
   const phase = useWorkspace((s) => s.phase);
   const setPhase = useWorkspace((s) => s.setPhase);
-  const theme = useWorkspace((s) => s.theme);
-  const toggleTheme = useWorkspace((s) => s.toggleTheme);
   const panelLayout = useWorkspace((s) => s.panelLayout);
   const setGroupLayout = useWorkspace((s) => s.setGroupLayout);
   const toPersisted = useWorkspace((s) => s.toPersisted);
-  const recentWorkspaces = useWorkspace((s) => s.recentWorkspaces);
   const effort = useChatOptions((s) => s.effort);
   const workspace = phase.kind === "ready" ? phase.workspace : null;
 
@@ -92,22 +89,6 @@ export function Layout() {
     return () => clearTimeout(handle);
   }, [panelLayout, toPersisted]);
 
-  // Debounced persistence of theme to ~/.config/ire/config.json.
-  // Always include recent_workspaces so a theme save never clobbers them.
-  const skipInitialThemeSave = useRef(true);
-  useEffect(() => {
-    if (skipInitialThemeSave.current) {
-      skipInitialThemeSave.current = false;
-      return;
-    }
-    const handle = setTimeout(() => {
-      ipc.saveUserConfig({ theme, recent_workspaces: recentWorkspaces }).catch((e) =>
-        toastError("save theme", e),
-      );
-    }, 1000);
-    return () => clearTimeout(handle);
-  }, [theme, recentWorkspaces]);
-
   // Debounced persistence of effort to .ire/workspace.json.
   const skipInitialEffortSave = useRef(true);
   useEffect(() => {
@@ -146,15 +127,6 @@ export function Layout() {
         </div>
         <div className="topbar__spacer" />
         <button onClick={handleClose}>Close</button>
-        <button
-          className={`theme-toggle theme-toggle--${theme}`}
-          onClick={toggleTheme}
-          aria-label="Toggle theme"
-        >
-          <span className="theme-toggle__knob">
-            {theme === "dark" ? "☽" : "☀"}
-          </span>
-        </button>
         <button className="topbar__settings" aria-label="Settings">
           ⚙
         </button>

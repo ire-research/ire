@@ -69,12 +69,13 @@ Redesigned to match `workspace_picker.html` exactly:
 ### 4.1 Top NavBar
 
 ```
-[running 1 exp badge] .............. [close workspace] [settings] [theme toggle]
+[running 1 exp badge] .............. [close workspace] [settings]
 ```
 
 - Height: `h-10` (40px), `border-b border-outline-variant`
 - Left: amber "running N exp" badge (animated pulse dot) — shows count of currently running experiments; hidden when zero
-- Right: close-workspace button (text or icon), settings gear icon, dark_mode/light_mode icon
+- Right: close-workspace button (text or icon), settings gear icon
+- No theme toggle — dark mode is fixed; all theme-toggle UI and `[data-theme="light"]` CSS are removed
 - Close workspace navigates back to the picker (existing `handleClose` logic)
 
 ### 4.2 Left Rail
@@ -108,8 +109,8 @@ Tab bar (`h-8`):
 Chat header strip (`h-8`): just the reset button aligned right (mode switch removed from header — the design doesn't show it).
 
 Content host (absolute-positioned views, `hidden`/shown):
-- `view-chat`: message list
-- `view-resource`: markdown preview
+- `view-chat`: message list (see §12)
+- `view-resource`: resource preview pane (see §13)
 - `view-experiment`: new experiment pane (see §6)
 
 Floating composer (absolute, bottom-6):
@@ -122,9 +123,10 @@ Floating composer (absolute, bottom-6):
 Width: 320px default, draggable (180px–440px). Three vertically-stacked sections.
 
 **Notes section** (top third):
-- Header: edit_note icon + "Notes" label + pencil edit button
-- Bullet list of notes — rendered from `notes.md` (existing)
-- Edit mode: textarea (existing MarkdownPane behavior)
+- Header: edit_note icon + "Notes" label + pencil edit button (hover-revealed)
+- When not editing: render notes as a bullet list (parse `notes.md` lines)
+- When editing: textarea replacing the bullet list; save on blur or explicit save button
+- Wired to `save_notes` IPC (existing)
 
 **Ideas section** (middle third):
 - Header: lightbulb icon + "Ideas" label + add button
@@ -269,7 +271,34 @@ Polled every 5 seconds via a `setInterval` in a new `useSystemStatus` hook. GPU 
 
 ---
 
-## 10. Removed / Deprecated
+## 10. Chat View (Updated)
+
+The chat view matches the `view-chat` section of `workspace_home.html`:
+
+- **User bubble**: right-aligned, `bg-surface-container border border-outline-variant`, max-width 560px, rounded, 14px text
+- **Assistant block**: left-aligned, max-width 720px, `space-y-4`
+  - Thinking block: left vertical bar (`w-px bg-outline-variant`) + italic 13px muted text, collapsed by default (accordion), content is plain text
+  - Text content: 14px `text-on-surface`, rendered via `MessageMarkdown`
+  - Tool call — done: `bg-surface-container-low border border-outline-variant rounded`, check_circle icon in `text-ok`, monospace tool name, duration on right
+  - Tool call — running: `border-warn/40` header with spinning icon in `text-warn`, monospace tool call in `text-warn`, expandable log body in `bg-surface-container-lowest font-mono text-[11px]`
+  - Experiment card: existing `ExperimentCard` component, restyled to match design
+- No demo/placeholder messages in initial state — message list is empty until user sends
+
+---
+
+## 11. Resource Preview Tab (Updated)
+
+The resource preview tab matches the `view-resource` section in `workspace_home.html`:
+
+- Breadcrumb label: `text-[11px] uppercase tracking-widest text-on-surface-variant` — e.g. "Resource · Paper"
+- Title: `text-base font-semibold text-on-surface`
+- Subtitle: author · arxiv ID in `text-on-surface-variant`
+- Body: 14px text, leading-relaxed
+- Confirm/discard bar (when status = "ready"): matches existing resource bar logic but restyled
+
+---
+
+## 12. Removed / Deprecated
 
 | Item | Removed |
 |---|---|
@@ -281,12 +310,15 @@ Polled every 5 seconds via a `setInterval` in a new `useSystemStatus` hook. GPU 
 | `parseFocus()` helper in Layout | Removed |
 | Old `styles.css` component classes | Replaced by Tailwind utilities |
 | Mode switcher in chat header | Removed from UI (mode selection logic stays in state) |
+| Theme toggle button | Removed — dark mode is fixed, no toggle UI |
+| `toggleTheme` / `theme` state | Removed from workspace store |
+| `[data-theme="light"]` CSS block | Removed |
+| All demo/hardcoded content in HTML prototypes | Not carried into implementation |
 
 ---
 
-## 11. Out of Scope
+## 13. Out of Scope
 
-- Light theme (tokens defined, toggle button present, but full light-mode styling not guaranteed pixel-perfect in this pass)
 - Drag-to-reorder for status bar items (JS interaction is cosmetic; omit for now, add later)
 - Settings panel content (gear button present, panel deferred)
 - Workspace init creating the new `pulse/` files with boilerplate (placeholder empty strings are fine)
