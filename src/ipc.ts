@@ -8,7 +8,10 @@ import type {
   ExperimentRow,
   ExperimentStartingPayload,
   ExperimentStatusPayload,
+  IdeaItem,
+  PulseContent,
   ResourceItem,
+  SystemStatus,
   TabCreatedPayload,
   TabStreamPayload,
   WikiFile,
@@ -59,10 +62,12 @@ export const ipc = {
     invoke("read_wiki_file", { path }),
   saveNotes: (content: string): Promise<void> =>
     invoke("save_notes", { content }),
-  saveIdeas: (content: string): Promise<void> =>
-    invoke("save_ideas", { content }),
-  updatePulseFocus: (focus: string): Promise<void> =>
-    invoke("update_pulse_focus", { focus }),
+  readPulse: (): Promise<PulseContent> => invoke("read_pulse"),
+  savePulseField: (field: "research_question" | "this_week", content: string): Promise<void> =>
+    invoke("save_pulse_field", { field, content }),
+  readIdeas: (): Promise<IdeaItem[]> => invoke("read_ideas"),
+  saveIdeasJson: (ideas: IdeaItem[]): Promise<void> => invoke("save_ideas_json", { ideas }),
+  getSystemStatus: (): Promise<SystemStatus> => invoke("get_system_status"),
   chatSend: (tabId: string, message: string, mode: ChatMode, options: ChatOptions): Promise<void> =>
     invoke("chat_send", { tabId, message, mode, options }),
   chatCancel: (tabId: string): Promise<void> =>
