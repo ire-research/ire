@@ -98,6 +98,8 @@ export const ipc = {
   readUserConfig: (): Promise<UserConfig> => invoke("read_user_config"),
   saveUserConfig: (config: UserConfig): Promise<void> =>
     invoke("save_user_config", { config }),
+  openInVscode: (path: string): Promise<void> =>
+    invoke("open_in_vscode", { path }),
 };
 
 export function onWikiChanged(

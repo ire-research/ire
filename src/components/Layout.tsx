@@ -19,6 +19,24 @@ export function Layout() {
   const setGroupLayout = useWorkspace((s) => s.setGroupLayout);
   const effort = useChatOptions((s) => s.effort);
 
+  const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
+  const wsDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (wsDropdownRef.current && !wsDropdownRef.current.contains(e.target as Node)) {
+        setWsDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const handleOpenInVscode = async () => {
+    setWsDropdownOpen(false);
+    await ipc.openInVscode(workspacePath).catch((e: unknown) => toastError("open in VS Code", e));
+  };
+
   const [pulseObject, setPulseObject] = useState<PulseContent>({ research_question: "", this_week: "" });
   const [notesContent, setNotesContent] = useState("");
   const [ideas, setIdeas] = useState<IdeaItem[]>([]);
@@ -120,12 +138,31 @@ export function Layout() {
       {/* Top NavBar */}
       <header className="flex items-center justify-between px-3 h-10 w-full bg-background border-b border-outline-variant shrink-0">
         <div className="flex items-center gap-3 min-w-0">
-          <div
-            className="flex items-center gap-1.5 min-w-0 text-xs font-medium text-on-surface"
-            title={workspacePath}
-          >
+          <div className="flex items-center gap-1.5 min-w-0 text-xs font-medium text-on-surface" ref={wsDropdownRef} title={workspacePath}>
             <Icon name="folder" className="w-[16px] h-[16px] text-primary shrink-0" />
             <span className="truncate max-w-[360px]">{workspacePath}</span>
+            <div className="relative shrink-0">
+              <button
+                onClick={() => setWsDropdownOpen((o) => !o)}
+                className="text-on-surface-variant hover:text-on-surface transition-colors ml-0.5"
+                aria-label="Workspace options"
+              >
+                <Icon name="expand_more" className="w-[14px] h-[14px]" />
+              </button>
+              {wsDropdownOpen && (
+                <div className="absolute left-0 top-full mt-1 bg-surface-container-low border border-outline-variant rounded shadow-lg z-50 min-w-[160px]">
+                  <button
+                    className="flex items-center gap-2 w-full px-3 py-2 text-xs text-on-surface hover:bg-surface-container transition-colors"
+                    onClick={handleOpenInVscode}
+                  >
+                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0" fill="currentColor" aria-hidden="true">
+                      <path d="M23.15 2.587L18.21.21a1.494 1.494 0 0 0-1.705.29l-9.46 8.63-4.12-3.128a.999.999 0 0 0-1.276.057L.327 7.261A1 1 0 0 0 .326 8.74L3.899 12 .326 15.26a1 1 0 0 0 .001 1.479L1.65 17.94a.999.999 0 0 0 1.276.057l4.12-3.128 9.46 8.63a1.492 1.492 0 0 0 1.704.29l4.942-2.377A1.5 1.5 0 0 0 24 19.08V4.92a1.5 1.5 0 0 0-.85-1.333zm-5.146 14.861L10.826 12l7.178-5.448v10.896z" />
+                    </svg>
+                    Open in VS Code
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           {runningCount > 0 && (
             <div className="flex items-center gap-2 border border-warn/30 text-warn px-2 py-0.5 rounded text-xs bg-warn/5">
