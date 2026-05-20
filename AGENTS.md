@@ -59,9 +59,7 @@ For multi-step tasks, state a brief plan:
 Run before reporting work as done:
 ```
 npm run tauri dev
-npm run dev:tauri # if running from snap-installed VSCode
 ```
-
 This compiles both Rust and TypeScript. It must succeed with zero errors and zero warnings. Warnings are bugs — dead code and unused fields mean speculative code crept in (see §2).
 
 ### 6. Documentation Synchronization
