@@ -192,20 +192,21 @@ See [§16](#16-source-tree-layout).
 
 ```
 ┌─ Setup screen ───────────────────────────────────────┐
-│ Step 1: Claude-Code binary                           │
-│   • find_claude_binary() result, version, status     │
-│   • if missing: instructions + retry button          │
-│   • if unauthenticated: surface stderr               │
-│ Step 2: choose workspace                             │
-│   • [Open existing]   → file dialog                  │
-│   • [Initialize new]  → file dialog (empty dir)      │
-│ Recent workspaces (if any)                           │
-│   • list of last-opened paths from user config       │
-│   • click any entry to open without a file dialog    │
+│  "Open or create a workspace."                       │
+│                                                      │
+│  Recent workspaces (up to 5)                         │
+│    • each entry shows project name + full path       │
+│    • click any entry to open without a file dialog   │
+│    • most-recently-opened is highlighted             │
+│                                                      │
+│  [Open folder…]       [New workspace…]               │
+│                                                      │
+│  ● claude-code · authenticated  (or: not found)      │
+│    retry button if binary missing                    │
 └──────────────────────────────────────────────────────┘
 ```
 
-On startup, IRE reads `~/.config/ire/config.json` and applies the persisted theme immediately (before any workspace is opened) so the setup screen itself respects the user's preference.
+On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel.  `read_user_config` hydrates `recentWorkspaces` in the Zustand store before the setup screen mounts so the list is immediately populated.  If the binary is missing, a `retry` link re-invokes `refreshSetup`; there is no step-by-step wizard — the binary status is a status-bar indicator, not a blocking step.
 
 ### 5.2 Open existing
 
@@ -505,7 +506,8 @@ IRE supports multiple independent chat tabs in the central pane.
 | Main | On workspace open (id `"main"`) | No (pinned) | Hosts the Brainstorm / Experiment mode selector. The primary research conversation. |
 | Chat | User clicks + button | Yes | Fresh CC session, independent conversation history. |
 | Resource | Backend resource ingestion (§8.3) | Auto-closes on Confirm/Discard | Dedicated to reviewing a single resource summary; shows Confirm / Discard instead of a free-form Composer when CC finishes. |
-| Preview | User clicks a resource in the Resources list | Yes | Renders a `MarkdownPane` (edit/preview toggle + Submit) for the resource's wiki file. Clicking the same resource again focuses the existing tab rather than opening a duplicate. Submit persists edits to disk via `save_wiki_file` and commits. |
+| Preview | User clicks a resource in the Resources list | Yes | Renders a `ResourcePreviewPane` (edit/preview toggle + Submit) for the resource's wiki file. Clicking the same resource again focuses the existing tab rather than opening a duplicate. Submit persists edits to disk via `save_wiki_file` and commits. |
+| Experiment | User clicks an experiment in the left-rail ExperimentsSection | Yes | Dedicated full view of a single experiment: metadata grid (status, runtime, command), live log tail (stdout only, scrolls to bottom automatically). Clicking the same experiment again focuses the existing tab rather than opening a duplicate. |
 
 **Session isolation.** Each tab carries its own `tab_id` (UUID for dynamically created tabs; `"main"` for the pinned tab). The backend `SessionManager` maintains a `HashMap<tab_id, PerTabSession>` where `PerTabSession` holds `{ session_id: Option<String>, running_pid: Option<u32> }`. This replaces the old single `ChatSession` global.
 
@@ -728,24 +730,25 @@ No table for chat messages — the CC session is the source of truth, and `--res
 - `ResourcesSection` and `ExperimentsSection` use the same outer pane padding as `NotesPane` and `IdeasPane`, and always render their title rows with the Material Symbols icons `description` and `science`. Empty lists show `no resources yet` and `no experiments yet`.
 - `IdeasPane` renders active ideas sorted by `order`, opens an inline draft card on Add, saves the draft to `ideas.json` on Enter, and hides trashed ideas by persisting `trashed: true`.
 - `FocusPane` and `NotesPane` use **inline editing**: clicking a field activates a textarea in place; blur/Enter saves. No separate Edit/Preview toggle.
-- The top navbar shows the full workspace path on the far left as the project title. The bottom `StatusBar` polls `get_system_status` every 5 s and displays the full workspace path, git branch/diff, and real system metrics. The GPU slot is always visible; when GPU data is unavailable, it renders `n/a`.
+- Clicking an experiment row in `ExperimentsSection` opens (or re-focuses) an `experiment` tab in the centre column; the tab renders `ExperimentTabView` with a metadata grid and live log tail.
+- The top navbar shows the full workspace path on the far left as the project title. The bottom `StatusBar` polls `get_system_status` every 5 s and displays (left-to-right): workspace path + git branch + insertions/deletions, CPU model + usage %, GPU model + usage % + VRAM (or `n/a` when unavailable), RAM total GB, `username@hostname`, and a `claude-code · connected/disconnected` indicator pushed to the far right.
 
 ### 13.2 Chat rendering
 
 **Tab bar.** The chat pane opens with a standard Tabbed Document Interface (TDI) bar at the top — the same pattern as Chrome or the VS Code editor. Each tab is a horizontal button in a single row:
 
-- The active tab has its background set to match the content area (`--surface`) and its bottom border removed so it visually merges with the content below. A 2 px gold accent line (`--focus-accent`) runs along the top edge of the active tab.
-- Inactive tabs have a dimmer foreground (`--text-dim`) and a darker background (`--bg`). Hovering brightens them.
-- The close button (×) is hidden until the tab is hovered or active. Pinned tabs (Main) have no close button.
-- A + button at the right end of the bar opens a new chat tab.
-- If there are more tabs than fit the bar width the row scrolls horizontally (scrollbar hidden).
-- A spinning indicator inside the tab label signals a resource tab that is still being summarised.
+- The active tab uses `bg-surface-container-highest` and a 1 px top border in the `primary` colour token (light silver), visually merging with the content area below. The tab bar background is `bg-surface-container-low`.
+- Inactive tabs use `text-on-surface-variant` with no background fill. Hovering applies `bg-surface-container-highest` and `text-on-surface`.
+- The close button (×) is hidden until the tab row is **hovered** (`group-hover`). It does not appear simply because the tab is active. Pinned tabs (Main) have no close button.
+- A `+` button (Material Symbol `add`) at the right end of the bar opens a new chat tab.
+- If there are more tabs than fit the bar width the row scrolls horizontally (scrollbar hidden via `.no-scrollbar`).
+- Each tab shows a Material Symbol icon left of the label: `chat` for chat tabs, `description` for resource/preview tabs, `science` for experiment tabs. A resource tab that is actively being summarised shows a `progress_activity` icon instead, with `animate-spin`.
 
 **Messages.** Text is streamed character-by-character into the latest assistant bubble.
 - Both user and assistant text are rendered through `MessageMarkdown` (`react-markdown` + `remark-gfm` + `remark-math` + `rehype-katex`). GitHub-flavoured markdown — tables, fenced code, task lists — and LaTeX (`$…$`, `$$…$$`) display inline. KaTeX CSS is imported once in `main.tsx`. Inline HTML is intentionally **not** enabled (no `rehype-raw`); raw HTML in the model output is shown as text or inside a fenced code block, never injected into the DOM.
 - Thinking blocks render as a collapsed-by-default accordion whose only collapsed label is `thinking...`. Clicking the label expands or collapses the full thinking content. Content is plain text (not markdown-parsed) since thinking traces are rarely well-formed markdown.
-- Tool calls render as compact cards. Clicking expands a Claude-Code-style I/O panel with labeled `IN` and `OUT` monospace fields when the tool input/output is available.
-- Experiment cards are special: collapsed by default; clicking the header toggles a log body. The header contains a status dot (blinking green while `starting`/`running`, solid green for `completed`, solid red for `failed`/`cancelled`), a text status pill, a chevron (▸/▾), and a **Cancel** button (visible only while `starting` or `running`). Expanded body shows the last 10 log lines streamed live from the experiment, or "No output yet." if none have arrived. The Cancel button calls `e.stopPropagation()` so it does not toggle the card.
+- Tool calls render as compact cards (`ToolCard`, defined inline in `MessageList.tsx`). Clicking expands a Claude-Code-style I/O panel with labeled `IN` and `OUT` monospace fields when the tool input/output is available. `experiment.start` tool calls render as `ExperimentCard` instead (see below).
+- Experiment cards are special: collapsed by default; clicking the header toggles a log body. The header contains: a status dot (blinking amber while `starting`/`running`, solid green for `completed`, solid red for `failed`/`cancelled`); a `⚗ <tool_name>` label; a text status badge; optionally a `PID <n>` label while running; optionally an `exit <n>` label when failed; a chevron (▸/▾); and a **Cancel** button (visible only while `starting` or `running` and only when the UUID is known). Expanded body shows the tool input (IN) and the last 10 live log lines (OUT) or "No output yet." if none have arrived. The Cancel button calls `e.stopPropagation()` so it does not toggle the card.
 
 **Composer footer.** Below the textarea, a footer bar holds two dropdown selectors and the Send button. Both dropdowns share the same visual style (a small pill button that opens a menu above it):
 - The textarea starts at 52px high, grows with content, caps at 240px, then scrolls internally.
@@ -754,9 +757,11 @@ No table for chat messages — the CC session is the source of truth, and `--res
 - **Effort** — selects the thinking-budget level; options come from `EFFORT_LEVELS` (Low → Med → High → XHigh → Max). Default: **Low**. Persisted to `.ire/workspace.json` (debounced 1 s) and rehydrated on workspace open.
 Both values are passed as `options: { model, effort }` on every `chat_send` invocation.
 
+**ExperimentTabView.** When the active tab has `kind === "experiment"`, the chat pane renders `ExperimentTabView` instead of the message list + composer. It shows: a name header with a status badge; a metadata grid (status + elapsed timer, runtime, command); and a scrollable log pane (stdout only, `h-48`, auto-scrolls to bottom). Elapsed time is updated every second via `setInterval` while the experiment is running, and frozen to the final elapsed on completion. Live log lines arrive via the `experiment-log-line` event. The pane polls `experiment_list` once on mount to load initial state and loads existing stdout via `experiment_logs`.
+
 ### 13.3 Edit/preview toggle behaviour
 
-- Resource preview tabs open in **Preview** by default. Switching to Edit loads the raw file contents; switching back to Preview without Submit discards local edits (with a confirm if dirty). Submit calls `save_wiki_file`.
+- Resource preview tabs open in **Preview** by default, rendering the wiki markdown via `ResourcePreviewPane`. Switching to Edit loads the raw file contents into a textarea; switching back to Preview without Submit discards local edits (with a confirm if dirty). Submit calls `save_wiki_file`.
 - `NotesPane` edits `notes.md` inline and saves through `save_notes` on blur / Ctrl+Enter.
 - `IdeasPane` does not use markdown edit/preview. It writes the structured `ideas.json` list directly via `save_ideas_json`.
 
@@ -764,16 +769,13 @@ Both values are passed as `options: { model, effort }` on every `chat_send` invo
 
 The Resources list shows only confirmed (indexed) resources — those where the user clicked Confirm and the wiki file was written and committed. Each entry shows the extracted title (frontmatter `title:` → first `#` heading → filename stem). No status label is shown. Resources in progress (being fetched or summarised) do not appear in the list; they are visible only in the open resource chat tab.
 
-Clicking a resource entry (only enabled when `wiki_path` is non-null) opens a **Preview tab** in the central column. The tab fetches the wiki file content via `read_wiki_file` and renders it in a `MarkdownPane` with edit/preview toggle and a Submit button. Submit calls `save_wiki_file` to persist edits and commit. Clicking the same resource while its Preview tab is already open re-focuses that tab instead of opening a duplicate.
+Clicking a resource entry (only enabled when `wiki_path` is non-null) opens a **Preview tab** in the central column. The tab fetches the wiki file content via `read_wiki_file` and renders it in a `ResourcePreviewPane` with edit/preview toggle and a Submit button. Submit calls `save_wiki_file` to persist edits and commit. Clicking the same resource while its Preview tab is already open re-focuses that tab instead of opening a duplicate.
 
 ### 13.5 Theming
 
-The UI supports dark and light themes. Dark is the default. A toggle button in the topbar switches between them.
+The UI uses a fixed dark theme. All colours are defined as Tailwind token extensions in `tailwind.config.ts` (e.g. `surface-container-low`, `on-surface`, `primary`, `error`, `warn`, `ok`, `accent`). There are no light-mode overrides and no theme-toggle button in the current implementation.
 
-- All colors are defined as CSS custom properties in `:root` (dark values). `[data-theme="light"]` overrides them with light values.
-- Theme state lives in the Zustand workspace store (`theme: "dark" | "light"`). A `toggleTheme` action flips it; `setTheme` sets it directly.
-- `App` (not `Layout`) syncs `document.documentElement.dataset.theme` to the store value via `useEffect` — setting the attribute to `"light"` or removing it to revert to the dark `:root` defaults. This runs at the app level so the setup screen also respects the stored preference.
-- Theme preference is persisted to `~/.config/ire/config.json` (see [§13.7](#137-user-config-configireconfig.json)) — **not** in `workspace.json`. It is rehydrated at app startup before any workspace is opened. When the user toggles the theme inside an open workspace, `Layout` debounces a `save_user_config` call (1 s) that writes the updated theme alongside the current `recent_workspaces` to avoid clobbering them.
+`~/.config/ire/config.json` still has a `theme` field in its schema (reserved for future use), and `read_user_config` returns it, but the frontend does not apply it: `hydrateFromUserConfig` in the workspace Zustand store only restores `recentWorkspaces`.
 
 ### 13.6 Workspace state (`workspace.json`)
 
@@ -818,7 +820,7 @@ Stores preferences that apply across all workspaces. Path: `$XDG_CONFIG_HOME/ire
 
 **Written by two paths:**
 - `push_recent` (Rust, `user_config.rs`) — called at the end of every successful `open_workspace` / `init_workspace`. Reads the existing config, prepends the path, deduplicates, truncates to 10, writes back.
-- `save_user_config` (Tauri command, called from `Layout.tsx`) — debounced 1 s after a theme toggle. Always sends the full config object including `recent_workspaces` from the store to avoid clobbering entries written by `push_recent`.
+- `save_user_config` (Tauri command) — reserved for future callers (e.g. a theme toggle if re-introduced). Must always send the full config object including `recent_workspaces` from the store to avoid clobbering entries written by `push_recent`.
 
 **Frontend store fields.** `recentWorkspaces: string[]` in the workspace Zustand store mirrors the persisted list. `pushRecentWorkspace(path)` prepends and caps to 10 in-memory; the actual disk write is done by the Rust backend.
 
@@ -828,33 +830,38 @@ Stores preferences that apply across all workspaces. Path: `$XDG_CONFIG_HOME/ire
 
 ### 14.1 Commands (frontend → backend)
 
+Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog plugin directly (`@tauri-apps/plugin-dialog`) via the `pickDirectory` helper in `ipc.ts`; the path is then passed to `open_workspace` or `init_workspace`.
+
 | Command | Args | Returns |
 |---|---|---|
-| `setup_status` | — | `{ binary: "found"\|"missing"\|"unauth", version?, recent_workspaces: [] }` |
-| `pick_workspace` | `{ kind: "open"\|"init" }` | `{ path }` (uses native dialog) |
-| `open_workspace` | `{ path }` | `{ workspace: WorkspaceState }` |
-| `init_workspace` | `{ path }` | `{ workspace: WorkspaceState }` |
+| `setup_status` | — | `{ binary: BinaryStatus }` where `BinaryStatus` is `{ kind: "found"; path: string; version: string \| null } \| { kind: "missing" }` |
+| `open_workspace` | `{ path }` | `WorkspaceState` (`{ path, name }`) |
+| `init_workspace` | `{ path }` | `WorkspaceState` |
 | `close_workspace` | — | `{}` |
 | `read_wiki_file` | `{ path }` | `{ content, frontmatter }` |
 | `save_wiki_file` | `{ path, content }` | `{}` (atomic write + user commit for the given wiki-relative path) |
-| `save_notes` | `{ content }` | `{}` (kicks ingestion + user commit on success) |
+| `save_notes` | `{ content }` | `{}` (atomic write + user commit) |
 | `read_ideas` | — | `IdeaItem[]` from `ideas.json` |
 | `save_ideas_json` | `{ ideas }` | `{}` (writes `ideas.json`) |
-| `submit_resource` | `{ url }` | `{ resource_id }` |
+| `read_pulse` | — | `{ research_question, this_week }` |
+| `save_pulse_field` | `{ field: "research_question" \| "this_week", content }` | `{}` (writes the matching split pulse file) |
+| `submit_resource` | `{ url }` | `resource_id: string` |
 | `index_resource` | `{ resource_id }` | `{}` (commits `resources/<slug>.md` + `_index.md`) |
-| `discard_resource` | `{ resource_id }` | `{}` (deletes file, marks rejected) |
+| `discard_resource` | `{ resource_id }` | `{}` (deletes cache file, marks DB row `rejected`) |
+| `list_resources` | — | `ResourceItem[]` (only `summarized` entries) |
+| `get_resource_confirm_prompt` | — | `string` (the second-turn confirm prompt loaded from `assets/prompts/`) |
 | `chat_send` | `{ tab_id, mode, message, options: { model: string, effort: EffortLevel } }` | `{}` (events follow) |
 | `chat_cancel` | `{ tab_id }` | `{}` |
 | `chat_reset_session` | `{ tab_id }` | `{}` (forgets session id for that tab) |
 | `experiment_list` | `{ limit? }` | `[ExperimentRow]` |
 | `experiment_logs` | `{ uuid, kb? }` | `{ stdout, stderr }` |
 | `experiment_cancel` | `{ uuid }` | `{}` |
+| `experiment_delete` | `{ uuid }` | `{}` (removes DB row; frontend uses this to remove a finished experiment from the left-rail list) |
+| `get_system_status` | — | `SystemStatus` (workspace path, git branch/diff, CPU/GPU/RAM metrics, CC connected flag) |
 | `read_workspace_state` | — | `PersistedWorkspace` (panel layout from `.ire/workspace.json`) |
 | `save_workspace_state` | `{ state: PersistedWorkspace }` | `{}` (debounced from frontend; atomic write) |
-| `read_user_config` | — | `UserConfig` (theme + recent workspaces from `~/.config/ire/config.json`) |
-| `save_user_config` | `{ config: UserConfig }` | `{}` (writes full config; called on theme toggle) |
-| `read_pulse` | — | `{ research_question, this_week }` |
-| `save_pulse_field` | `{ field: "research_question" \| "this_week", content }` | `{}` (writes the matching split pulse file) |
+| `read_user_config` | — | `UserConfig` (`{ theme?, recent_workspaces? }` from `~/.config/ire/config.json`) |
+| `save_user_config` | `{ config: UserConfig }` | `{}` (writes full config) |
 
 ### 14.2 Events (backend → frontend)
 
@@ -863,6 +870,7 @@ Stores preferences that apply across all workspaces. Path: `$XDG_CONFIG_HOME/ire
 | `chat-stream` | `{ tab_id: string, event: StreamEvent }` (see [§10.3](#103-ndjson-parser-ccstream) and [§9.4](#94-multi-tab-chat)) |
 | `tab-created` | `{ tab_id: string, label: string, kind: "chat"\|"resource", resource_id?: string }` (preview tabs are created client-side only) |
 | `chat-cancelled` | `{ tab_id: string }` |
+| `experiment-starting` | `{ tab_id: string, uuid: string, pid?: number }` (fired when the detached process has been spawned; links the pending experiment card in `tab_id` to its assigned UUID and PID) |
 | `experiment-status` | `{ uuid, status, exit_code? }` |
 | `experiment-log-line` | `{ uuid, stream: "stdout"\|"stderr", line }` |
 | `wiki-changed` | `{ path }` |
@@ -901,31 +909,46 @@ ire/
 │   └── blueprints/...
 ├── package.json
 ├── vite.config.ts
+├── tailwind.config.ts                  # design-token colour palette
 ├── tsconfig.json
 ├── index.html
 ├── src/                                # React frontend
 │   ├── main.tsx
 │   ├── App.tsx
-│   ├── types.ts                        # shared types (StreamEvent, WorkspaceState, …)
-│   ├── ipc.ts                          # invoke/listen wrappers, typed
+│   ├── types.ts                        # shared types (StreamEvent, Tab, ExperimentRow, …)
+│   ├── ipc.ts                          # invoke/listen wrappers + pickDirectory helper
 │   ├── state/                          # zustand stores
-│   │   ├── workspace.ts
-│   │   ├── chat.ts
-│   │   └── experiments.ts
+│   │   ├── workspace.ts                # phase, mode, panelLayout, recentWorkspaces
+│   │   ├── chat.ts                     # tabs, messages, tool calls, experiment state
+│   │   ├── chatOptions.ts              # model + effort selection (MODELS, EFFORT_LEVELS)
+│   │   └── toasts.ts                   # error toast queue
+│   ├── hooks/
+│   │   └── useSystemStatus.ts          # polls get_system_status every 5 s
 │   ├── components/
-│   │   ├── Layout.tsx                  # five-pane shell
-│   │   ├── FocusBanner.tsx
-│   │   ├── MarkdownPane.tsx            # edit/preview toggle
-│   │   ├── ResourceInput.tsx
-│   │   ├── ResourcesList.tsx
+│   │   ├── Layout.tsx                  # five-pane shell + data loading + debounced saves
+│   │   ├── StatusBar.tsx               # bottom status bar
+│   │   ├── ToastStack.tsx              # top-right error toasts
+│   │   ├── left/
+│   │   │   ├── LeftRail.tsx            # vertical resizable group (pulse/resources/experiments)
+│   │   │   ├── FocusPane.tsx           # research-question + this-week inline editor
+│   │   │   ├── ResourcesSection.tsx    # confirmed resource list → opens preview tab
+│   │   │   └── ExperimentsSection.tsx  # experiment list → opens experiment tab
+│   │   ├── right/
+│   │   │   ├── RightRail.tsx           # vertical resizable group (notes/ideas/resource-input)
+│   │   │   ├── NotesPane.tsx           # notes.md inline editor
+│   │   │   ├── IdeasPane.tsx           # ideas.json card list
+│   │   │   └── AddResourceSection.tsx  # URL input for resource ingestion
 │   │   ├── chat/
-│   │   │   ├── ChatPane.tsx
-│   │   │   ├── MessageList.tsx
-│   │   │   ├── ToolCard.tsx
-│   │   │   ├── ExperimentCard.tsx
-│   │   │   └── Composer.tsx
+│   │   │   ├── ChatPane.tsx            # tab router: chat / resource / preview / experiment
+│   │   │   ├── TabBar.tsx              # TDI tab bar with icons and + button
+│   │   │   ├── MessageList.tsx         # message bubbles, ToolCard (inline), ExperimentCard
+│   │   │   ├── MessageMarkdown.tsx     # react-markdown + remark-gfm + KaTeX renderer
+│   │   │   ├── ExperimentCard.tsx      # experiment.start tool-call card with live log tail
+│   │   │   ├── ExperimentTabView.tsx   # full experiment detail view (metadata + logs)
+│   │   │   ├── ResourcePreviewPane.tsx # edit/preview toggle for resource wiki files
+│   │   │   └── Composer.tsx            # floating textarea + model/effort pickers + Send
 │   │   └── setup/
-│   │       └── SetupScreen.tsx
+│   │       └── SetupScreen.tsx         # workspace picker + recent list + CC status
 │   └── styles.css
 ├── src-tauri/
 │   ├── Cargo.toml
@@ -937,52 +960,45 @@ ire/
 │       ├── user_config.rs              # UserConfig struct, read/write, push_recent
 │       ├── commands/
 │       │   ├── mod.rs
-│       │   ├── workspace.rs
-│       │   ├── wiki.rs
-│       │   ├── chat.rs
-│       │   ├── experiments.rs
-│       │   └── resources.rs
+│       │   ├── workspace.rs            # setup_status, open/init/close_workspace, workspace state, user config
+│       │   ├── wiki.rs                 # read/save wiki, notes, pulse, ideas
+│       │   ├── chat.rs                 # chat_send, chat_cancel, chat_reset_session
+│       │   ├── resources.rs            # submit/index/discard/list_resources, get_resource_confirm_prompt,
+│       │   │                           #   experiment_list/logs/cancel/delete
+│       │   └── system.rs               # get_system_status
 │       ├── workspace/
 │       │   ├── mod.rs
 │       │   ├── lock.rs                 # .lock PID file
 │       │   ├── init.rs                 # scaffold + git init
-│       │   └── state.rs                # WorkspaceState struct
+│       │   ├── state.rs                # WorkspaceState + ActiveWorkspace managed state
+│       │   └── persisted.rs            # PersistedWorkspace (workspace.json schema)
 │       ├── wiki/
 │       │   ├── mod.rs
-│       │   ├── store.rs                # atomic write, mutex, log append
+│       │   ├── store.rs                # atomic write, tokio::Mutex, git auto-commit
 │       │   ├── index.rs                # _index.md regenerator
 │       │   └── frontmatter.rs
-│       ├── memory/
-│       │   ├── mod.rs
-│       │   ├── long_term.rs
-│       │   ├── short_term.rs
-│       │   └── failures.rs
 │       ├── resources/
 │       │   ├── mod.rs
-│       │   ├── fetch.rs                # reqwest
-│       │   ├── pdf.rs                  # pdf-extract
-│       │   └── html.rs                 # readability
+│       │   ├── fetch.rs                # reqwest fetcher
+│       │   ├── arxiv.rs                # arXiv shortcut: abs/pdf URL → LaTeX tarball extract
+│       │   ├── pdf.rs                  # pdf-extract crate
+│       │   └── html.rs                 # readability extraction
 │       ├── cc/
 │       │   ├── mod.rs
 │       │   ├── discovery.rs            # find_claude_binary
 │       │   ├── spawn.rs                # Command setup
 │       │   ├── stream.rs               # NDJSON parser → StreamEvent
-│       │   └── session.rs              # session_id persistence + queue
-│       ├── experiments/
-│       │   ├── mod.rs
-│       │   ├── runner.rs               # detached spawn + monitor
-│       │   └── wake.rs                 # wake-up turn composition
+│       │   └── session.rs              # SessionManager (per-tab session_id + PID)
+│       ├── prompts/
+│       │   └── mod.rs                  # load prompts from assets/prompts/ at runtime
 │       ├── mcp/
 │       │   ├── mod.rs
 │       │   ├── config.rs               # write .ire/mcp.json
-│       │   ├── server_proc.rs          # spawn/teardown of node mcp/server.js
 │       │   └── rpc.rs                  # Unix socket / TCP RPC handler
-│       ├── db/
-│       │   ├── mod.rs
-│       │   ├── migrations.rs
-│       │   └── models.rs               # Experiment, Resource
-│       └── util/
-│           └── atomic_write.rs
+│       └── db/
+│           ├── mod.rs
+│           ├── migrations.rs
+│           └── models.rs               # Experiment, Resource
 └── mcp/                                # bundled Node MCP server
     ├── package.json
     ├── server.js                       # stdio server, JSON-RPC bridge to Rust
