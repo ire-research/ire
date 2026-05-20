@@ -95,6 +95,20 @@ pub fn experiment_delete(
     Ok(())
 }
 
+#[tauri::command]
+pub fn experiment_rename(
+    active: State<'_, ActiveWorkspace>,
+    uuid: String,
+    name: String,
+) -> Result<(), String> {
+    let workspace_path = {
+        let guard = active.0.lock().map_err(|e| e.to_string())?;
+        guard.as_ref().ok_or("no workspace open")?.state.path.clone()
+    };
+    let ire_dir = workspace_path.join(".ire");
+    db::rename_experiment(&ire_dir, &uuid, &name).map_err(|e| e.to_string())
+}
+
 fn read_tail(path: &std::path::Path, max_bytes: u64) -> String {
     let Ok(content) = fs::read(path) else { return String::new() };
     let len = content.len() as u64;
