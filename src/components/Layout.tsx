@@ -120,7 +120,7 @@ export function Layout() {
 
   const railResources = resources.filter((r) => r.wiki_path).map((r) => ({
     resourceId: r.resource_id,
-    label: r.title ?? r.url,
+    label: r.title ?? r.source_label,
     wikiPath: r.wiki_path!,
   }));
   const workspacePath = phase.kind === "ready" ? phase.workspace.path : "";
