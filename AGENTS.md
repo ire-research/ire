@@ -54,13 +54,22 @@ For multi-step tasks, state a brief plan:
 
 ### 5. Build Verification
 
-**After every change, verify the build passes.**
+**After every change, verify with non-interactive checks.**
 
 Run before reporting work as done:
 ```
-npm run tauri dev
+npm run build
+cargo test --manifest-path src-tauri/Cargo.toml
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 ```
-This compiles both Rust and TypeScript. It must succeed with zero errors and zero warnings. Warnings are bugs — dead code and unused fields mean speculative code crept in (see §2).
+These commands must succeed with zero errors and zero warnings. Warnings are bugs — dead code and unused fields mean speculative code crept in (see §2).
+
+For changes touching Tauri startup, config, permissions, bundling, or app-shell integration, also run:
+```
+
+```
+
+Do not use `npm run tauri dev` as routine verification. It starts an interactive dev server and may conflict with other users or processes.
 
 ### 6. Documentation Synchronization
 
