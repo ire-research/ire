@@ -2,18 +2,9 @@
 //! `assets/prompts/` and is embedded at build time. Edit the `.md` files
 //! to change CC's behaviour — never hardcode prompts elsewhere.
 
-const MODE_BRAINSTORM: &str = include_str!("../../assets/prompts/mode_brainstorm.md");
-const MODE_EXPERIMENT: &str = include_str!("../../assets/prompts/mode_experiment.md");
 const RESOURCE_SUMMARIZER: &str = include_str!("../../assets/prompts/resource_summarizer.md");
 const RESOURCE_CONFIRM: &str = include_str!("../../assets/prompts/resource_confirm.md");
 const EXPERIMENT_WAKEUP: &str = include_str!("../../assets/prompts/experiment_wakeup.md");
-
-pub fn mode_preamble(mode: &str) -> &'static str {
-    match mode {
-        "experiment" => MODE_EXPERIMENT.trim_end(),
-        _ => MODE_BRAINSTORM.trim_end(),
-    }
-}
 
 pub fn resource_summarizer() -> &'static str {
     RESOURCE_SUMMARIZER.trim_end()

@@ -13,7 +13,6 @@ fn trunc(s: &str) -> &str {
 use crate::cc::session::SessionManager;
 use crate::cc::spawn::{build_command, SpawnArgs};
 use crate::cc::stream::{dispatch, StreamEvent, StreamState};
-use crate::prompts;
 use crate::workspace::state::ActiveWorkspace;
 
 #[derive(serde::Deserialize)]
@@ -29,7 +28,6 @@ pub async fn chat_send(
     session: State<'_, SessionManager>,
     tab_id: String,
     message: String,
-    mode: String,
     options: ChatOptions,
 ) -> Result<(), String> {
     let workspace_path = {
@@ -45,13 +43,13 @@ pub async fn chat_send(
         if p.exists() { Some(p) } else { None }
     };
 
-    let system_prompt = build_system_prompt(&workspace_path, &mode);
+    let system_prompt = build_system_prompt(&workspace_path);
 
     // Clone the SessionManager handle (cheap Arc clone) so it can move into spawn_blocking.
     let session_clone = (*session).clone();
     let tab_id_outer = tab_id.clone();
 
-    tracing::info!(tab_id = %tab_id, mode = %mode, model = %options.model, effort = %options.effort, msg = %trunc(&message), "chat_send");
+    tracing::info!(tab_id = %tab_id, model = %options.model, effort = %options.effort, msg = %trunc(&message), "chat_send");
 
     let result = tokio::task::spawn_blocking(move || {
         let mut cmd = build_command(&SpawnArgs {
@@ -134,7 +132,7 @@ pub fn chat_reset_session(session: State<'_, SessionManager>, tab_id: String) ->
 }
 
 /// Compose the system prompt from wiki context files per §7.4.
-pub fn build_system_prompt(workspace_root: &Path, mode: &str) -> String {
+pub fn build_system_prompt(workspace_root: &Path) -> String {
     let wiki_root = workspace_root.join(".ire/wiki");
 
     let mut parts: Vec<String> = Vec::new();
@@ -145,8 +143,6 @@ pub fn build_system_prompt(workspace_root: &Path, mode: &str) -> String {
             parts.push(content);
         }
     }
-
-    parts.push(prompts::mode_preamble(mode).to_string());
 
     for rel in &[
         "_schema.md",
