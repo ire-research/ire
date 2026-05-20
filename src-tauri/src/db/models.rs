@@ -95,6 +95,15 @@ pub fn delete_experiment(ire_dir: &Path, uuid: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn rename_experiment(ire_dir: &Path, uuid: &str, name: &str) -> Result<()> {
+    let conn = open(ire_dir)?;
+    conn.execute(
+        "UPDATE experiments SET name = ?1 WHERE uuid = ?2",
+        params![name, uuid],
+    )?;
+    Ok(())
+}
+
 pub fn list_experiments(ire_dir: &Path, limit: usize) -> Result<Vec<ExperimentRow>> {
     let conn = open(ire_dir)?;
     let mut stmt = conn.prepare(
