@@ -27,10 +27,10 @@ export function MessageList({ messages }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const lastMsg = messages[messages.length - 1];
-  const lastMsgText = lastMsg && "text" in lastMsg ? lastMsg.text : "";
+  const lastMsgKey = messageScrollKey(lastMsg);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, lastMsgText]);
+  }, [messages.length, lastMsgKey]);
 
   if (messages.length === 0) {
     return <div className="flex-1" />;
@@ -62,9 +62,6 @@ function formatElapsed(s: number): string {
 }
 
 function AssistantBubble({ msg }: { msg: AssistantMessage }) {
-  const [thinkingOpen, setThinkingOpen] = useState(false);
-  const thinkingRef = useRef<HTMLDivElement>(null);
-
   // Timer: starts at mount (when the assistant turn begins), freezes when streaming stops.
   const startRef = useRef(Date.now());
   const [elapsed, setElapsed] = useState(0);
@@ -80,59 +77,34 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
     return () => cancelAnimationFrame(raf);
   }, [msg.isStreaming]);
 
-  useEffect(() => {
-    if (msg.isStreaming && thinkingOpen && thinkingRef.current) {
-      thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight;
-    }
-  }, [msg.thinking, msg.isStreaming, thinkingOpen]);
-
   // Show timer once streaming has started (elapsed > 0) or is currently running.
   const showTimer = msg.isStreaming || elapsed > 0;
 
   return (
     <div className="flex flex-col items-start max-w-[720px] space-y-4">
-      {msg.thinking && (
-        <div className="flex gap-3 text-on-surface-variant text-[13px] w-full">
-          <div className="w-px bg-outline-variant shrink-0 my-1" />
-          <div className="flex-1 min-w-0">
-            <button
-              type="button"
-              className="italic py-1 opacity-80 text-xs hover:text-on-surface transition-colors"
-              onClick={() => setThinkingOpen((v) => !v)}
-            >
-              thinking...
-            </button>
-            {thinkingOpen && (
-              <div
-                ref={thinkingRef}
-                className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed"
-              >
-                {msg.thinking}
-              </div>
-            )}
+      {msg.blocks.map((block) => {
+        if (block.kind === "thinking") {
+          return <ThinkingBlock key={block.id} text={block.text} isStreaming={msg.isStreaming} />;
+        }
+
+        if (block.kind === "tool") {
+          return isExperimentStart(block.tool.tool_name) ? (
+            <ExperimentCard key={block.id} tool={block.tool} />
+          ) : (
+            <ToolCard key={block.id} tool={block.tool} />
+          );
+        }
+
+        return (
+          <div key={block.id} className="text-on-surface text-[14px] leading-relaxed">
+            <MessageMarkdown content={block.text} />
           </div>
-        </div>
-      )}
+        );
+      })}
 
-      {msg.tools && msg.tools.length > 0 && (
-        <div className="w-full space-y-2">
-          {msg.tools.map((tool) =>
-            isExperimentStart(tool.tool_name) ? (
-              <ExperimentCard key={tool.tool_id} tool={tool} />
-            ) : (
-              <ToolCard key={tool.tool_id} tool={tool} />
-            )
-          )}
-        </div>
-      )}
-
-      {msg.error ? (
+      {msg.error && (
         <div className="text-[14px] text-error">{msg.error}</div>
-      ) : msg.text ? (
-        <div className="text-on-surface text-[14px] leading-relaxed">
-          <MessageMarkdown content={msg.text} />
-        </div>
-      ) : null}
+      )}
 
       {/* Loading row: dots (while streaming) + timer (whole turn). Always last. */}
       {showTimer && !msg.error && (
@@ -151,6 +123,59 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
       )}
     </div>
   );
+}
+
+function ThinkingBlock({ text, isStreaming }: { text: string; isStreaming: boolean }) {
+  const [thinkingOpen, setThinkingOpen] = useState(false);
+  const thinkingRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isStreaming && thinkingOpen && thinkingRef.current) {
+      thinkingRef.current.scrollTop = thinkingRef.current.scrollHeight;
+    }
+  }, [text, isStreaming, thinkingOpen]);
+
+  return (
+    <div className="flex gap-3 text-on-surface-variant text-[13px] w-full">
+      <div className="w-px bg-outline-variant shrink-0 my-1" />
+      <div className="flex-1 min-w-0">
+        <button
+          type="button"
+          className="italic py-1 opacity-80 text-xs hover:text-on-surface transition-colors"
+          onClick={() => setThinkingOpen((v) => !v)}
+        >
+          thinking...
+        </button>
+        {thinkingOpen && (
+          <div
+            ref={thinkingRef}
+            className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed"
+          >
+            {text}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function messageScrollKey(message: ChatMessage | undefined): string {
+  if (!message) return "";
+  if (message.role === "user") return message.text;
+
+  return message.blocks
+    .map((block) => {
+      if (block.kind === "tool") {
+        return [
+          block.tool.tool_id,
+          block.tool.isDone,
+          block.tool.output_full?.length ?? 0,
+          block.tool.logLines?.length ?? 0,
+        ].join(":");
+      }
+      return `${block.kind}:${block.text.length}`;
+    })
+    .join("|");
 }
 
 function ToolCard({ tool }: { tool: ToolCallState }) {
