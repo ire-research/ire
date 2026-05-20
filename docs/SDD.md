@@ -361,21 +361,28 @@ Ideas are stored directly in `wiki/ideas.json` through `read_ideas` / `save_idea
 ### 8.3 Resource ingestion
 
 ```
-User pastes URL → Submit
-  → submit_resource(url) Tauri command
+User pastes URL or chooses one local file → Add
+  → URL: submit_resource(url) Tauri command
+  → file: submit_local_resource(path) Tauri command
   → Rust:
-      1. fetch URL with reqwest (10 s timeout, follow redirects)
-      2. arXiv shortcut: if URL is arxiv.org/abs/<id> or arxiv.org/pdf/<id>,
+      1. URL resources: fetch URL with reqwest (20 s timeout, follow redirects)
+      2. URL arXiv shortcut: if URL is arxiv.org/abs/<id> or arxiv.org/pdf/<id>,
          fetch arxiv.org/e-print/<id> instead and extract LaTeX from the
          tarball (gzip + tar). Falls back to PDF on failure.
-      3. detect content-type:
+      3. URL content-type extraction:
            pdf  → pdf-extract crate → plain text
            html → readability extraction → plain text
-      3. write extracted text to .ire/cache/<url-sha256>.txt
-      4. insert resource row in SQLite (status=pending_summary)
-      5. open a new resource chat tab (see §9.4), labelled by URL hostname
-      6. kick a CC turn in that tab with prompt:
-           "Read .ire/cache/<sha256>.txt (source: <url>). Provide an executive
+      4. Local file extraction, limited to .txt, .md, .pdf, .docx:
+           .txt/.md → UTF-8 text
+           .pdf     → pdf-extract crate → plain text
+           .docx    → unzip Office package and extract text from word/document.xml
+      5. write extracted text to .ire/cache/<sha256>.txt
+           URL resources use sha256(url)
+           local files use sha256(file bytes)
+      6. insert resource row in SQLite (status=pending_summary, source_type='url' or 'local_file')
+      7. open a new resource chat tab (see §9.4), labelled by URL hostname or filename
+      8. kick a CC turn in that tab with prompt:
+           "Read .ire/cache/<sha256>.txt (source: <source>). Provide an executive
             summary — what this resource is, what is relevant to this project,
             why it matters, and how it could be used. Use bullet points.
             Do NOT write to the wiki yet."
@@ -383,7 +390,7 @@ User pastes URL → Submit
 
 CC streams the summary into the resource tab. When the turn ends, **Confirm** and **Discard** buttons appear.
 
-**Confirm**: triggers a second CC turn in the same tab with the instruction to write the summary to `resources/<slug>.md` via the `wiki.write` MCP tool. Frontmatter follows `_schema.md`: `title`, `type: summary`, `sources: [<url>]`, `updated: YYYY-MM-DD`. Body starts with a `#` heading matching the title, then the summary. The tab auto-closes when this second CC turn ends. The written file is indexed in SQLite, but no git commit is created by IRE.
+**Confirm**: triggers a second CC turn in the same tab with the instruction to write the summary to `resources/<slug>.md` via the `wiki.write` MCP tool. Frontmatter follows `_schema.md`: `title`, `type: summary`, `sources: [<original source>]`, `updated: YYYY-MM-DD`. URL sources use the original URL; local file sources use `file:<sha256>:<filename>`. Body starts with a `#` heading matching the title, then the summary. The tab auto-closes when this second CC turn ends. The written file is indexed in SQLite, but no git commit is created by IRE.
 
 **Discard**: deletes `.ire/cache/<sha256>.txt`, marks the DB row `status=rejected`, closes the tab immediately. No wiki file is written.
 
@@ -657,7 +664,9 @@ CREATE INDEX idx_experiments_started ON experiments(started_at DESC);
 
 CREATE TABLE resources (
   url_sha256 TEXT PRIMARY KEY,
-  url TEXT NOT NULL,
+  url TEXT NOT NULL,                 -- URL, or file:<sha256>:<filename> for local files
+  source_type TEXT NOT NULL DEFAULT 'url',
+  source_label TEXT,                 -- display label, e.g. URL or filename
   title TEXT,
   status TEXT NOT NULL,             -- pending_fetch | pending_summary | summarized | failed
   content_type TEXT,
@@ -690,7 +699,7 @@ The Tauri window opens in windowed mode at 1280 × 820 so the primary rails, cen
 │  - This Week     │   - composer                 │  IdeasPane         │
 │  ResourcesSection│   - experiment tab view      │  - draggable cards │
 │  ExperimentsSection   (kind="experiment")        │  AddResourceSection│
-│  - experiment list                               │  - URL input       │
+│  - experiment list                               │  - URL + file input│
 └──────────────────┴──────────────────────────────┴────────────────────┘
 │ StatusBar: full workspace path + git diff · CPU · GPU · RAM · host   │
 └──────────────────────────────────────────────────────────────────────┘
@@ -820,6 +829,7 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 | `read_pulse` | — | `{ research_question, this_week }` |
 | `save_pulse_field` | `{ field: "research_question" \| "this_week", content }` | `{}` (writes the matching split pulse file) |
 | `submit_resource` | `{ url }` | `resource_id: string` |
+| `submit_local_resource` | `{ path }` | `resource_id: string` |
 | `index_resource` | `{ resource_id }` | `{}` (records `wiki_path` + title and emits `wiki-changed`) |
 | `discard_resource` | `{ resource_id }` | `{}` (deletes cache file, marks DB row `rejected`) |
 | `list_resources` | — | `ResourceItem[]` (only `summarized` entries) |
@@ -912,7 +922,7 @@ ire/
 │   │   │   ├── RightRail.tsx           # vertical resizable group (notes/ideas/resource-input)
 │   │   │   ├── NotesPane.tsx           # notes.md inline editor
 │   │   │   ├── IdeasPane.tsx           # ideas.json card list
-│   │   │   └── AddResourceSection.tsx  # URL input for resource ingestion
+│   │   │   └── AddResourceSection.tsx  # URL/file input for resource ingestion
 │   │   ├── chat/
 │   │   │   ├── ChatPane.tsx            # tab router: chat / resource / preview / experiment
 │   │   │   ├── TabBar.tsx              # TDI tab bar with icons and + button
@@ -938,8 +948,7 @@ ire/
 │       │   ├── workspace.rs            # setup_status, open/init/close_workspace, workspace state, user config
 │       │   ├── wiki.rs                 # read/save wiki, notes, pulse, ideas
 │       │   ├── chat.rs                 # chat_send, chat_cancel, chat_reset_session
-│       │   ├── resources.rs            # submit/index/discard/list_resources, get_resource_confirm_prompt,
-│       │   │                           #   experiment_list/logs/cancel/delete
+│       │   ├── resources.rs            # submit/index/discard/list_resources, get_resource_confirm_prompt
 │       │   └── system.rs               # get_system_status
 │       ├── workspace/
 │       │   ├── mod.rs
@@ -956,6 +965,7 @@ ire/
 │       │   ├── mod.rs
 │       │   ├── fetch.rs                # reqwest fetcher
 │       │   ├── arxiv.rs                # arXiv shortcut: abs/pdf URL → LaTeX tarball extract
+│       │   ├── local.rs                # local .txt/.md/.pdf/.docx extraction
 │       │   ├── pdf.rs                  # pdf-extract crate
 │       │   └── html.rs                 # readability extraction
 │       ├── cc/
@@ -996,7 +1006,7 @@ Each phase ends with a demoable milestone.
 
 **Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. CC config wired up via `--mcp-config`. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` handles atomic writes, index regeneration, `wiki-changed` events, and renames without creating git commits. System prompt composed from wiki context files on every CC turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and CC actually does it. ✅
 
-**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML extractors. `submit_resource` fetches a URL, extracts text via `scraper` (HTML) or `pdf-extract` (PDF), writes to `.ire/cache/<sha256>.txt`, inserts a DB row, emits `tab-created`, and kicks a CC summarisation turn. Confirm sends a second CC turn that writes `resources/<slug>.md` via `wiki.write`; when Done fires, `index_resource` scans `wiki/resources/` for the file whose frontmatter `sources:` array contains the resource URL (`_schema.md`-aligned), extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), and emits `wiki-changed` to refresh the pane. Discard calls `discard_resource` (deletes cache, marks `rejected`). Notes and ideas write directly to disk without committing. The resources list shows only `summarized` resources with their title and non-null `wiki_path`; no status label is shown. *Milestone:* paste an arXiv URL → resource summary appears in the right pane. ✅
+**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML/local-file extractors. `submit_resource` fetches a URL, extracts text via `scraper` (HTML) or `pdf-extract` (PDF), writes to `.ire/cache/<sha256>.txt`, inserts a DB row, emits `tab-created`, and kicks a CC summarisation turn. `submit_local_resource` accepts one `.txt`, `.md`, `.pdf`, or `.docx` path, extracts plain text, hashes file bytes for the resource id, writes the same cache file, inserts a DB row with `source_type='local_file'`, and uses the same summarisation flow. Confirm sends a second CC turn that writes `resources/<slug>.md` via `wiki.write`; when Done fires, `index_resource` scans `wiki/resources/` for the file whose frontmatter `sources:` array contains the original source (`_schema.md`-aligned URL or `file:<sha256>:<filename>`), extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), and emits `wiki-changed` to refresh the pane. Discard calls `discard_resource` (deletes cache, marks `rejected`). Notes and ideas write directly to disk without committing. The resources list shows only `summarized` resources with their title and non-null `wiki_path`; no status label is shown. *Milestone:* add a URL or supported local file → resource summary appears in the right pane. ✅
 
 **Phase 6 — Experiments.** `experiment.start`, detached subprocess, monitor, wake-up turn composition. Experiment cards in chat with live log tail. *Milestone:* CC can run a Python script ablation, tell the user "I'll be back", and resume with results when the script exits. ✅
 

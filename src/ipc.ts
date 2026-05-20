@@ -75,6 +75,8 @@ export const ipc = {
     invoke("chat_reset_session", { tabId }),
   submitResource: (url: string): Promise<string> =>
     invoke("submit_resource", { url }),
+  submitLocalResource: (path: string): Promise<string> =>
+    invoke("submit_local_resource", { path }),
   discardResource: (resourceId: string): Promise<void> =>
     invoke("discard_resource", { resourceId }),
   indexResource: (resourceId: string): Promise<void> =>
@@ -153,6 +155,21 @@ export async function pickDirectory(title: string): Promise<string | null> {
     directory: true,
     multiple: false,
     title,
+  });
+  return typeof result === "string" ? result : null;
+}
+
+export async function pickResourceFile(): Promise<string | null> {
+  const result = await open({
+    directory: false,
+    multiple: false,
+    title: "Choose resource file",
+    filters: [
+      {
+        name: "Supported resources",
+        extensions: ["txt", "md", "pdf", "docx"],
+      },
+    ],
   });
   return typeof result === "string" ? result : null;
 }
