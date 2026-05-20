@@ -36,6 +36,12 @@ const paths: Record<string, JSX.Element> = {
     </>
   ),
   chevron_right: <path d="M9 18l6-6-6-6" />,
+  close: (
+    <>
+      <path d="M6 6l12 12" />
+      <path d="M18 6L6 18" />
+    </>
+  ),
   delete: (
     <>
       <path d="M3 6h18" />

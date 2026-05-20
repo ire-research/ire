@@ -45,6 +45,12 @@ const MIGRATION_2: &str = "
 ALTER TABLE experiments ADD COLUMN tab_id TEXT NOT NULL DEFAULT 'main';
 ";
 
+const MIGRATION_3: &str = "
+ALTER TABLE resources ADD COLUMN source_type TEXT NOT NULL DEFAULT 'url';
+ALTER TABLE resources ADD COLUMN source_label TEXT;
+UPDATE resources SET source_label = url WHERE source_label IS NULL;
+";
+
 pub fn run(ire_dir: &Path) -> Result<()> {
     let db_path = ire_dir.join("local.db");
     let conn =
@@ -74,6 +80,24 @@ pub fn run(ire_dir: &Path) -> Result<()> {
             params![chrono::Local::now().to_rfc3339()],
         )
         .context("record migration 2")?;
+    }
+
+    let v3_applied: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM schema_migrations WHERE version = 3",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap_or(0)
+        > 0;
+
+    if !v3_applied {
+        conn.execute_batch(MIGRATION_3).context("run migration 3")?;
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (3, ?1)",
+            params![chrono::Local::now().to_rfc3339()],
+        )
+        .context("record migration 3")?;
     }
 
     Ok(())
