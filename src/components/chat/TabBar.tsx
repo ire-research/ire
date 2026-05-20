@@ -1,4 +1,5 @@
 import type { Tab } from "../../types";
+import { Icon } from "../Icon";
 
 interface Props {
   tabs: Tab[];
@@ -35,9 +36,7 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew }: Props) {
             }
             onClick={() => onSelect(tab.id)}
           >
-            <span className={`material-symbols-outlined text-[14px] mr-1.5${spin ? " animate-spin" : ""}`}>
-              {icon}
-            </span>
+            <Icon name={icon} className={`w-[14px] h-[14px] mr-1.5${spin ? " animate-spin" : ""}`} />
             <span>{tab.label}</span>
             {!tab.isPinned && (
               <button
@@ -60,7 +59,7 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew }: Props) {
         role="button"
         aria-label="New tab"
       >
-        <span className="material-symbols-outlined text-[16px]">add</span>
+        <Icon name="add" className="w-[16px] h-[16px]" />
       </div>
     </div>
   );

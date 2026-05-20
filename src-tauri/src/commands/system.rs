@@ -3,6 +3,7 @@ use sysinfo::{CpuRefreshKind, RefreshKind, System};
 use tauri::State;
 use std::process::Command;
 
+use crate::cc::discovery::find_claude_binary;
 use crate::workspace::state::ActiveWorkspace;
 
 #[derive(Debug, Serialize)]
@@ -79,7 +80,7 @@ pub fn get_system_status(active: State<'_, ActiveWorkspace>) -> Result<SystemSta
         ram_total_gb,
         hostname,
         username,
-        cc_connected: true,
+        cc_connected: find_claude_binary().is_ok(),
     })
 }
 

@@ -6,7 +6,10 @@ export function useSystemStatus(): SystemStatus | null {
   const [status, setStatus] = useState<SystemStatus | null>(null);
 
   useEffect(() => {
-    const load = () => ipc.getSystemStatus().then(setStatus).catch(() => {});
+    const load = () => ipc.getSystemStatus().then(setStatus).catch((e) => {
+      console.error("Failed to load system status:", e);
+      setStatus(null);
+    });
     load();
     const id = setInterval(load, 5000);
     return () => clearInterval(id);

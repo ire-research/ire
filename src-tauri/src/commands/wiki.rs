@@ -42,9 +42,7 @@ pub fn save_notes(
     tracing::info!(bytes = content.len(), "save_notes");
     let store = wiki_store(&active)?;
     store.write("notes.md", &content, &app).map_err(|e| e.to_string())?;
-    let first_50: String = content.chars().take(50).collect();
-    store.user_commit(&["notes.md"], &format!("notes: {}", first_50.trim()));
-    tracing::info!("notes.md saved and committed");
+    tracing::info!("notes.md saved");
     Ok(())
 }
 
@@ -57,10 +55,7 @@ pub fn save_wiki_file(
 ) -> Result<(), String> {
     tracing::info!(path = %path, bytes = content.len(), "save_wiki_file");
     let store = wiki_store(&active)?;
-    store.write(&path, &content, &app).map_err(|e| e.to_string())?;
-    let first_50: String = content.chars().take(50).collect();
-    store.user_commit(&[&path], &format!("wiki: {}", first_50.trim()));
-    Ok(())
+    store.write(&path, &content, &app).map_err(|e| e.to_string())
 }
 
 #[derive(Debug, Serialize)]

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { IdeaItem } from "../../types";
+import { Icon } from "../Icon";
 
 interface Props {
   ideas: IdeaItem[];
@@ -92,18 +93,16 @@ export function IdeasPane({ ideas, onSave }: Props) {
   return (
     <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
       <div className="flex items-center gap-2 py-1 mb-2">
-        <span className="material-symbols-outlined text-[16px] shrink-0 text-on-surface-variant">
-          lightbulb
-        </span>
+        <Icon name="lightbulb" className="w-[16px] h-[16px] shrink-0 text-on-surface-variant" />
         <span className="text-[14px] text-on-surface-variant flex-1">
           Ideas
         </span>
         <button
-          className="material-symbols-outlined text-[14px] cursor-pointer hover:text-on-surface text-on-surface-variant"
+          className="cursor-pointer hover:text-on-surface text-on-surface-variant"
           onClick={handleAddClick}
           title="Add idea"
         >
-          add
+          <Icon name="add" className="w-[14px] h-[14px]" />
         </button>
       </div>
 
@@ -136,9 +135,7 @@ export function IdeasPane({ ideas, onSave }: Props) {
                 title="Remove idea"
                 onClick={() => handleTrash(idea.id)}
               >
-                <span className="material-symbols-outlined text-[14px]">
-                  delete
-                </span>
+                <Icon name="delete" className="w-[14px] h-[14px]" />
               </button>
             </div>
           ))}

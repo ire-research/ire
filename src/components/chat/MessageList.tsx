@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AssistantMessage, ChatMessage, ToolCallState } from "../../types";
 import { ExperimentCard } from "./ExperimentCard";
 import { MessageMarkdown } from "./MessageMarkdown";
+import { Icon } from "../Icon";
 
 // CC may prefix MCP tool names with the server name (e.g. "ire__experiment.start"
 // or "mcp__ire__experiment__start"). Strip any prefix to get the bare tool name.
@@ -124,7 +125,7 @@ function ToolCard({ tool }: { tool: ToolCallState }) {
         className="w-full bg-surface-container-low border border-outline-variant rounded px-3 py-2 flex items-center gap-3 text-xs cursor-pointer hover:bg-surface-container transition-colors"
         onClick={() => canExpand && setExpanded((v) => !v)}
       >
-        <span className="material-symbols-outlined text-on-surface-variant text-[16px]">build</span>
+        <Icon name="build" className="w-[16px] h-[16px] text-on-surface-variant" />
         <span className="font-mono text-on-surface-variant flex-1">{tool.tool_name}</span>
       </div>
       {expanded && (

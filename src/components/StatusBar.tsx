@@ -1,4 +1,5 @@
 import { useSystemStatus } from "../hooks/useSystemStatus";
+import { Icon } from "./Icon";
 
 function getUsageColor(usage: number): string {
   if (usage < 70) return "text-ok";
@@ -27,7 +28,7 @@ export function StatusBar() {
 
         {/* CPU item */}
         <div className="flex items-center gap-1.5 px-2 border-r border-outline-variant shrink-0 h-6">
-          <span className="material-symbols-outlined text-[11px]">memory</span>
+          <Icon name="memory" className="w-[11px] h-[11px]" />
           <span>{status.cpu_model}</span>
           <span className="text-outline-variant">·</span>
           <span className={getUsageColor(status.cpu_usage_pct)}>{Math.round(status.cpu_usage_pct)}%</span>
@@ -35,7 +36,7 @@ export function StatusBar() {
 
         {/* GPU item */}
         <div className="flex items-center gap-1.5 px-2 border-r border-outline-variant shrink-0 h-6">
-          <span className="material-symbols-outlined text-[11px]">developer_board</span>
+          <Icon name="developer_board" className="w-[11px] h-[11px]" />
           {status.gpu_model !== null ? (
             <>
               <span>{status.gpu_model}</span>
@@ -53,7 +54,7 @@ export function StatusBar() {
 
         {/* RAM item */}
         <div className="flex items-center gap-1.5 px-2 border-r border-outline-variant shrink-0 h-6">
-          <span className="material-symbols-outlined text-[11px]">storage</span>
+          <Icon name="storage" className="w-[11px] h-[11px]" />
           <span>{status.ram_total_gb} GB RAM</span>
         </div>
 

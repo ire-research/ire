@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { PulseContent } from "../../types";
 import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
+import { Icon } from "../Icon";
 
 interface Props {
   pulse: PulseContent;
@@ -63,7 +64,7 @@ export function FocusPane({ pulse }: Props) {
     <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
       {/* Header */}
       <div className="flex items-center gap-2 px-0 py-1 mb-2">
-        <span className="material-symbols-outlined text-[16px] shrink-0 text-on-surface-variant">target</span>
+        <Icon name="target" className="w-[16px] h-[16px] shrink-0 text-on-surface-variant" />
         <span className="text-[14px] text-on-surface-variant">Focus</span>
       </div>
 
@@ -76,7 +77,7 @@ export function FocusPane({ pulse }: Props) {
             className="opacity-0 group-hover/rq:opacity-100 transition-opacity p-0.5 text-on-surface-variant hover:text-on-surface"
             title="Edit research question"
           >
-            <span className="material-symbols-outlined text-[14px]">edit_document</span>
+            <Icon name="edit_document" className="w-[14px] h-[14px]" />
           </button>
         </div>
         {editingField === "research_question" ? (
@@ -108,7 +109,7 @@ export function FocusPane({ pulse }: Props) {
             className="opacity-0 group-hover/tw:opacity-100 transition-opacity p-0.5 text-on-surface-variant hover:text-on-surface"
             title="Edit this week"
           >
-            <span className="material-symbols-outlined text-[14px]">edit_document</span>
+            <Icon name="edit_document" className="w-[14px] h-[14px]" />
           </button>
         </div>
         {editingField === "this_week" ? (

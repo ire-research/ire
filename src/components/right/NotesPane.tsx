@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { Icon } from "../Icon";
 
 interface Props {
   content: string;
@@ -8,6 +9,7 @@ interface Props {
 export function NotesPane({ content, onSave }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(content);
+  const [isSaving, setIsSaving] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -22,7 +24,14 @@ export function NotesPane({ content, onSave }: Props) {
   };
 
   const handleSave = async () => {
-    await onSave(draft.trim());
+    const next = draft.trim();
+    if (isSaving || next === content.trim()) {
+      setIsEditing(false);
+      return;
+    }
+    setIsSaving(true);
+    await onSave(next);
+    setIsSaving(false);
     setIsEditing(false);
   };
 
@@ -30,6 +39,7 @@ export function NotesPane({ content, onSave }: Props) {
     if (e.key === "Escape") {
       setIsEditing(false);
     } else if (e.key === "Enter" && e.ctrlKey) {
+      e.preventDefault();
       handleSave();
     }
   };
@@ -45,18 +55,17 @@ export function NotesPane({ content, onSave }: Props) {
   return (
     <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
       <div className="flex items-center gap-2 py-1 mb-2">
-        <span className="material-symbols-outlined text-[16px] shrink-0 text-on-surface-variant">
-          edit_note
-        </span>
+        <Icon name="edit_note" className="w-[16px] h-[16px] shrink-0 text-on-surface-variant" />
         <span className="text-[14px] text-on-surface-variant flex-1">
           Notes
         </span>
-        <span
-          className="material-symbols-outlined text-[14px] cursor-pointer hover:text-on-surface text-on-surface-variant"
+        <button
+          className="cursor-pointer hover:text-on-surface text-on-surface-variant"
           onClick={handleEditClick}
+          title="Edit notes"
         >
-          edit_document
-        </span>
+          <Icon name="edit_document" className="w-[14px] h-[14px]" />
+        </button>
       </div>
 
       {isEditing ? (

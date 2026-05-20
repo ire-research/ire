@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useChatOptions, MODELS, EFFORT_LEVELS } from "../../state/chatOptions";
+import { Icon } from "../Icon";
 
 interface ComposerProps {
   onSend?: (text: string) => void;
@@ -104,7 +105,7 @@ export function Composer({ onSend, disabled }: ComposerProps) {
             >
               <span className="text-[10px] text-on-surface-variant/60 mr-0.5">model</span>
               {modelLabel}
-              <span className="material-symbols-outlined text-[12px]">expand_more</span>
+              <Icon name="expand_more" className="w-[12px] h-[12px]" />
             </button>
             <div className={`${modelOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 py-1 min-w-[140px] z-50`}>
               {MODELS.map((m) => (
@@ -126,7 +127,7 @@ export function Composer({ onSend, disabled }: ComposerProps) {
             >
               <span className="text-[10px] text-on-surface-variant/60 mr-0.5">effort</span>
               {effortLabel}
-              <span className="material-symbols-outlined text-[12px]">expand_more</span>
+              <Icon name="expand_more" className="w-[12px] h-[12px]" />
             </button>
             <div className={`${effortOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 py-1 min-w-[140px] z-50`}>
               {EFFORT_LEVELS.map((lvl) => (
@@ -149,7 +150,7 @@ export function Composer({ onSend, disabled }: ComposerProps) {
             onClick={handleSend}
             disabled={!text.trim() || disabled}
           >
-            Send <span className="material-symbols-outlined text-[14px]">arrow_upward</span>
+            Send <Icon name="arrow_upward" className="w-[14px] h-[14px]" />
           </button>
         </div>
       </div>

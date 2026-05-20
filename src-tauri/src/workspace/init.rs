@@ -77,7 +77,6 @@ pub fn initialize(path: &Path) -> Result<()> {
     write_if_absent(&wiki.join("_index.md"), &index_seed())?;
 
     ensure_gitignore(path)?;
-    initial_commit_if_empty(path)?;
     Ok(())
 }
 
@@ -133,21 +132,6 @@ fn ensure_gitignore(path: &Path) -> Result<()> {
 
 fn line_present(haystack: &str, needle: &str) -> bool {
     haystack.lines().any(|l| l.trim() == needle)
-}
-
-fn initial_commit_if_empty(path: &Path) -> Result<()> {
-    // If there is no HEAD yet, we make an initial commit. Otherwise leave
-    // the user's history untouched.
-    let head = Command::new("git")
-        .args(["rev-parse", "--verify", "HEAD"])
-        .current_dir(path)
-        .output()?;
-    if head.status.success() {
-        return Ok(());
-    }
-    run_git(path, &["add", ".gitignore", ".ire/wiki"])?;
-    run_git(path, &["commit", "-m", "Initialize IRE workspace", "--quiet"])?;
-    Ok(())
 }
 
 fn run_git(cwd: &Path, args: &[&str]) -> Result<()> {

@@ -16,6 +16,7 @@ import { Composer } from "./Composer";
 import { TabBar } from "./TabBar";
 import { ResourcePreviewPane } from "./ResourcePreviewPane";
 import { ExperimentTabView } from "./ExperimentTabView";
+import { Icon } from "../Icon";
 import type { Tab } from "../../types";
 
 export function ChatPane() {
@@ -136,7 +137,7 @@ export function ChatPane() {
             if (currentTab.resourceStatus === "summarizing") {
               setResourceStatus(tab_id, "ready");
             } else if (currentTab.resourceStatus === "confirmed") {
-              // CC has written the wiki file — commit it then close the tab
+              // CC has written the wiki file; index it, then close the tab.
               if (currentTab.resourceId) {
                 ipc.indexResource(currentTab.resourceId).catch((e) => toastError("index resource", e));
               }
@@ -281,7 +282,7 @@ export function ChatPane() {
               ipc.chatResetSession(activeTabId);
             }}
           >
-            <span className="material-symbols-outlined text-[16px]">refresh</span>
+            <Icon name="refresh" className="w-[16px] h-[16px]" />
           </button>
         )}
       </div>

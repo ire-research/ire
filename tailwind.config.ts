@@ -69,8 +69,8 @@ export default {
         full: "0.75rem",
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "monospace"],
+        sans: ["Geist", "system-ui", "sans-serif"],
+        mono: ["Geist Mono", "monospace"],
       },
     },
   },

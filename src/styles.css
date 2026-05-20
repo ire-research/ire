@@ -2,6 +2,54 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: "Geist";
+  src: url("../node_modules/geist/dist/fonts/geist-sans/Geist-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist";
+  src: url("../node_modules/geist/dist/fonts/geist-sans/Geist-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist";
+  src: url("../node_modules/geist/dist/fonts/geist-sans/Geist-SemiBold.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist";
+  src: url("../node_modules/geist/dist/fonts/geist-sans/Geist-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("../node_modules/geist/dist/fonts/geist-mono/GeistMono-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Geist Mono";
+  src: url("../node_modules/geist/dist/fonts/geist-mono/GeistMono-Medium.woff2") format("woff2");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
 /* Markdown body typography */
 .md-body { font-size: 14px; line-height: 1.65; color: inherit; }
 .md-body > * + * { margin-top: 0.75em; }
@@ -23,9 +71,9 @@
 .md-body a:hover { color: #e6e4ef; }
 .md-body strong { font-weight: 600; }
 .md-body em { font-style: italic; }
-.md-body code:not(pre code) { font-family: "JetBrains Mono", monospace; font-size: 0.85em; background: #19191e; border: 1px solid #474750; border-radius: 3px; padding: 0.1em 0.35em; }
+.md-body code:not(pre code) { font-family: "Geist Mono", monospace; font-size: 0.85em; background: #19191e; border: 1px solid #474750; border-radius: 3px; padding: 0.1em 0.35em; }
 .md-body pre { background: #131317; border: 1px solid #474750; border-radius: 4px; overflow-x: auto; padding: 0.85em 1em; }
-.md-body pre code { font-family: "JetBrains Mono", monospace; font-size: 0.82em; line-height: 1.55; background: none; border: none; padding: 0; }
+.md-body pre code { font-family: "Geist Mono", monospace; font-size: 0.82em; line-height: 1.55; background: none; border: none; padding: 0; }
 .md-body table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
 .md-body th,.md-body td { border: 1px solid #474750; padding: 0.4em 0.65em; text-align: left; }
 .md-body th { background: #19191e; font-weight: 600; }

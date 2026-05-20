@@ -79,7 +79,20 @@ pub fn experiment_delete(
         guard.as_ref().ok_or("no workspace open")?.state.path.clone()
     };
     let ire_dir = workspace_path.join(".ire");
-    db::delete_experiment(&ire_dir, &uuid).map_err(|e| e.to_string())
+    let row = db::get_experiment(&ire_dir, &uuid)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("experiment {uuid} not found"))?;
+    if row.status == "running" || row.status == "starting" {
+        return Err(format!("experiment {uuid} is still {}", row.status));
+    }
+
+    for dir in [ire_dir.join("logs").join(&uuid), ire_dir.join("experiments").join(&uuid)] {
+        if dir.exists() {
+            fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
+        }
+    }
+    db::delete_experiment(&ire_dir, &uuid).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 fn read_tail(path: &std::path::Path, max_bytes: u64) -> String {

@@ -9,6 +9,7 @@ import { ChatPane } from "./chat/ChatPane";
 import { LeftRail } from "./left/LeftRail";
 import { RightRail } from "./right/RightRail";
 import { StatusBar } from "./StatusBar";
+import { Icon } from "./Icon";
 
 export function Layout() {
   const phase = useWorkspace((s) => s.phase);
@@ -68,7 +69,7 @@ export function Layout() {
       ipc.saveWorkspaceState(toPersisted()).catch((e) => toastError("save state", e));
     }, 1000);
     return () => clearTimeout(handle);
-  }, [toPersisted]);
+  }, [panelLayout, toPersisted]);
 
   // Debounced effort persistence
   const skipInitialEffortSave = useRef(true);
@@ -99,9 +100,10 @@ export function Layout() {
     }
   };
 
-  const railResources = resources.map((r) => ({
+  const railResources = resources.filter((r) => r.wiki_path).map((r) => ({
+    resourceId: r.resource_id,
     label: r.title ?? r.url,
-    wikiPath: r.wiki_path ?? "",
+    wikiPath: r.wiki_path!,
   }));
   const workspacePath = phase.kind === "ready" ? phase.workspace.path : "";
   const storedBodyLayout = panelLayout.groups?.body;
@@ -122,7 +124,7 @@ export function Layout() {
             className="flex items-center gap-1.5 min-w-0 text-xs font-medium text-on-surface"
             title={workspacePath}
           >
-            <span className="material-symbols-outlined text-[16px] text-primary shrink-0">folder</span>
+            <Icon name="folder" className="w-[16px] h-[16px] text-primary shrink-0" />
             <span className="truncate max-w-[360px]">{workspacePath}</span>
           </div>
           {runningCount > 0 && (
@@ -143,7 +145,7 @@ export function Layout() {
             className="text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center p-1"
             aria-label="Settings"
           >
-            <span className="material-symbols-outlined text-[18px]">settings</span>
+            <Icon name="settings" className="w-[18px] h-[18px]" />
           </button>
         </div>
       </header>

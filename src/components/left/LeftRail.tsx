@@ -9,6 +9,7 @@ import { ResourcesSection } from "./ResourcesSection";
 import { ExperimentsSection } from "./ExperimentsSection";
 
 interface ResourceItem {
+  resourceId: string;
   label: string;
   wikiPath: string;
 }

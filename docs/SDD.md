@@ -229,7 +229,7 @@ On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel.  
    - Scaffold `.ire/` per [§4](#4-directory-layout).
    - Write seed files: empty `notes.md`, empty `ideas.json`, split `pulse/RESEARCH-QUESTION.md` / `pulse/THIS-WEEK.md` placeholders, `_schema.md` (canned), `_SYSTEM.md` (canned), `_index.md` (auto-built from the seed).
    - Append IRE entries to `.gitignore` (create if missing).
-   - `git add .ire/wiki .gitignore && git commit -m "Initialize IRE workspace"`.
+   - Do not stage or commit; the user decides when to commit the initialized workspace.
 3. Continue from step 3 of [§5.2](#52-open-existing).
 
 ### 5.4 Close
@@ -285,27 +285,11 @@ The one-line summary is sourced from frontmatter `summary:` if present, else the
 
 ### 6.4 Git commit policy
 
-Wiki paths split into two classes based on **who decides when the change becomes a commit**:
+IRE never creates git commits automatically. The application may initialize a git repository for a new workspace, write `.gitignore`, and write files under `.ire/`, but deciding when to stage and commit remains entirely with the user.
 
-| Class | Paths | Commit trigger |
-|---|---|---|
-| **Auto-tracked** | `status/**`, `_schema.md`, `_index.md` | Every `WikiStore` write commits immediately. |
-| **User-tracked** | `notes.md`, `ideas.json`, `resources/**` | Written to disk on every change, but **only committed** when the user explicitly submits or approves (resource summary review). |
+`WikiStore::write` and `WikiStore::rename` atomically update the target wiki path, regenerate `_index.md`, and emit `wiki-changed`. They do not run `git add` or `git commit`, regardless of path. This applies equally to `status/**`, `pulse/**`, `_schema.md`, `_index.md`, `notes.md`, `ideas.json`, and `resources/**`.
 
-Rationale: memory and operational state should be durably versioned without human-in-the-loop friction; user-facing artefacts deserve an explicit commit gesture so the user can review and edit before the change becomes part of git history.
-
-**Index handling.** `_index.md` is auto-tracked, but it can be touched by either class of write. Rule:
-
-- If the triggering write is **auto-tracked**: commit `<that path> + _index.md` in one commit. Auto-message, e.g. `auto: memory long-term.md`, `auto: pulse update`.
-- If the triggering write is **user-tracked**: write `_index.md` to disk but **do not commit it yet**. The index update lands in the eventual user commit alongside the user-tracked path. Until then, `_index.md` may legitimately reference uncommitted files in the working tree — that is fine.
-
-The `WikiStore` exposes `write(path, content, ...)` which classifies internally; the MCP server does not need to know which class a path is in.
-
-**Auto-commit implementation.** `WikiStore` calls `git add <paths>` then `git commit -m <auto-msg>` after the rename + index regen. Failures are logged but do not crash the write — the file is still on disk and a future write will re-stage it. Hooks are not skipped (per project policy on destructive flags).
-
-**User commit implementation.** Notes/ideas Submit and resource approval each flow through a `wiki::commit_user_changes(scope)` helper that stages the scoped paths + index and commits with a user-supplied or templated message (e.g. `notes: <first 50 chars of pane>`, `resources: add <slug>`).
-
-**Resource approval.** The resource ingestion pipeline ([§8.3](#83-resource-ingestion)) presents an executive summary to the user via a dedicated chat tab before writing anything to the wiki. Only on **Confirm** does CC write `resources/<slug>.md` via `wiki.write` (user-tracked). The Confirm flow also commits `resources/<slug>.md + _index.md` to git. On **Discard**, the cache file is deleted and the DB row is marked `rejected`; no wiki file is ever written.
+Resource approval follows the same rule: **Confirm** asks CC to write `resources/<slug>.md` via `wiki.write`; `index_resource` then records the DB row (`status=summarized`, `wiki_path`, `title`) and emits `wiki-changed`. The resulting wiki and index changes remain uncommitted until the user commits them.
 
 ---
 
@@ -362,10 +346,9 @@ This is added via `--append-system-prompt`. Wiki/notes/resources are read on-dem
 
 ```
 User edits the notes pane (raw text)
-  → clicks Submit
+  → blur or Ctrl+Enter after content changed
   → save_notes(content) Tauri command
     → Rust writes content to .ire/wiki/notes.md (atomic)
-    → commits notes.md + _index.md to git
   → wiki-changed event causes the notes pane to re-render.
 ```
 
@@ -400,7 +383,7 @@ User pastes URL → Submit
 
 CC streams the summary into the resource tab. When the turn ends, **Confirm** and **Discard** buttons appear.
 
-**Confirm**: triggers a second CC turn in the same tab with the instruction to write the summary to `resources/<slug>.md` via the `wiki.write` MCP tool. Frontmatter follows `_schema.md`: `title`, `type: summary`, `sources: [<url>]`, `updated: YYYY-MM-DD`. Body starts with a `#` heading matching the title, then the summary. The tab auto-closes when this second CC turn ends. The written file is user-tracked (not auto-committed — see §6.4); it is committed to git as part of the Confirm flow.
+**Confirm**: triggers a second CC turn in the same tab with the instruction to write the summary to `resources/<slug>.md` via the `wiki.write` MCP tool. Frontmatter follows `_schema.md`: `title`, `type: summary`, `sources: [<url>]`, `updated: YYYY-MM-DD`. Body starts with a `#` heading matching the title, then the summary. The tab auto-closes when this second CC turn ends. The written file is indexed in SQLite, but no git commit is created by IRE.
 
 **Discard**: deletes `.ire/cache/<sha256>.txt`, marks the DB row `status=rejected`, closes the tab immediately. No wiki file is written.
 
@@ -506,7 +489,7 @@ IRE supports multiple independent chat tabs in the central pane.
 | Main | On workspace open (id `"main"`) | No (pinned) | Hosts the Brainstorm / Experiment mode selector. The primary research conversation. |
 | Chat | User clicks + button | Yes | Fresh CC session, independent conversation history. |
 | Resource | Backend resource ingestion (§8.3) | Auto-closes on Confirm/Discard | Dedicated to reviewing a single resource summary; shows Confirm / Discard instead of a free-form Composer when CC finishes. |
-| Preview | User clicks a resource in the Resources list | Yes | Renders a `ResourcePreviewPane` (edit/preview toggle + Submit) for the resource's wiki file. Clicking the same resource again focuses the existing tab rather than opening a duplicate. Submit persists edits to disk via `save_wiki_file` and commits. |
+| Preview | User clicks a resource in the Resources list | Yes | Renders a `ResourcePreviewPane` (edit/preview toggle + Submit) for the resource's wiki file. Clicking the same resource again focuses the existing tab rather than opening a duplicate. Submit persists edits to disk via `save_wiki_file`; the user commits when ready. |
 | Experiment | User clicks an experiment in the left-rail ExperimentsSection | Yes | Dedicated full view of a single experiment: metadata grid (status, runtime, command), live log tail (stdout only, scrolls to bottom automatically). Clicking the same experiment again focuses the existing tab rather than opening a duplicate. |
 
 **Session isolation.** Each tab carries its own `tab_id` (UUID for dynamically created tabs; `"main"` for the pinned tab). The backend `SessionManager` maintains a `HashMap<tab_id, PerTabSession>` where `PerTabSession` holds `{ session_id: Option<String>, running_pid: Option<u32> }`. This replaces the old single `ChatSession` global.
@@ -631,14 +614,14 @@ The MCP server is a **thin RPC bridge** to the Rust backend over a Unix domain s
 | Tool | Description |
 |---|---|
 | `wiki.read({ path })` | Read any wiki markdown file. Returns content + frontmatter. |
-| `wiki.write({ path, content, summary? })` | Atomic write; updates `_index.md`. **Auto-committed** if `path` is in the auto-tracked class ([§6.4](#64-git-commit-policy)); otherwise uncommitted until the user submits/approves. |
-| `wiki.append({ path, content })` | Append content to a wiki file. Same commit semantics as `wiki.write`. |
+| `wiki.write({ path, content, summary? })` | Atomic write; updates `_index.md`; emits `wiki-changed`. Does not commit. |
+| `wiki.append({ path, content })` | Append content to a wiki file. Same persistence semantics as `wiki.write`. |
 | `wiki.list({ glob? })` | List wiki paths; defaults to all. |
-| `wiki.rename({ from, to })` | Atomic rename + index update. Auto-committed iff both `from` and `to` are auto-tracked. |
-| `memory.write_long_term({ section, content })` | Append to `status/long-term.md` under section. **Auto-committed.** |
-| `memory.write_short_term({ content })` | Append to today's `status/short-term/YYYY-MM-DD.md`. **Auto-committed.** |
-| `memory.record_failure({ method, reason, context_ref? })` | Append structured entry to `status/failures.md`. **Auto-committed.** |
-| `pulse.update({ question?, blocker?, focus? })` | Patch fields in `status/pulse.md`. **Auto-committed.** |
+| `wiki.rename({ from, to })` | Atomic rename + index update; emits `wiki-changed`. Does not commit. |
+| `memory.write_long_term({ section, content })` | Append to `status/long-term.md` under section. Does not commit. |
+| `memory.write_short_term({ content })` | Append to today's `status/short-term/YYYY-MM-DD.md`. Does not commit. |
+| `memory.record_failure({ method, reason, context_ref? })` | Append structured entry to `status/failures.md`. Does not commit. |
+| `pulse.update({ question?, blocker?, focus? })` | Patch pulse fields. Does not commit. |
 | `resource.fetch({ url })` | Fetch URL, extract text, return it (does not save to wiki). |
 | `experiment.start({ name, plan_md, command, working_dir?, wake_prompt })` | Spawn detached subprocess, return `{ uuid }`. |
 | `experiment.status({ uuid })` | Return `{ status, exit_code?, started_at, ended_at? }`. |
@@ -727,11 +710,11 @@ No table for chat messages — the CC session is the source of truth, and `--res
 - The body uses `react-resizable-panels` group `body` with panels `left`, `center`, and `right`. Left/right default to 280px/320px, have no maximum width, and keep minimum widths of 160px / 180px. The center panel takes the remaining space and has a 320px minimum.
 - The left rail is a vertical `react-resizable-panels` group `left` with panels `pulse`, `resources`, and `experiments`; row handles sit between Focus / Resources and Resources / Experiments.
 - The right rail is a vertical `react-resizable-panels` group `right` with panels `notes`, `ideas`, and `resource-input`; row handles sit between Notes / Ideas and Ideas / Add resource.
-- `ResourcesSection` and `ExperimentsSection` use the same outer pane padding as `NotesPane` and `IdeasPane`, and always render their title rows with the Material Symbols icons `description` and `science`. Empty lists show `no resources yet` and `no experiments yet`.
+- `ResourcesSection` and `ExperimentsSection` use the same outer pane padding as `NotesPane` and `IdeasPane`, and render compact inline SVG title icons. Empty lists show `no resources yet` and `no experiments yet`.
 - `IdeasPane` renders active ideas sorted by `order`, opens an inline draft card on Add, saves the draft to `ideas.json` on Enter, and hides trashed ideas by persisting `trashed: true`.
 - `FocusPane` and `NotesPane` use **inline editing**: clicking a field activates a textarea in place; blur/Enter saves. No separate Edit/Preview toggle.
 - Clicking an experiment row in `ExperimentsSection` opens (or re-focuses) an `experiment` tab in the centre column; the tab renders `ExperimentTabView` with a metadata grid and live log tail.
-- The top navbar shows the full workspace path on the far left as the project title. The bottom `StatusBar` polls `get_system_status` every 5 s and displays (left-to-right): workspace path + git branch + insertions/deletions, CPU model + usage %, GPU model + usage % + VRAM (or `n/a` when unavailable), RAM total GB, `username@hostname`, and a `claude-code · connected/disconnected` indicator pushed to the far right.
+- The top navbar shows the full workspace path on the far left as the project title. The bottom `StatusBar` polls `get_system_status` every 5 s and displays (left-to-right): workspace path + git branch + insertions/deletions, CPU model + usage %, GPU model + usage % + VRAM (or `n/a` when unavailable), RAM total GB, `username@hostname`, and a `claude-code · connected/disconnected` indicator pushed to the far right. The CC indicator is `connected` when `find_claude_binary()` succeeds, meaning the CLI is available for interaction; it does not require an active subprocess.
 
 ### 13.2 Chat rendering
 
@@ -767,13 +750,15 @@ Both values are passed as `options: { model, effort }` on every `chat_send` invo
 
 ### 13.4 Resource list
 
-The Resources list shows only confirmed (indexed) resources — those where the user clicked Confirm and the wiki file was written and committed. Each entry shows the extracted title (frontmatter `title:` → first `#` heading → filename stem). No status label is shown. Resources in progress (being fetched or summarised) do not appear in the list; they are visible only in the open resource chat tab.
+The Resources list shows only confirmed (indexed) resources — those where the user clicked Confirm, the wiki file was written, and `index_resource` recorded a non-null `wiki_path`. Each entry shows the extracted title (frontmatter `title:` → first `#` heading → filename stem). No status label is shown. Resources in progress (being fetched or summarised) do not appear in the list; they are visible only in the open resource chat tab.
 
-Clicking a resource entry (only enabled when `wiki_path` is non-null) opens a **Preview tab** in the central column. The tab fetches the wiki file content via `read_wiki_file` and renders it in a `ResourcePreviewPane` with edit/preview toggle and a Submit button. Submit calls `save_wiki_file` to persist edits and commit. Clicking the same resource while its Preview tab is already open re-focuses that tab instead of opening a duplicate.
+Clicking a resource entry (only enabled when `wiki_path` is non-null) opens a **Preview tab** in the central column. The tab fetches the wiki file content via `read_wiki_file` and renders it in a `ResourcePreviewPane` with edit/preview toggle and a Submit button. Submit calls `save_wiki_file` to persist edits; it does not commit. Clicking the same resource while its Preview tab is already open re-focuses that tab instead of opening a duplicate.
 
 ### 13.5 Theming
 
 The UI uses a fixed dark theme. All colours are defined as Tailwind token extensions in `tailwind.config.ts` (e.g. `surface-container-low`, `on-surface`, `primary`, `error`, `warn`, `ok`, `accent`). There are no light-mode overrides and no theme-toggle button in the current implementation.
+
+Typography uses bundled `geist` package font files (`Geist`, `Geist Mono`) referenced from `styles.css`; icons are inline SVGs from `src/components/Icon.tsx`. The app does not load Google Fonts at runtime.
 
 `~/.config/ire/config.json` still has a `theme` field in its schema (reserved for future use), and `read_user_config` returns it, but the frontend does not apply it: `hydrateFromUserConfig` in the workspace Zustand store only restores `recentWorkspaces`.
 
@@ -839,14 +824,14 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 | `init_workspace` | `{ path }` | `WorkspaceState` |
 | `close_workspace` | — | `{}` |
 | `read_wiki_file` | `{ path }` | `{ content, frontmatter }` |
-| `save_wiki_file` | `{ path, content }` | `{}` (atomic write + user commit for the given wiki-relative path) |
-| `save_notes` | `{ content }` | `{}` (atomic write + user commit) |
+| `save_wiki_file` | `{ path, content }` | `{}` (atomic write) |
+| `save_notes` | `{ content }` | `{}` (atomic write) |
 | `read_ideas` | — | `IdeaItem[]` from `ideas.json` |
 | `save_ideas_json` | `{ ideas }` | `{}` (writes `ideas.json`) |
 | `read_pulse` | — | `{ research_question, this_week }` |
 | `save_pulse_field` | `{ field: "research_question" \| "this_week", content }` | `{}` (writes the matching split pulse file) |
 | `submit_resource` | `{ url }` | `resource_id: string` |
-| `index_resource` | `{ resource_id }` | `{}` (commits `resources/<slug>.md` + `_index.md`) |
+| `index_resource` | `{ resource_id }` | `{}` (records `wiki_path` + title and emits `wiki-changed`) |
 | `discard_resource` | `{ resource_id }` | `{}` (deletes cache file, marks DB row `rejected`) |
 | `list_resources` | — | `ResourceItem[]` (only `summarized` entries) |
 | `get_resource_confirm_prompt` | — | `string` (the second-turn confirm prompt loaded from `assets/prompts/`) |
@@ -856,7 +841,7 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 | `experiment_list` | `{ limit? }` | `[ExperimentRow]` |
 | `experiment_logs` | `{ uuid, kb? }` | `{ stdout, stderr }` |
 | `experiment_cancel` | `{ uuid }` | `{}` |
-| `experiment_delete` | `{ uuid }` | `{}` (removes DB row; frontend uses this to remove a finished experiment from the left-rail list) |
+| `experiment_delete` | `{ uuid }` | `{}` (refuses running experiments; removes `.ire/logs/<uuid>/`, `.ire/experiments/<uuid>/`, and the DB row) |
 | `get_system_status` | — | `SystemStatus` (workspace path, git branch/diff, CPU/GPU/RAM metrics, CC connected flag) |
 | `read_workspace_state` | — | `PersistedWorkspace` (panel layout from `.ire/workspace.json`) |
 | `save_workspace_state` | `{ state: PersistedWorkspace }` | `{}` (debounced from frontend; atomic write) |
@@ -974,7 +959,7 @@ ire/
 │       │   └── persisted.rs            # PersistedWorkspace (workspace.json schema)
 │       ├── wiki/
 │       │   ├── mod.rs
-│       │   ├── store.rs                # atomic write, tokio::Mutex, git auto-commit
+│       │   ├── store.rs                # atomic write, index regeneration, wiki-changed events
 │       │   ├── index.rs                # _index.md regenerator
 │       │   └── frontmatter.rs
 │       ├── resources/
@@ -1019,9 +1004,9 @@ Each phase ends with a demoable milestone.
 
 **Phase 3 — CC subprocess layer.** Binary discovery + spawn + NDJSON parser + session management. A debug "Send" button next to the chat pane that sends a raw message and renders streaming text only (no tool cards yet). No MCP yet. *Milestone:* user can chat with CC inside the central pane, multi-turn via `--resume`. ✅
 
-**Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. CC config wired up via `--mcp-config`. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` extended with `workspace_root`, git auto-commit for auto-tracked paths, and a `rename` method. System prompt composed from wiki context files on every CC turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and CC actually does it. ✅
+**Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. CC config wired up via `--mcp-config`. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` handles atomic writes, index regeneration, `wiki-changed` events, and renames without creating git commits. System prompt composed from wiki context files on every CC turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and CC actually does it. ✅
 
-**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML extractors. `submit_resource` fetches a URL, extracts text via `scraper` (HTML) or `pdf-extract` (PDF), writes to `.ire/cache/<sha256>.txt`, inserts a DB row, emits `tab-created`, and kicks a CC summarisation turn. Confirm sends a second CC turn that writes `resources/<slug>.md` via `wiki.write`; when Done fires, `index_resource` scans `wiki/resources/` for the file whose frontmatter `sources:` array contains the resource URL (`_schema.md`-aligned), extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), commits, and emits `wiki-changed` to refresh the pane. Discard calls `discard_resource` (deletes cache, marks `rejected`). Notes/ideas Submit commits via `user_commit`. The resources list shows only `summarized` resources with their title; no status label is shown. *Milestone:* paste an arXiv URL → resource summary appears in the right pane. ✅
+**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML extractors. `submit_resource` fetches a URL, extracts text via `scraper` (HTML) or `pdf-extract` (PDF), writes to `.ire/cache/<sha256>.txt`, inserts a DB row, emits `tab-created`, and kicks a CC summarisation turn. Confirm sends a second CC turn that writes `resources/<slug>.md` via `wiki.write`; when Done fires, `index_resource` scans `wiki/resources/` for the file whose frontmatter `sources:` array contains the resource URL (`_schema.md`-aligned), extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), and emits `wiki-changed` to refresh the pane. Discard calls `discard_resource` (deletes cache, marks `rejected`). Notes and ideas write directly to disk without committing. The resources list shows only `summarized` resources with their title and non-null `wiki_path`; no status label is shown. *Milestone:* paste an arXiv URL → resource summary appears in the right pane. ✅
 
 **Phase 6 — Experiments.** `experiment.start`, detached subprocess, monitor, wake-up turn composition. Experiment cards in chat with live log tail. *Milestone:* CC can run a Python script ablation, tell the user "I'll be back", and resume with results when the script exits. ✅
 
@@ -1048,5 +1033,4 @@ A stubbed CC binary lives at `src-tauri/tests/fixtures/fake_claude.sh`; it reads
 - **Index regeneration cost.** Walking the whole `wiki/` tree on every write is fine at MVP scale (tens to low-hundreds of files). At scale, switch to incremental index updates.
 - **Frontmatter parsing.** No formal frontmatter spec — using the YAML convention. We accept files without frontmatter; required fields are derived heuristically.
 - **CC `--tools` flag stability.** The tool allowlist syntax may evolve; the [wrapper blueprint](./blueprints/claude-code-wrapper.md) reflects the current behaviour. If breaking changes land, `cc::spawn` is the only place that needs to update.
-- **Git noise from auto-commits.** Memory and operational paths auto-commit on every write ([§6.4](#64-git-commit-policy)), which can produce many small commits during a busy session (e.g. CC writing short-term notes mid-experiment). Acceptable for MVP — git history is cheap and reviewable. If it becomes painful, batch auto-commits with a debounce window or squash on session close.
-- **Repos with pre-commit hooks.** Auto-commits run in the user's repo and respect hooks. A slow or failing hook on `wiki/**` paths will surface as a logged error and the file remains uncommitted until the next write. Document this in onboarding so users scope their hooks to non-`wiki/**` paths if they're sensitive.
+- **Uncommitted `.ire/` changes.** IRE writes wiki, resource index, and workspace files but never commits them. Users must commit `.ire/` changes explicitly when they want those updates captured in git history.

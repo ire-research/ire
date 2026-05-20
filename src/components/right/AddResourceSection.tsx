@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ipc } from "../../ipc";
+import { Icon } from "../Icon";
 
 export function AddResourceSection() {
   const [url, setUrl] = useState("");
@@ -29,9 +30,7 @@ export function AddResourceSection() {
   return (
     <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
       <div className="flex items-center gap-2 py-1 mb-3">
-        <span className="material-symbols-outlined text-[16px] shrink-0 text-on-surface-variant">
-          add_link
-        </span>
+        <Icon name="add_link" className="w-[16px] h-[16px] shrink-0 text-on-surface-variant" />
         <span className="text-[14px] text-on-surface-variant">
           Add resource
         </span>

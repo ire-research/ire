@@ -3,6 +3,7 @@ import { ipc, pickDirectory, type SetupStatus } from "../../ipc";
 import { useWorkspace } from "../../state/workspace";
 import { useChatOptions, EFFORT_LEVELS } from "../../state/chatOptions";
 import type { EffortLevel } from "../../types";
+import { Icon } from "../Icon";
 
 interface Props {
   status: SetupStatus;
@@ -119,9 +120,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
                         {path}
                       </span>
                     </div>
-                    <span className="material-symbols-outlined text-outline-variant text-[16px] group-hover:text-on-surface transition-colors shrink-0 ml-3">
-                      chevron_right
-                    </span>
+                    <Icon name="chevron_right" className="w-[16px] h-[16px] text-outline-variant group-hover:text-on-surface transition-colors shrink-0 ml-3" />
                   </button>
                 );
               })
@@ -138,9 +137,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
               busy ? "opacity-50 cursor-not-allowed" : ""
             }`}
           >
-            <span className="material-symbols-outlined text-[16px] text-on-surface-variant">
-              folder_open
-            </span>
+            <Icon name="folder_open" className="w-[16px] h-[16px] text-on-surface-variant" />
             Open folder…
           </button>
           <button
@@ -150,9 +147,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
               busy ? "opacity-50 cursor-not-allowed" : ""
             }`}
           >
-            <span className="material-symbols-outlined text-[16px] text-on-surface-variant">
-              add
-            </span>
+            <Icon name="add" className="w-[16px] h-[16px] text-on-surface-variant" />
             New workspace…
           </button>
         </div>

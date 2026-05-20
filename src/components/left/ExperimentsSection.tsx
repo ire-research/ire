@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
 import type { ExperimentRow } from "../../types";
+import { Icon } from "../Icon";
 
 interface Props {
   experiments: ExperimentRow[];
@@ -43,7 +44,7 @@ export function ExperimentsSection({ experiments, onOpen, onDelete }: Props) {
   return (
     <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
       <div className="flex items-center gap-2 py-1 mb-2 text-on-surface-variant text-[14px]">
-        <span className="material-symbols-outlined text-[16px] shrink-0">science</span>
+        <Icon name="science" className="w-[16px] h-[16px] shrink-0" />
         Experiments
       </div>
       <div className="space-y-0.5">
@@ -70,7 +71,7 @@ export function ExperimentsSection({ experiments, onOpen, onDelete }: Props) {
                   disabled={deletingUuid === exp.uuid}
                   onClick={(e) => handleDelete(e, exp.uuid)}
                 >
-                  <span className="material-symbols-outlined text-[14px]">delete</span>
+                  <Icon name="delete" className="w-[14px] h-[14px]" />
                 </button>
               </div>
             );
