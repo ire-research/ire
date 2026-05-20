@@ -9,7 +9,6 @@ import { useToasts } from "./state/toasts";
 export default function App() {
   const phase = useWorkspace((s) => s.phase);
   const setPhase = useWorkspace((s) => s.setPhase);
-  const theme = useWorkspace((s) => s.theme);
   const hydrateFromUserConfig = useWorkspace((s) => s.hydrateFromUserConfig);
 
   useEffect(() => {
@@ -20,15 +19,6 @@ export default function App() {
       unlisten.then((fn) => fn());
     };
   }, []);
-
-  // Apply theme to DOM globally so SetupScreen also respects user preference.
-  useEffect(() => {
-    if (theme === "light") {
-      document.documentElement.dataset.theme = "light";
-    } else {
-      delete document.documentElement.dataset.theme;
-    }
-  }, [theme]);
 
   const refreshSetup = useCallback(async () => {
     try {

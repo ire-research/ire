@@ -11,6 +11,7 @@ interface ChatStore {
   addTab: (tab: Tab) => void;
   createTab: (label?: string) => string;
   openPreviewTab: (label: string, wikiPath: string) => void;
+  openExperimentTab: (uuid: string, name: string) => void;
   closeTab: (tabId: string) => void;
   setActiveTab: (tabId: string) => void;
 
@@ -33,6 +34,8 @@ interface ChatStore {
   updateExperimentStatus: (uuid: string, status: ExperimentStatus, exitCode?: number) => void;
   /** Append a log line to the experiment card with the given UUID. */
   appendExperimentLog: (uuid: string, line: string) => void;
+  /** Remove a tool card by tool_id from all messages across all tabs. */
+  removeTool: (toolId: string) => void;
 }
 
 let seq = 0;
@@ -127,6 +130,20 @@ export const useChat = create<ChatStore>((set) => ({
       const id = crypto.randomUUID();
       return {
         tabs: [...s.tabs, { id, label, messages: [], isStreaming: false, isPinned: false, kind: "preview", wikiPath }],
+        previousTabId: s.activeTabId,
+        activeTabId: id,
+      };
+    }),
+
+  openExperimentTab: (uuid, name) =>
+    set((s) => {
+      const existing = s.tabs.find((t) => t.kind === "experiment" && t.experimentUuid === uuid);
+      if (existing) {
+        return { previousTabId: s.activeTabId, activeTabId: existing.id };
+      }
+      const id = crypto.randomUUID();
+      return {
+        tabs: [...s.tabs, { id, label: name, messages: [], isStreaming: false, isPinned: false, kind: "experiment", experimentUuid: uuid }],
         previousTabId: s.activeTabId,
         activeTabId: id,
       };
@@ -320,6 +337,19 @@ export const useChat = create<ChatStore>((set) => ({
       }
       return s;
     }),
+
+  removeTool: (toolId) =>
+    set((s) => ({
+      tabs: s.tabs.map((tab) => ({
+        ...tab,
+        messages: tab.messages.map((m) => {
+          if (m.role !== "assistant") return m;
+          const am = m as AssistantMessage;
+          if (!am.tools?.some((t) => t.tool_id === toolId)) return m;
+          return { ...am, tools: am.tools.filter((t) => t.tool_id !== toolId) };
+        }),
+      })),
+    })),
 }));
 
 export { MAIN_TAB_ID };

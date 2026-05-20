@@ -1,5 +1,3 @@
-export type ChatMode = "brainstorm" | "experiment";
-
 export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 
 export interface ChatOptions {
@@ -57,7 +55,7 @@ export interface WikiFile {
   frontmatter: Record<string, string> | null;
 }
 
-export type TabKind = "chat" | "resource" | "preview";
+export type TabKind = "chat" | "resource" | "preview" | "experiment";
 export type ResourceStatus = "summarizing" | "ready" | "confirmed";
 
 export interface Tab {
@@ -70,6 +68,7 @@ export interface Tab {
   resourceId?: string;
   resourceStatus?: ResourceStatus;
   wikiPath?: string;
+  experimentUuid?: string;
 }
 
 /** Payload for the "chat-stream" Tauri event. */
@@ -125,4 +124,32 @@ export interface ExperimentStartingPayload {
   tab_id: string;
   uuid: string;
   pid?: number;
+}
+
+export interface IdeaItem {
+  id: string;
+  text: string;
+  trashed: boolean;
+  order: number;
+}
+
+export interface PulseContent {
+  research_question: string;
+  this_week: string;
+}
+
+export interface SystemStatus {
+  workspace_path: string;
+  git_branch: string;
+  git_insertions: number;
+  git_deletions: number;
+  cpu_model: string;
+  cpu_usage_pct: number;
+  gpu_model: string | null;
+  gpu_usage_pct: number | null;
+  gpu_vram_gb: number | null;
+  ram_total_gb: number;
+  hostname: string;
+  username: string;
+  cc_connected: boolean;
 }

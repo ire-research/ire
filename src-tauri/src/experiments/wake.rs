@@ -49,7 +49,7 @@ pub fn fire_wakeup(
 
     let mcp_config = workspace_root.join(".ire/mcp.json");
     let mcp_config = if mcp_config.exists() { Some(mcp_config) } else { None };
-    let system_prompt = build_system_prompt(workspace_root, "experiment");
+    let system_prompt = build_system_prompt(workspace_root);
 
     let resume_id = Some(session_id.to_string());
     let mut cmd = build_command(&SpawnArgs {

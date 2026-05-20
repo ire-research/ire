@@ -1,124 +1,82 @@
 import { useEffect, useRef, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import { ipc, onWikiChanged } from "../ipc";
-import { useChat } from "../state/chat";
 import { useWorkspace } from "../state/workspace";
 import { useChatOptions } from "../state/chatOptions";
 import { toastError } from "../state/toasts";
-import type { ResourceItem } from "../types";
+import type { IdeaItem, PulseContent, ResourceItem } from "../types";
 import { ChatPane } from "./chat/ChatPane";
-import { FocusBanner } from "./FocusBanner";
-import { MarkdownPane } from "./MarkdownPane";
-import { ResourceInput } from "./ResourceInput";
-import { ResourcesList } from "./ResourcesList";
-
-function parseFocus(pulse: string): string {
-  const match = pulse.match(/\*\*Focus:\*\*\s*(.+)/);
-  return match ? match[1].trim() : "";
-}
-
+import { LeftRail } from "./left/LeftRail";
+import { RightRail } from "./right/RightRail";
+import { StatusBar } from "./StatusBar";
+import { Icon } from "./Icon";
 
 export function Layout() {
-  const openPreviewTab = useChat((s) => s.openPreviewTab);
   const phase = useWorkspace((s) => s.phase);
   const setPhase = useWorkspace((s) => s.setPhase);
-  const theme = useWorkspace((s) => s.theme);
-  const toggleTheme = useWorkspace((s) => s.toggleTheme);
+  const toPersisted = useWorkspace((s) => s.toPersisted);
   const panelLayout = useWorkspace((s) => s.panelLayout);
   const setGroupLayout = useWorkspace((s) => s.setGroupLayout);
-  const toPersisted = useWorkspace((s) => s.toPersisted);
-  const recentWorkspaces = useWorkspace((s) => s.recentWorkspaces);
   const effort = useChatOptions((s) => s.effort);
-  const workspace = phase.kind === "ready" ? phase.workspace : null;
 
-  const groups = panelLayout.groups ?? {};
-
-  const [pulseContent, setPulseContent] = useState("");
+  const [pulseObject, setPulseObject] = useState<PulseContent>({ research_question: "", this_week: "" });
   const [notesContent, setNotesContent] = useState("");
-  const [ideasContent, setIdeasContent] = useState("");
+  const [ideas, setIdeas] = useState<IdeaItem[]>([]);
   const [resources, setResources] = useState<ResourceItem[]>([]);
+  const [runningCount, setRunningCount] = useState(0);
 
-  // Load wiki files and resources when workspace becomes ready
+  // Load data on workspace ready
   useEffect(() => {
     if (phase.kind !== "ready") return;
     Promise.all([
-      ipc.readWikiFile("status/pulse.md"),
+      ipc.readPulse(),
       ipc.readWikiFile("notes.md"),
-      ipc.readWikiFile("ideas.md"),
+      ipc.readIdeas(),
+      ipc.listResources(),
+      ipc.experimentList(50),
     ])
-      .then(([pulse, notes, ideas]) => {
-        setPulseContent(pulse.content);
+      .then(([pulseData, notes, ideasData, resourcesData, exps]) => {
+        setPulseObject(pulseData);
         setNotesContent(notes.content);
-        setIdeasContent(ideas.content);
+        setIdeas(ideasData);
+        setResources(resourcesData);
+        setRunningCount(exps.filter((e) => e.status === "running").length);
       })
-      .catch((e) => toastError("load wiki", e));
-
-    ipc.listResources()
-      .then(setResources)
-      .catch((e) => toastError("load resources", e));
+      .catch((e: unknown) => toastError("load workspace data", e));
   }, [phase.kind]);
 
-  // Re-read affected file on wiki-changed events
+  // Wiki-changed listener
   useEffect(() => {
     const unlisten = onWikiChanged(({ path }) => {
-      if (path === "status/pulse.md") {
-        ipc.readWikiFile("status/pulse.md").then((f) => setPulseContent(f.content));
+      if (path === "pulse/RESEARCH-QUESTION.md" || path === "pulse/THIS-WEEK.md") {
+        ipc.readPulse().then(setPulseObject).catch((e) => toastError("load pulse", e));
       } else if (path === "notes.md") {
-        ipc.readWikiFile("notes.md").then((f) => setNotesContent(f.content));
-      } else if (path === "ideas.md") {
-        ipc.readWikiFile("ideas.md").then((f) => setIdeasContent(f.content));
+        ipc.readWikiFile("notes.md").then((f) => setNotesContent(f.content)).catch(() => {});
+      } else if (path === "ideas.json") {
+        ipc.readIdeas().then(setIdeas).catch(() => {});
       } else if (path.startsWith("resources/")) {
         ipc.listResources().then(setResources).catch((e) => toastError("load resources", e));
       }
     });
-    return () => {
-      unlisten.then((fn) => fn());
-    };
+    return () => { unlisten.then((fn) => fn()); };
   }, []);
 
-  // Debounced persistence of panel layout to .ire/workspace.json.
-  // Skip the initial render (otherwise we overwrite the loaded file with defaults).
-  const skipInitialLayoutSave = useRef(true);
+  // Debounced workspace state persistence
+  const skipInitialSave = useRef(true);
   useEffect(() => {
-    if (skipInitialLayoutSave.current) {
-      skipInitialLayoutSave.current = false;
-      return;
-    }
+    if (skipInitialSave.current) { skipInitialSave.current = false; return; }
     const handle = setTimeout(() => {
-      ipc.saveWorkspaceState(toPersisted()).catch((e) =>
-        toastError("save layout", e),
-      );
+      ipc.saveWorkspaceState(toPersisted()).catch((e) => toastError("save state", e));
     }, 1000);
     return () => clearTimeout(handle);
   }, [panelLayout, toPersisted]);
 
-  // Debounced persistence of theme to ~/.config/ire/config.json.
-  // Always include recent_workspaces so a theme save never clobbers them.
-  const skipInitialThemeSave = useRef(true);
-  useEffect(() => {
-    if (skipInitialThemeSave.current) {
-      skipInitialThemeSave.current = false;
-      return;
-    }
-    const handle = setTimeout(() => {
-      ipc.saveUserConfig({ theme, recent_workspaces: recentWorkspaces }).catch((e) =>
-        toastError("save theme", e),
-      );
-    }, 1000);
-    return () => clearTimeout(handle);
-  }, [theme, recentWorkspaces]);
-
-  // Debounced persistence of effort to .ire/workspace.json.
+  // Debounced effort persistence
   const skipInitialEffortSave = useRef(true);
   useEffect(() => {
-    if (skipInitialEffortSave.current) {
-      skipInitialEffortSave.current = false;
-      return;
-    }
+    if (skipInitialEffortSave.current) { skipInitialEffortSave.current = false; return; }
     const handle = setTimeout(() => {
-      ipc.saveWorkspaceState({ ...toPersisted(), effort }).catch((e) =>
-        toastError("save effort", e),
-      );
+      ipc.saveWorkspaceState({ ...toPersisted(), effort }).catch((e) => toastError("save effort", e));
     }, 1000);
     return () => clearTimeout(handle);
   }, [effort, toPersisted]);
@@ -133,114 +91,103 @@ export function Layout() {
     await ipc.saveNotes(content).catch((e) => toastError("save notes", e));
   };
 
-  const handleSaveIdeas = async (content: string) => {
-    await ipc.saveIdeas(content).catch((e) => toastError("save ideas", e));
+  const handleSaveIdeas = async (updatedIdeas: IdeaItem[]) => {
+    try {
+      await ipc.saveIdeasJson(updatedIdeas);
+      setIdeas(updatedIdeas);
+    } catch (e) {
+      toastError("save ideas", e);
+    }
   };
 
-  return (
-    <div className="layout">
-      <header className="topbar">
-        <div className="topbar__name">{workspace?.name ?? "workspace"}</div>
-        <div className="topbar__path" title={workspace?.path}>
-          {workspace?.path}
-        </div>
-        <div className="topbar__spacer" />
-        <button onClick={handleClose}>Close</button>
-        <button
-          className={`theme-toggle theme-toggle--${theme}`}
-          onClick={toggleTheme}
-          aria-label="Toggle theme"
-        >
-          <span className="theme-toggle__knob">
-            {theme === "dark" ? "☽" : "☀"}
-          </span>
-        </button>
-        <button className="topbar__settings" aria-label="Settings">
-          ⚙
-        </button>
-      </header>
+  const railResources = resources.filter((r) => r.wiki_path).map((r) => ({
+    resourceId: r.resource_id,
+    label: r.title ?? r.url,
+    wikiPath: r.wiki_path!,
+  }));
+  const workspacePath = phase.kind === "ready" ? phase.workspace.path : "";
+  const storedBodyLayout = panelLayout.groups?.body;
+  const bodyLayout =
+    storedBodyLayout &&
+    Number.isFinite(storedBodyLayout.left) &&
+    Number.isFinite(storedBodyLayout.center) &&
+    Number.isFinite(storedBodyLayout.right)
+      ? storedBodyLayout
+      : undefined;
 
+  return (
+    <div className="flex flex-col h-screen bg-background text-on-surface overflow-hidden">
+      {/* Top NavBar */}
+      <header className="flex items-center justify-between px-3 h-10 w-full bg-background border-b border-outline-variant shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
+          <div
+            className="flex items-center gap-1.5 min-w-0 text-xs font-medium text-on-surface"
+            title={workspacePath}
+          >
+            <Icon name="folder" className="w-[16px] h-[16px] text-primary shrink-0" />
+            <span className="truncate max-w-[360px]">{workspacePath}</span>
+          </div>
+          {runningCount > 0 && (
+            <div className="flex items-center gap-2 border border-warn/30 text-warn px-2 py-0.5 rounded text-xs bg-warn/5">
+              <span className="w-1.5 h-1.5 rounded-full bg-warn animate-pulse" />
+              running {runningCount} exp
+            </div>
+          )}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            className="h-7 border border-outline-variant rounded px-3 text-xs font-medium text-on-surface-variant hover:bg-surface-container-low hover:border-outline transition-colors"
+            onClick={handleClose}
+          >
+            close
+          </button>
+          <button
+            className="text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center p-1"
+            aria-label="Settings"
+          >
+            <Icon name="settings" className="w-[18px] h-[18px]" />
+          </button>
+        </div>
+      </header>
+      {/* Main content: rails + center */}
       <Group
         id="body"
         orientation="horizontal"
-        className="layout__body"
-        defaultLayout={groups.body}
+        className="flex-1 overflow-hidden"
+        defaultLayout={bodyLayout}
         onLayoutChanged={(layout) => setGroupLayout("body", layout)}
       >
         <Panel
           id="left"
-          defaultSize="22%"
-          minSize="15%"
-          collapsible
-          className="column column--left"
+          className="h-full"
+          defaultSize="280px"
+          minSize="160px"
+          groupResizeBehavior="preserve-pixel-size"
         >
-          <FocusBanner focus={parseFocus(pulseContent)} />
-          <Group
-            id="left"
-            orientation="vertical"
-            className="column__inner"
-            defaultLayout={groups.left}
-            onLayoutChanged={(layout) => setGroupLayout("left", layout)}
-          >
-            <Panel id="pulse" defaultSize="55%" minSize="20%">
-              <MarkdownPane title="pulse.md" content={pulseContent} />
-            </Panel>
-            <Separator className="resize-handle resize-handle--v" />
-            <Panel id="resources" defaultSize="45%" minSize="20%">
-              <ResourcesList
-                resources={resources}
-                onResourceClick={(r) => openPreviewTab(r.title ?? r.url, r.wiki_path!)}
-              />
-            </Panel>
-          </Group>
+          <LeftRail pulse={pulseObject} resources={railResources} />
         </Panel>
-
-        <Separator className="resize-handle resize-handle--h" />
-
-        <Panel id="center" defaultSize="56%" minSize="30%" className="column column--center">
+        <Separator id="body-left-center" className="drag-handle-col" />
+        <Panel id="center" className="h-full min-w-0" minSize="320px">
           <ChatPane />
         </Panel>
-
-        <Separator className="resize-handle resize-handle--h" />
-
+        <Separator id="body-center-right" className="drag-handle-col" />
         <Panel
           id="right"
-          defaultSize="22%"
-          minSize="15%"
-          collapsible
-          className="column column--right"
+          className="h-full"
+          defaultSize="320px"
+          minSize="180px"
+          groupResizeBehavior="preserve-pixel-size"
         >
-          <Group
-            id="right"
-            orientation="vertical"
-            className="column__inner"
-            defaultLayout={groups.right}
-            onLayoutChanged={(layout) => setGroupLayout("right", layout)}
-          >
-            <Panel id="notes" defaultSize="40%" minSize="15%">
-              <MarkdownPane
-                title="notes.md"
-                content={notesContent}
-                showSubmit
-                onSubmit={handleSaveNotes}
-              />
-            </Panel>
-            <Separator className="resize-handle resize-handle--v" />
-            <Panel id="ideas" defaultSize="40%" minSize="15%">
-              <MarkdownPane
-                title="ideas.md"
-                content={ideasContent}
-                showSubmit
-                onSubmit={handleSaveIdeas}
-              />
-            </Panel>
-            <Separator className="resize-handle resize-handle--v" />
-            <Panel id="resource-input" defaultSize="20%" minSize="10%">
-              <ResourceInput />
-            </Panel>
-          </Group>
+          <RightRail
+            notes={notesContent}
+            ideas={ideas}
+            onSaveNotes={handleSaveNotes}
+            onSaveIdeas={handleSaveIdeas}
+          />
         </Panel>
       </Group>
+      {/* Bottom status bar */}
+      <StatusBar />
     </div>
   );
 }
