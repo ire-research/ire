@@ -702,7 +702,7 @@ The Tauri window opens in windowed mode at 1280 × 820 so the primary rails, cen
 - `ResourcesSection` and `ExperimentsSection` use the same outer pane padding as `NotesPane` and `IdeasPane`, and render compact inline SVG title icons. Empty lists show `no resources yet` and `no experiments yet`.
 - `IdeasPane` renders active ideas sorted by `order`, opens an inline draft card on Add, saves the draft to `ideas.json` on Enter, and hides trashed ideas by persisting `trashed: true`.
 - `FocusPane` and `NotesPane` use **inline editing**: clicking a field activates a textarea in place; blur/Enter saves. No separate Edit/Preview toggle.
-- Clicking an experiment row in `ExperimentsSection` opens (or re-focuses) an `experiment` tab in the centre column; the tab renders `ExperimentTabView` with a metadata grid and live log tail.
+- Clicking an experiment row in `ExperimentsSection` opens (or re-focuses) an `experiment` tab in the centre column; the tab renders `ExperimentTabView` with a metadata grid and live log tail. Hovering an experiment row reveals an `edit_document` rename button between the experiment name and status pill; pressing Enter commits the inline rename through `experiment_rename`, while Escape or blur cancels. `ExperimentTabView` uses the same hover-revealed `edit_document` rename button beside the header name.
 - The top navbar shows the full workspace path on the far left as the project title. The bottom `StatusBar` polls `get_system_status` every 5 s and displays (left-to-right): workspace path + git branch + insertions/deletions, CPU model + usage %, GPU model + usage % + VRAM (or `n/a` when unavailable), RAM total GB, `username@hostname`, and a `claude-code · connected/disconnected` indicator pushed to the far right. The CC indicator is `connected` when `find_claude_binary()` succeeds, meaning the CLI is available for interaction; it does not require an active subprocess.
 
 ### 13.2 Chat rendering
@@ -831,6 +831,7 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 | `experiment_logs` | `{ uuid, kb? }` | `{ stdout, stderr }` |
 | `experiment_cancel` | `{ uuid }` | `{}` |
 | `experiment_delete` | `{ uuid }` | `{}` (refuses running experiments; removes `.ire/logs/<uuid>/`, `.ire/experiments/<uuid>/`, and the DB row) |
+| `experiment_rename` | `{ uuid, name }` | `{}` (updates `experiments.name`) |
 | `get_system_status` | — | `SystemStatus` (workspace path, git branch/diff, CPU/GPU/RAM metrics, CC connected flag) |
 | `read_workspace_state` | — | `PersistedWorkspace` (panel layout from `.ire/workspace.json`) |
 | `save_workspace_state` | `{ state: PersistedWorkspace }` | `{}` (debounced from frontend; atomic write) |

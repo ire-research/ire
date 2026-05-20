@@ -72,6 +72,11 @@ export function LeftRail({ pulse, resources }: Props) {
             experiments={experiments}
             onOpen={openExperimentTab}
             onDelete={(uuid) => setExperiments((prev) => prev.filter((e) => e.uuid !== uuid))}
+            onRename={(uuid, newName) =>
+              setExperiments((prev) =>
+                prev.map((e) => (e.uuid === uuid ? { ...e, name: newName } : e))
+              )
+            }
           />
         </Panel>
       </Group>

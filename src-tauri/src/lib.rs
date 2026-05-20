@@ -11,7 +11,7 @@ mod workspace;
 
 use cc::session::SessionManager;
 use commands::chat::{chat_cancel, chat_reset_session, chat_send};
-use commands::experiments::{experiment_cancel, experiment_delete, experiment_list, experiment_logs};
+use commands::experiments::{experiment_cancel, experiment_delete, experiment_list, experiment_logs, experiment_rename};
 use commands::resources::{
     discard_resource, get_resource_confirm_prompt, index_resource, list_resources, submit_resource,
 };
@@ -71,6 +71,7 @@ pub fn run() {
             experiment_logs,
             experiment_cancel,
             experiment_delete,
+            experiment_rename,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
