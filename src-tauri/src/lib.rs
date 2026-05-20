@@ -18,8 +18,8 @@ use commands::resources::{
 use commands::wiki::{read_wiki_file, save_notes, save_wiki_file, read_pulse, save_pulse_field, read_ideas, save_ideas_json};
 use commands::system::get_system_status;
 use commands::workspace::{
-    close_workspace, init_workspace, open_workspace, read_user_config, read_workspace_state,
-    save_user_config, save_workspace_state, setup_status,
+    close_workspace, init_workspace, open_in_vscode, open_workspace, read_user_config,
+    read_workspace_state, save_user_config, save_workspace_state, setup_status,
 };
 use mcp::McpState;
 use workspace::ActiveWorkspace;
@@ -46,6 +46,7 @@ pub fn run() {
             open_workspace,
             init_workspace,
             close_workspace,
+            open_in_vscode,
             read_workspace_state,
             save_workspace_state,
             read_user_config,
