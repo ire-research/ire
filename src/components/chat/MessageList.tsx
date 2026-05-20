@@ -54,7 +54,32 @@ export function MessageList({ messages }: MessageListProps) {
   );
 }
 
+function formatElapsed(s: number): string {
+  const mins   = Math.floor(s / 60);
+  const secs   = Math.floor(s % 60);
+  const tenths = Math.floor((s % 1) * 10);
+  return `${mins}:${secs.toString().padStart(2, "0")}.${tenths}`;
+}
+
 function AssistantBubble({ msg }: { msg: AssistantMessage }) {
+  // Timer: starts at mount (when the assistant turn begins), freezes when streaming stops.
+  const startRef = useRef(Date.now());
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!msg.isStreaming) return;
+    let raf: number;
+    const tick = () => {
+      setElapsed((Date.now() - startRef.current) / 1000);
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [msg.isStreaming]);
+
+  // Show timer once streaming has started (elapsed > 0) or is currently running.
+  const showTimer = msg.isStreaming || elapsed > 0;
+
   return (
     <div className="flex flex-col items-start max-w-[720px] space-y-4">
       {msg.blocks.map((block) => {
@@ -77,11 +102,25 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
         );
       })}
 
-      {msg.error ? (
+      {msg.error && (
         <div className="text-[14px] text-error">{msg.error}</div>
-      ) : msg.blocks.length === 0 && msg.isStreaming ? (
-        <div className="text-on-surface-variant animate-pulse text-[14px]">▌</div>
-      ) : null}
+      )}
+
+      {/* Loading row: dots (while streaming) + timer (whole turn). Always last. */}
+      {showTimer && !msg.error && (
+        <div className="flex items-center gap-2.5">
+          {msg.isStreaming && (
+            <div className="flex items-center gap-[5px]">
+              <div className="w-[5px] h-[5px] rounded-full bg-on-surface-variant animate-dot-bounce" style={{ animationDelay: "0s" }} />
+              <div className="w-[5px] h-[5px] rounded-full bg-on-surface-variant animate-dot-bounce" style={{ animationDelay: "0.18s" }} />
+              <div className="w-[5px] h-[5px] rounded-full bg-on-surface-variant animate-dot-bounce" style={{ animationDelay: "0.36s" }} />
+            </div>
+          )}
+          <span className="font-mono text-[12px] text-on-surface-variant/60 min-w-[48px] tracking-[0.02em]">
+            {formatElapsed(elapsed)}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

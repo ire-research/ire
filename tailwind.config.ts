@@ -72,6 +72,15 @@ export default {
         sans: ["Geist", "system-ui", "sans-serif"],
         mono: ["Geist Mono", "monospace"],
       },
+      keyframes: {
+        "dot-bounce": {
+          "0%, 60%, 100%": { transform: "translateY(0)",    opacity: "0.45" },
+          "30%":            { transform: "translateY(-5px)", opacity: "1"    },
+        },
+      },
+      animation: {
+        "dot-bounce": "dot-bounce 1.1s ease-in-out infinite",
+      },
     },
   },
   plugins: [],
