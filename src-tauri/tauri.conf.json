@@ -13,9 +13,9 @@
     "windows": [
       {
         "title": "ire",
-        "width": 800,
-        "height": 600,
-        "fullscreen": true
+        "width": 1280,
+        "height": 820,
+        "fullscreen": false
       }
     ],
     "security": {

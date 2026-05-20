@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import { useWorkspace } from "../../state/workspace";
 import { useChat } from "../../state/chat";
 import { useChatOptions } from "../../state/chatOptions";
 import { toastError } from "../../state/toasts";
@@ -20,7 +19,6 @@ import { Icon } from "../Icon";
 import type { Tab } from "../../types";
 
 export function ChatPane() {
-  const mode = useWorkspace((s) => s.mode);
   const { model, effort } = useChatOptions();
 
   const {
@@ -192,7 +190,7 @@ export function ChatPane() {
     setStreaming(activeTabId, true);
 
     try {
-      await ipc.chatSend(activeTabId, text, mode, { model, effort });
+      await ipc.chatSend(activeTabId, text, { model, effort });
     } catch (err) {
       const currentMsgId = assistantIdByTab.current.get(activeTabId);
       if (currentMsgId) setMessageError(activeTabId, currentMsgId, String(err));
@@ -224,7 +222,7 @@ export function ChatPane() {
     setStreaming(activeTabId, true);
     try {
       const prompt = await ipc.getResourceConfirmPrompt();
-      await ipc.chatSend(activeTabId, prompt, mode, { model, effort });
+      await ipc.chatSend(activeTabId, prompt, { model, effort });
     } catch (err) {
       const msgId = assistantIdByTab.current.get(activeTabId);
       if (msgId) setMessageError(activeTabId, msgId, String(err));

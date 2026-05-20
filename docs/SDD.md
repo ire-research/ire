@@ -16,7 +16,7 @@ This document describes the MVP architecture in enough detail to implement. The 
 6. [Wiki Layer](#6-wiki-layer)
 7. [Memory Layer](#7-memory-layer)
 8. [Pipelines](#8-pipelines)
-9. [Chat: Brainstorm & Experiment Modes](#9-chat-brainstorm--experiment-modes)
+9. [Chat](#9-chat)
 10. [Claude-Code Subprocess Layer](#10-claude-code-subprocess-layer)
 11. [MCP Server](#11-mcp-server)
 12. [SQLite Schema](#12-sqlite-schema)
@@ -328,7 +328,7 @@ Always injected into CC's context as a "do-not-propose" anchor. This directly ad
 When IRE spawns a CC turn, the system prompt is composed of:
 
 1. `wiki/_SYSTEM.md` — static IRE framework context (what IRE is, wiki layout, behavioral rules). MCP tool descriptions are received automatically via `tools/list` and are not duplicated here. Seeded from `assets/seed/_SYSTEM.md` on workspace init; always injected first.
-2. The mode-specific preamble (brainstorm vs. experiment), loaded from `src-tauri/assets/prompts/mode_{brainstorm,experiment}.md` via the `prompts` module. All CC-facing prompt text — mode preambles, the resource summarizer role, the resource-confirm follow-up, and the experiment wake-up template — lives in `src-tauri/assets/prompts/`. Edit those files to change CC's behaviour; never hardcode prompts at call sites.
+2. All CC-facing prompt text — the resource summarizer role, the resource-confirm follow-up, and the experiment wake-up template — lives in `src-tauri/assets/prompts/`. Edit those files to change CC's behaviour; never hardcode prompts at call sites. The experiment workflow instructions are part of `wiki/_SYSTEM.md` (point 1 above).
 3. `wiki/_schema.md` (conventions).
 4. `wiki/_index.md` (catalog).
 5. `wiki/status/pulse.md` (focus + blocker).
@@ -389,33 +389,20 @@ CC streams the summary into the resource tab. When the turn ends, **Confirm** an
 
 ---
 
-## 9. Chat: Brainstorm & Experiment Modes
+## 9. Chat
 
-Both modes use a **single CC subprocess** in the central pane. The mode determines:
-
-- The **system prompt suffix** (`--append-system-prompt`).
-- The **MCP tool allowlist** advertised to CC.
-
-| | Brainstorm | Experiment |
-|---|---|---|
-| Allowed MCP tools | `wiki.*`, `memory.*`, `pulse.update`, `resource.*` | All brainstorm tools + `experiment.*` |
-| Allowed CC built-ins | `Read`, `Grep`, `Glob`, `WebFetch` | + `Bash`, `Edit`, `Write`, `MultiEdit` |
-| `--permission-mode` | `default` (prompts on edits) | `acceptEdits` |
-| Session id | one shared session per workspace, persisted in `workspace.json` | same session shared across modes |
-
-The session is shared across modes so that brainstorming context is available when the user asks for an experiment and vice versa. Mode is just a "lens" on the same conversation.
+IRE uses a **single unified agent** in the central pane. The agent always has access to all MCP tools (`wiki.*`, `memory.*`, `pulse.*`, `experiment.*`) and all CC built-ins (`Bash`, `Edit`, `Write`, `Read`, `Grep`, `Glob`, `WebFetch`). The experiment workflow instructions are part of `wiki/_SYSTEM.md` (injected on every turn per §7.4).
 
 ### 9.1 Send message flow
 
 ```
 User types in central pane → Send
-  → chat_send({ mode, message }) Tauri command
+  → chat_send({ message }) Tauri command
   → Rust spawns:
       claude -p "<message>"
         --output-format stream-json --verbose --include-partial-messages
         --mcp-config .ire/mcp.json --strict-mcp-config
-        --tools "<allowlist for mode>"
-        --append-system-prompt "<composed per §7.4 + mode suffix>"
+        --append-system-prompt "<composed per §7.4>"
         --resume <session_id_if_any>
   → Rust parses NDJSON line-by-line, emits chat-stream events
   → on `system.init`: capture session_id, persist to workspace.json
@@ -468,7 +455,7 @@ T6  CC reads result files, calls wiki.write for any new findings,
 ```
 
 **Subtleties.**
-- The user can keep using the brainstorm pane during T3–T5. The next user message and the wake-up share the same session id; whichever arrives first runs first. We serialise CC turns: only one CC subprocess per session at a time. If a user message arrives while a wake-up is running, it queues; if a wake-up fires while the user is mid-turn, it queues. The pending-queue is shown in the UI ("1 wake-up pending").
+- The user can keep using the chat pane during T3–T5. The next user message and the wake-up share the same session id; whichever arrives first runs first. We serialise CC turns: only one CC subprocess per session at a time. If a user message arrives while a wake-up is running, it queues; if a wake-up fires while the user is mid-turn, it queues. The pending-queue is shown in the UI ("1 wake-up pending").
 - `process_group(0)` (Linux/macOS) ensures killing IRE doesn't kill running experiments. On Windows we use `CREATE_NEW_PROCESS_GROUP`.
 - Logs are streamed to disk; the UI tails them via `experiment-log-line` events.
 
@@ -486,7 +473,7 @@ IRE supports multiple independent chat tabs in the central pane.
 
 | Type | Created by | Closeable | Description |
 |---|---|---|---|
-| Main | On workspace open (id `"main"`) | No (pinned) | Hosts the Brainstorm / Experiment mode selector. The primary research conversation. |
+| Main | On workspace open (id `"main"`) | No (pinned) | The primary research conversation. |
 | Chat | User clicks + button | Yes | Fresh CC session, independent conversation history. |
 | Resource | Backend resource ingestion (§8.3) | Auto-closes on Confirm/Discard | Dedicated to reviewing a single resource summary; shows Confirm / Discard instead of a free-form Composer when CC finishes. |
 | Preview | User clicks a resource in the Resources list | Yes | Renders a `ResourcePreviewPane` (edit/preview toggle + Submit) for the resource's wiki file. Clicking the same resource again focuses the existing tab rather than opening a duplicate. Submit persists edits to disk via `save_wiki_file`; the user commits when ready. |
@@ -501,7 +488,7 @@ IRE supports multiple independent chat tabs in the central pane.
 ```
 User types → handleSend(tabId)
   → beginAssistantMessage(tabId)
-  → ipc.chatSend(tabId, text, mode)
+  → ipc.chatSend(tabId, text)
   → Rust: resume CC for tabId with --resume <session_id>
   → events emitted as { tab_id, event }
   → frontend routes to tabId's messages
@@ -523,7 +510,7 @@ submit_resource() kicks CC with a new tab_id
 
 | Command / Event | Old signature | New signature |
 |---|---|---|
-| `chat_send` | `{ mode, message }` | `{ tab_id, mode, message }` |
+| `chat_send` | `{ mode, message }` | `{ tab_id, message }` |
 | `chat_cancel` | `{}` | `{ tab_id }` |
 | `chat_reset_session` | `{}` | `{ tab_id }` |
 | `chat-stream` event | `StreamEvent` | `{ tab_id, event: StreamEvent }` |
@@ -691,6 +678,8 @@ No table for chat messages — the CC session is the source of truth, and `--res
 
 ### 13.1 Layout
 
+The Tauri window opens in windowed mode at 1280 × 820 so the primary rails, center tab area, navbar, and status bar are visible on launch.
+
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │ Navbar (h-10):  full workspace path [running N exp]     [close] [⚙] │
@@ -785,7 +774,7 @@ Each entry under `panel_layout.groups.<group-id>` is the `Layout` map (`{ panel-
 
 Theme is **not** stored here — it is a user-level preference and lives in `~/.config/ire/config.json` (see [§13.7](#137-user-config-configireconfig.json)).
 
-Per-tab CC `session_id`s and the central pane mode are intentionally **not** persisted in MVP: sessions live in the in-memory `SessionManager` and are reset on app close.
+Per-tab CC `session_id`s are intentionally **not** persisted in MVP: sessions live in the in-memory `SessionManager` and are reset on app close.
 
 ### 13.7 User config (`~/.config/ire/config.json`)
 
@@ -835,7 +824,7 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 | `discard_resource` | `{ resource_id }` | `{}` (deletes cache file, marks DB row `rejected`) |
 | `list_resources` | — | `ResourceItem[]` (only `summarized` entries) |
 | `get_resource_confirm_prompt` | — | `string` (the second-turn confirm prompt loaded from `assets/prompts/`) |
-| `chat_send` | `{ tab_id, mode, message, options: { model: string, effort: EffortLevel } }` | `{}` (events follow) |
+| `chat_send` | `{ tab_id, message, options: { model: string, effort: EffortLevel } }` | `{}` (events follow) |
 | `chat_cancel` | `{ tab_id }` | `{}` |
 | `chat_reset_session` | `{ tab_id }` | `{}` (forgets session id for that tab) |
 | `experiment_list` | `{ limit? }` | `[ExperimentRow]` |

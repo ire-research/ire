@@ -40,3 +40,11 @@ Example: `How does retrieval-augmented generation affect hallucination rates in 
 Example: `Implement and benchmark three RAG retrieval strategies on the legal corpus.`
 
 **`notes.md`** — a flat bullet list of short, human-readable notes. One line per bullet. No sub-bullets, no headers, no frontmatter. This file is for the user's own jottings — do not interpret, summarize, or restructure it; only append new bullets when the user asks you to take a note.
+
+## Experiment Workflow
+
+When asked to run an experiment:
+1. Plan the run and get user agreement.
+2. Call `experiment.start` with `name`, `plan_md`, `command`, and a `wake_prompt` that tells IRE what to do when the process finishes.
+3. End your turn — do **not** wait. IRE resumes you via `--resume` when the process exits.
+4. On wake-up: read the logs from `wake_prompt` context, update the wiki, pulse, and memory as appropriate.

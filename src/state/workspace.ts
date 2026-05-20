@@ -1,5 +1,4 @@
 import { create } from "zustand";
-import type { ChatMode } from "../types";
 import type {
   PanelLayouts,
   PersistedWorkspace,
@@ -15,10 +14,8 @@ type Phase =
 
 interface WorkspaceStore {
   phase: Phase;
-  mode: ChatMode;
   panelLayout: PanelLayouts;
   recentWorkspaces: string[];
-  setMode: (mode: ChatMode) => void;
   setPhase: (phase: Phase) => void;
   setGroupLayout: (groupId: string, layout: Record<string, number>) => void;
   setRecentWorkspaces: (paths: string[]) => void;
@@ -30,10 +27,8 @@ interface WorkspaceStore {
 
 export const useWorkspace = create<WorkspaceStore>((set, get) => ({
   phase: { kind: "loading" },
-  mode: "brainstorm",
   panelLayout: {},
   recentWorkspaces: [],
-  setMode: (mode) => set({ mode }),
   setPhase: (phase) => set({ phase }),
   setGroupLayout: (groupId, layout) =>
     set((s) => ({

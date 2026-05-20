@@ -72,10 +72,9 @@ This compiles both Rust and TypeScript. It must succeed with zero errors and zer
 
 - `src-tauri/assets/seed/_SYSTEM.md` is the general-purpose system prompt injected into every CC turn regardless of mode. Keep it accurate:
     - **Do not document MCP tools here.** Tools are advertised automatically via MCP server handshaking — duplicating them in `_SYSTEM.md` wastes context and gets stale.
-    - **Do not add mode-specific guidance here.** Experiment workflow instructions belong in the experiment-mode preamble (`commands/chat.rs`), not in `_SYSTEM.md`.
     - When the wiki layout changes (new files, renamed paths, restructured dirs), update the layout block.
     - When behavioral rules change (new agent expectations, updated conventions), update the rules list.
-    - `_SYSTEM.md` contains only: wiki layout reference and universal agent rules.
+    - `_SYSTEM.md` contains: wiki layout reference, universal agent rules, and the experiment workflow instructions.
 
 ### 7. Parallel Intervention
 

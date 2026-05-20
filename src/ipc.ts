@@ -2,7 +2,6 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
-  ChatMode,
   ChatOptions,
   ExperimentLogLinePayload,
   ExperimentRow,
@@ -68,8 +67,8 @@ export const ipc = {
   readIdeas: (): Promise<IdeaItem[]> => invoke("read_ideas"),
   saveIdeasJson: (ideas: IdeaItem[]): Promise<void> => invoke("save_ideas_json", { ideas }),
   getSystemStatus: (): Promise<SystemStatus> => invoke("get_system_status"),
-  chatSend: (tabId: string, message: string, mode: ChatMode, options: ChatOptions): Promise<void> =>
-    invoke("chat_send", { tabId, message, mode, options }),
+  chatSend: (tabId: string, message: string, options: ChatOptions): Promise<void> =>
+    invoke("chat_send", { tabId, message, options }),
   chatCancel: (tabId: string): Promise<void> =>
     invoke("chat_cancel", { tabId }),
   chatResetSession: (tabId: string): Promise<void> =>
