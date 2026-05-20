@@ -123,6 +123,8 @@ pub fn list_experiments(ire_dir: &Path, limit: usize) -> Result<Vec<ExperimentRo
 pub struct ResourceRow {
     pub url_sha256: String,
     pub url: String,
+    pub source_type: String,
+    pub source_label: Option<String>,
     pub title: Option<String>,
     pub status: String,
     pub content_type: Option<String>,
@@ -136,11 +138,23 @@ fn open(ire_dir: &Path) -> Result<Connection> {
 }
 
 pub fn insert_resource(ire_dir: &Path, sha256: &str, url: &str, content_type: &str) -> Result<()> {
+    insert_resource_with_source(ire_dir, sha256, url, url, "url", content_type)
+}
+
+pub fn insert_resource_with_source(
+    ire_dir: &Path,
+    sha256: &str,
+    url: &str,
+    source_label: &str,
+    source_type: &str,
+    content_type: &str,
+) -> Result<()> {
     let conn = open(ire_dir)?;
     let now = chrono::Local::now().to_rfc3339();
     conn.execute(
-        "INSERT OR IGNORE INTO resources (url_sha256, url, status, content_type, fetched_at) VALUES (?1, ?2, 'pending_summary', ?3, ?4)",
-        params![sha256, url, content_type, now],
+        "INSERT OR IGNORE INTO resources (url_sha256, url, source_type, source_label, status, content_type, fetched_at) \
+         VALUES (?1, ?2, ?3, ?4, 'pending_summary', ?5, ?6)",
+        params![sha256, url, source_type, source_label, content_type, now],
     )?;
     Ok(())
 }
@@ -181,18 +195,20 @@ pub fn update_resource_indexed(
 pub fn list_resources(ire_dir: &Path) -> Result<Vec<ResourceRow>> {
     let conn = open(ire_dir)?;
     let mut stmt = conn.prepare(
-        "SELECT url_sha256, url, title, status, content_type, wiki_path, fetched_at \
+        "SELECT url_sha256, url, source_type, source_label, title, status, content_type, wiki_path, fetched_at \
          FROM resources WHERE status = 'summarized' ORDER BY summarized_at DESC LIMIT 50",
     )?;
     let rows = stmt.query_map([], |row| {
         Ok(ResourceRow {
             url_sha256: row.get(0)?,
             url: row.get(1)?,
-            title: row.get(2)?,
-            status: row.get(3)?,
-            content_type: row.get(4)?,
-            wiki_path: row.get(5)?,
-            fetched_at: row.get(6)?,
+            source_type: row.get(2)?,
+            source_label: row.get(3)?,
+            title: row.get(4)?,
+            status: row.get(5)?,
+            content_type: row.get(6)?,
+            wiki_path: row.get(7)?,
+            fetched_at: row.get(8)?,
         })
     })?;
     rows.map(|r| r.context("db row")).collect()

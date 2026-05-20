@@ -1,6 +1,6 @@
 use std::fs;
 use std::io::{BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use tauri::{Emitter, State};
@@ -12,12 +12,17 @@ use crate::cc::stream::{dispatch, StreamEvent, StreamState};
 use crate::db::models;
 use crate::prompts;
 use crate::resources::fetch::fetch_and_extract;
+use crate::resources::local::extract_local_file;
 use crate::wiki::WikiStore;
 use crate::workspace::state::ActiveWorkspace;
 
 fn sha256_hex(s: &str) -> String {
+    sha256_hex_bytes(s.as_bytes())
+}
+
+fn sha256_hex_bytes(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
-    let hash = Sha256::digest(s.as_bytes());
+    let hash = Sha256::digest(bytes);
     hash.iter().map(|b| format!("{b:02x}")).collect()
 }
 
@@ -34,6 +39,8 @@ fn hostname_from_url(url: &str) -> String {
 pub struct ResourceItem {
     pub resource_id: String,
     pub url: String,
+    pub source_type: String,
+    pub source_label: String,
     pub title: Option<String>,
     pub wiki_path: Option<String>,
 }
@@ -57,52 +64,125 @@ pub async fn submit_resource(
     let sha256_clone = sha256.clone();
     let workspace_clone = workspace_path.clone();
 
-    // Fetch + extract + write cache + insert DB row (blocking)
-    let content_type =
-        tokio::task::spawn_blocking(move || -> Result<String, String> {
-            let result = fetch_and_extract(&url_clone).map_err(|e| e.to_string())?;
+    let content_type = tokio::task::spawn_blocking(move || -> Result<String, String> {
+        let result = fetch_and_extract(&url_clone).map_err(|e| e.to_string())?;
 
-            let cache_dir = workspace_clone.join(".ire/cache");
-            fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
-            fs::write(
-                cache_dir.join(format!("{sha256_clone}.txt")),
-                &result.text,
-            )
+        write_resource_cache(&workspace_clone, &sha256_clone, &result.text)?;
+
+        let ire_dir = workspace_clone.join(".ire");
+        models::insert_resource(&ire_dir, &sha256_clone, &url_clone, &result.content_type)
             .map_err(|e| e.to_string())?;
 
-            let ire_dir = workspace_clone.join(".ire");
-            models::insert_resource(&ire_dir, &sha256_clone, &url_clone, &result.content_type)
-                .map_err(|e| e.to_string())?;
-
-            Ok(result.content_type)
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+        Ok(result.content_type)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
 
     tracing::debug!(sha256 = %sha256, content_type = %content_type, "resource cached");
 
-    // Emit tab-created so the frontend opens the resource tab
+    start_resource_summary(
+        app_handle,
+        (*session).clone(),
+        workspace_path,
+        sha256.clone(),
+        url.clone(),
+        hostname_from_url(&url),
+    )?;
+
+    tracing::info!(sha256 = %sha256, "submit_resource complete");
+    Ok(sha256)
+}
+
+#[tauri::command]
+pub async fn submit_local_resource(
+    app_handle: tauri::AppHandle,
+    active: State<'_, ActiveWorkspace>,
+    session: State<'_, SessionManager>,
+    path: String,
+) -> Result<String, String> {
+    tracing::info!(path = %path, "submit_local_resource");
+
+    let workspace_path = {
+        let guard = active.0.lock().map_err(|e| e.to_string())?;
+        guard.as_ref().ok_or("no workspace open")?.state.path.clone()
+    };
+
+    let path_buf = PathBuf::from(path);
+    let workspace_clone = workspace_path.clone();
+
+    let (sha256, source_ref, source_label, content_type) = tokio::task::spawn_blocking(
+        move || -> Result<(String, String, String, String), String> {
+            let result = extract_local_file(&path_buf).map_err(|e| e.to_string())?;
+            let sha256 = sha256_hex_bytes(&result.bytes);
+            let source_ref = format!("file:{sha256}:{}", result.filename);
+
+            write_resource_cache(&workspace_clone, &sha256, &result.text)?;
+
+            let ire_dir = workspace_clone.join(".ire");
+            models::insert_resource_with_source(
+                &ire_dir,
+                &sha256,
+                &source_ref,
+                &result.filename,
+                "local_file",
+                &result.content_type,
+            )
+            .map_err(|e| e.to_string())?;
+
+            Ok((sha256, source_ref, result.filename, result.content_type))
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())??;
+
+    tracing::debug!(sha256 = %sha256, content_type = %content_type, "local resource cached");
+
+    start_resource_summary(
+        app_handle,
+        (*session).clone(),
+        workspace_path,
+        sha256.clone(),
+        source_ref,
+        source_label,
+    )?;
+
+    tracing::info!(sha256 = %sha256, "submit_local_resource complete");
+    Ok(sha256)
+}
+
+fn write_resource_cache(workspace_path: &Path, sha256: &str, text: &str) -> Result<(), String> {
+    let cache_dir = workspace_path.join(".ire/cache");
+    fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
+    fs::write(cache_dir.join(format!("{sha256}.txt")), text).map_err(|e| e.to_string())
+}
+
+fn start_resource_summary(
+    app_handle: tauri::AppHandle,
+    session: SessionManager,
+    workspace_path: PathBuf,
+    sha256: String,
+    source_ref: String,
+    tab_label: String,
+) -> Result<(), String> {
     let tab_id = uuid::Uuid::new_v4().to_string();
-    let hostname = hostname_from_url(&url);
     app_handle
         .emit(
             "tab-created",
             serde_json::json!({
-                "tab_id": tab_id,
-                "label": hostname,
+                "tab_id": &tab_id,
+                "label": &tab_label,
                 "kind": "resource",
-                "resource_id": sha256,
+                "resource_id": &sha256,
             }),
         )
         .map_err(|e| e.to_string())?;
 
     // Fire-and-forget: kick a CC turn to summarise the cached file
     let bin = find_claude_binary().map_err(|e| e.to_string())?.path;
-    let session_clone = (*session).clone();
     let app = app_handle.clone();
     let workspace_clone2 = workspace_path.clone();
     let sha256_clone2 = sha256.clone();
-    let url_clone2 = url.clone();
+    let source_ref_clone = source_ref.clone();
     let tab_id_clone = tab_id.clone();
 
     tokio::spawn(async move {
@@ -111,7 +191,7 @@ pub async fn submit_resource(
             let system_prompt = build_resource_system_prompt(&workspace_clone2);
             let cache_rel = format!(".ire/cache/{sha256_clone2}.txt");
             let prompt = format!(
-                "Read {cache_rel} (source: {url_clone2}). \
+                "Read {cache_rel} (source: {source_ref_clone}). \
                  Provide an executive summary — what this resource is, what is relevant to this project, \
                  why it matters, and how it could be used. Use bullet points.\n\
                  Do NOT write to the wiki yet."
@@ -130,7 +210,7 @@ pub async fn submit_resource(
 
             let mut child = cmd.spawn().map_err(|e| e.to_string())?;
             let pid = child.id();
-            session_clone.set_pid(&tab_id_clone, pid);
+            session.set_pid(&tab_id_clone, pid);
             tracing::info!(tab_id = %tab_id_clone, pid = pid, "resource CC turn spawned");
 
             let stdout = child.stdout.take().ok_or("no stdout")?;
@@ -141,7 +221,7 @@ pub async fn submit_resource(
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
                         dispatch(&json, &mut state, &mut |event| {
                             if let StreamEvent::Init { ref session_id } = event {
-                                session_clone.set_session_id(&tab_id_clone, session_id.clone());
+                                session.set_session_id(&tab_id_clone, session_id.clone());
                             }
                             let _ = app.emit(
                                 "chat-stream",
@@ -153,7 +233,7 @@ pub async fn submit_resource(
             }
 
             let _ = child.wait();
-            session_clone.clear_pid(&tab_id_clone);
+            session.clear_pid(&tab_id_clone);
 
             let _ = app.emit(
                 "chat-stream",
@@ -169,8 +249,8 @@ pub async fn submit_resource(
         }
     });
 
-    tracing::info!(tab_id = %tab_id, sha256 = %sha256, "submit_resource complete");
-    Ok(sha256)
+    tracing::info!(tab_id = %tab_id, sha256 = %sha256, "resource summary started");
+    Ok(())
 }
 
 #[tauri::command]
@@ -181,7 +261,12 @@ pub fn discard_resource(
     tracing::info!(resource_id = %resource_id, "discard_resource");
     let workspace_path = {
         let guard = active.0.lock().map_err(|e| e.to_string())?;
-        guard.as_ref().ok_or("no workspace open")?.state.path.clone()
+        guard
+            .as_ref()
+            .ok_or("no workspace open")?
+            .state
+            .path
+            .clone()
     };
 
     let cache_file = workspace_path
@@ -207,7 +292,12 @@ pub fn index_resource(
     tracing::info!(resource_id = %resource_id, "index_resource");
     let workspace_path = {
         let guard = active.0.lock().map_err(|e| e.to_string())?;
-        guard.as_ref().ok_or("no workspace open")?.state.path.clone()
+        guard
+            .as_ref()
+            .ok_or("no workspace open")?
+            .state
+            .path
+            .clone()
     };
 
     let ire_dir = workspace_path.join(".ire");
@@ -254,8 +344,13 @@ fn find_resource_wiki_path(wiki_root: &std::path::Path, resource_url: &str) -> O
         let content = std::fs::read_to_string(&path).unwrap_or_default();
         let (fm, _) = frontmatter::parse(&content);
         let Some(fm) = fm else { continue };
-        let Some(sources) = fm.get("sources") else { continue };
-        if parse_sources_array(sources).iter().any(|s| *s == resource_url) {
+        let Some(sources) = fm.get("sources") else {
+            continue;
+        };
+        if parse_sources_array(sources)
+            .iter()
+            .any(|s| *s == resource_url)
+        {
             let filename = path.file_name()?.to_str()?;
             return Some(format!("resources/{filename}"));
         }
@@ -311,7 +406,12 @@ fn extract_title(path: &std::path::Path) -> String {
 pub fn list_resources(active: State<'_, ActiveWorkspace>) -> Result<Vec<ResourceItem>, String> {
     let workspace_path = {
         let guard = active.0.lock().map_err(|e| e.to_string())?;
-        guard.as_ref().ok_or("no workspace open")?.state.path.clone()
+        guard
+            .as_ref()
+            .ok_or("no workspace open")?
+            .state
+            .path
+            .clone()
     };
 
     let ire_dir = workspace_path.join(".ire");
@@ -319,11 +419,16 @@ pub fn list_resources(active: State<'_, ActiveWorkspace>) -> Result<Vec<Resource
 
     Ok(rows
         .into_iter()
-        .map(|r| ResourceItem {
-            resource_id: r.url_sha256,
-            url: r.url,
-            title: r.title,
-            wiki_path: r.wiki_path,
+        .map(|r| {
+            let source_label = r.source_label.unwrap_or_else(|| r.url.clone());
+            ResourceItem {
+                resource_id: r.url_sha256,
+                url: r.url,
+                source_type: r.source_type,
+                source_label,
+                title: r.title,
+                wiki_path: r.wiki_path,
+            }
         })
         .collect())
 }
