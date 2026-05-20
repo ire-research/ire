@@ -1,5 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
+import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 
@@ -12,7 +13,7 @@ export function MessageMarkdown({ content }: Props) {
     <div className="md-body">
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[rehypeKatex, rehypeHighlight]}
       >
         {content}
       </ReactMarkdown>

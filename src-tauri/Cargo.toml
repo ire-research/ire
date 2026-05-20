@@ -38,6 +38,7 @@ pdf-extract = "0.7"
 tempfile = "3"
 flate2 = "1"
 tar = "0.4"
+sysinfo = "0.32"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

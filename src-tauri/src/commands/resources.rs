@@ -224,7 +224,6 @@ pub fn index_resource(
         let title = extract_title(&wiki.wiki_root.join(rel_path));
         models::update_resource_indexed(&ire_dir, &resource_id, rel_path, &title)
             .map_err(|e| e.to_string())?;
-        wiki.commit_resource_files();
         // Trigger the resources list refresh in the frontend.
         let _ = app_handle.emit("wiki-changed", serde_json::json!({ "path": rel_path }));
     } else {
