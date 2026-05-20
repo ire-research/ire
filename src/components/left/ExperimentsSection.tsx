@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
 import type { ExperimentRow } from "../../types";
@@ -8,6 +8,7 @@ interface Props {
   experiments: ExperimentRow[];
   onOpen: (uuid: string, name: string) => void;
   onDelete: (uuid: string) => void;
+  onRename: (uuid: string, newName: string) => void;
 }
 
 function getStatusPill(status: string): { text: string; textColor: string; borderColor: string; bgColor: string } {
@@ -25,8 +26,11 @@ function getStatusPill(status: string): { text: string; textColor: string; borde
   return { text: truncated, textColor: "text-on-surface-variant", borderColor: "border-on-surface-variant/30", bgColor: "bg-on-surface-variant/10" };
 }
 
-export function ExperimentsSection({ experiments, onOpen, onDelete }: Props) {
+export function ExperimentsSection({ experiments, onOpen, onDelete, onRename }: Props) {
   const [deletingUuid, setDeletingUuid] = useState<string | null>(null);
+  const [renamingUuid, setRenamingUuid] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const handleDelete = async (e: React.MouseEvent, uuid: string) => {
     e.stopPropagation();
@@ -41,6 +45,37 @@ export function ExperimentsSection({ experiments, onOpen, onDelete }: Props) {
     }
   };
 
+  const startRename = (e: React.MouseEvent, exp: ExperimentRow) => {
+    e.stopPropagation();
+    setRenamingUuid(exp.uuid);
+    setRenameValue(exp.name);
+  };
+
+  const commitRename = async (uuid: string) => {
+    const trimmed = renameValue.trim();
+    if (!trimmed) {
+      setRenamingUuid(null);
+      return;
+    }
+    try {
+      await ipc.experimentRename(uuid, trimmed);
+      onRename(uuid, trimmed);
+    } catch (err) {
+      toastError("rename experiment", err);
+    } finally {
+      setRenamingUuid(null);
+    }
+  };
+
+  const handleRenameKeyDown = (e: React.KeyboardEvent, uuid: string) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitRename(uuid);
+    } else if (e.key === "Escape") {
+      setRenamingUuid(null);
+    }
+  };
+
   return (
     <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
       <div className="flex items-center gap-2 py-1 mb-2 text-on-surface-variant text-[14px]">
@@ -51,28 +86,51 @@ export function ExperimentsSection({ experiments, onOpen, onDelete }: Props) {
         {experiments.length > 0 ? (
           experiments.map((exp) => {
             const pill = getStatusPill(exp.status);
+            const isRenaming = renamingUuid === exp.uuid;
             return (
               <div
                 key={exp.uuid}
                 className="group w-full flex items-center px-2 py-1.5 rounded hover:bg-surface-container-high transition-colors"
               >
-                <button
-                  className="flex-1 flex items-center justify-between gap-2 min-w-0 cursor-pointer"
-                  onClick={() => onOpen(exp.uuid, exp.name)}
-                >
-                  <span className="font-mono text-[13px] text-on-surface truncate">{exp.name}</span>
-                  <span className={`text-[10px] uppercase border ${pill.borderColor} px-1 rounded ${pill.textColor} ${pill.bgColor} shrink-0`}>
-                    {pill.text}
-                  </span>
-                </button>
-                <button
-                  className="opacity-0 group-hover:opacity-100 ml-1 p-0.5 text-on-surface-variant hover:text-error transition-colors shrink-0"
-                  title="Delete experiment"
-                  disabled={deletingUuid === exp.uuid}
-                  onClick={(e) => handleDelete(e, exp.uuid)}
-                >
-                  <Icon name="delete" className="w-[14px] h-[14px]" />
-                </button>
+                {isRenaming ? (
+                  <input
+                    ref={inputRef}
+                    autoFocus
+                    className="flex-1 font-mono text-[13px] text-on-surface bg-transparent border-b border-outline outline-none min-w-0"
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={(e) => handleRenameKeyDown(e, exp.uuid)}
+                    onBlur={() => setRenamingUuid(null)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <>
+                    <button
+                      className="flex-1 min-w-0 cursor-pointer text-left"
+                      onClick={() => onOpen(exp.uuid, exp.name)}
+                    >
+                      <span className="font-mono text-[13px] text-on-surface truncate block">{exp.name}</span>
+                    </button>
+                    <button
+                      className="opacity-0 group-hover:opacity-100 mx-1 flex h-5 w-5 items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors shrink-0"
+                      title="Rename experiment"
+                      onClick={(e) => startRename(e, exp)}
+                    >
+                      <Icon name="edit_document" className="w-[14px] h-[14px]" />
+                    </button>
+                    <span className={`text-[10px] uppercase border ${pill.borderColor} px-1 rounded ${pill.textColor} ${pill.bgColor} shrink-0`}>
+                      {pill.text}
+                    </span>
+                    <button
+                      className="opacity-0 group-hover:opacity-100 ml-1 p-0.5 text-on-surface-variant hover:text-error transition-colors shrink-0"
+                      title="Delete experiment"
+                      disabled={deletingUuid === exp.uuid}
+                      onClick={(e) => handleDelete(e, exp.uuid)}
+                    >
+                      <Icon name="delete" className="w-[14px] h-[14px]" />
+                    </button>
+                  </>
+                )}
               </div>
             );
           })
