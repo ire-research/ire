@@ -16,7 +16,7 @@ This document describes the MVP architecture in enough detail to implement. The 
 6. [Wiki Layer](#6-wiki-layer)
 7. [Memory Layer](#7-memory-layer)
 8. [Pipelines](#8-pipelines)
-9. [Chat: Brainstorm & Experiment Modes](#9-chat-brainstorm--experiment-modes)
+9. [Chat](#9-chat)
 10. [Claude-Code Subprocess Layer](#10-claude-code-subprocess-layer)
 11. [MCP Server](#11-mcp-server)
 12. [SQLite Schema](#12-sqlite-schema)
@@ -134,10 +134,12 @@ my_research_project/
 │       ├── _SYSTEM.md               # IRE framework context — injected first into every CC turn
 │       ├── _index.md                # Master index (path → one-line summary)
 │       ├── _schema.md               # Conventions for CC
-│       ├── notes.md                 # User notes (cleaned by ingestion)
-│       ├── ideas.md                 # User ideas (cleaned by ingestion)
+│       ├── notes.md                 # User notes
+│       ├── ideas.json               # User ideas (`{ id, text, trashed, order }`)
+│       ├── pulse/
+│       │   ├── RESEARCH-QUESTION.md # Current research question
+│       │   └── THIS-WEEK.md         # This week's focus
 │       ├── status/
-│       │   ├── pulse.md             # Research question + blocker + focus banner
 │       │   ├── long-term.md         # Agent-written architectural decisions
 │       │   ├── failures.md          # Structured "what didn't work"
 │       │   └── short-term/
@@ -190,20 +192,21 @@ See [§16](#16-source-tree-layout).
 
 ```
 ┌─ Setup screen ───────────────────────────────────────┐
-│ Step 1: Claude-Code binary                           │
-│   • find_claude_binary() result, version, status     │
-│   • if missing: instructions + retry button          │
-│   • if unauthenticated: surface stderr               │
-│ Step 2: choose workspace                             │
-│   • [Open existing]   → file dialog                  │
-│   • [Initialize new]  → file dialog (empty dir)      │
-│ Recent workspaces (if any)                           │
-│   • list of last-opened paths from user config       │
-│   • click any entry to open without a file dialog    │
+│  "Open or create a workspace."                       │
+│                                                      │
+│  Recent workspaces (up to 5)                         │
+│    • each entry shows project name + full path       │
+│    • click any entry to open without a file dialog   │
+│    • most-recently-opened is highlighted             │
+│                                                      │
+│  [Open folder…]       [New workspace…]               │
+│                                                      │
+│  ● claude-code · authenticated  (or: not found)      │
+│    retry button if binary missing                    │
 └──────────────────────────────────────────────────────┘
 ```
 
-On startup, IRE reads `~/.config/ire/config.json` and applies the persisted theme immediately (before any workspace is opened) so the setup screen itself respects the user's preference.
+On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel.  `read_user_config` hydrates `recentWorkspaces` in the Zustand store before the setup screen mounts so the list is immediately populated.  If the binary is missing, a `retry` link re-invokes `refreshSetup`; there is no step-by-step wizard — the binary status is a status-bar indicator, not a blocking step.
 
 ### 5.2 Open existing
 
@@ -224,9 +227,9 @@ On startup, IRE reads `~/.config/ire/config.json` and applies the persisted them
 2. Backend:
    - `git init` if no `.git/`.
    - Scaffold `.ire/` per [§4](#4-directory-layout).
-   - Write seed files: empty `notes.md`, empty `ideas.md`, `pulse.md` with placeholders, `_schema.md` (canned), `_SYSTEM.md` (canned), `_index.md` (auto-built from the seed).
+   - Write seed files: empty `notes.md`, empty `ideas.json`, split `pulse/RESEARCH-QUESTION.md` / `pulse/THIS-WEEK.md` placeholders, `_schema.md` (canned), `_SYSTEM.md` (canned), `_index.md` (auto-built from the seed).
    - Append IRE entries to `.gitignore` (create if missing).
-   - `git add .ire/wiki .gitignore && git commit -m "Initialize IRE workspace"`.
+   - Do not stage or commit; the user decides when to commit the initialized workspace.
 3. Continue from step 3 of [§5.2](#52-open-existing).
 
 ### 5.4 Close
@@ -273,7 +276,8 @@ No CAS, no advisory file lock, no WAL — single-instance is enforced by `.lock`
 `_index.md` is a flat markdown list:
 ```
 - [notes.md](./notes.md) — running user notes
-- [status/pulse.md](./status/pulse.md) — current research question + blocker
+- [pulse/RESEARCH-QUESTION.md](./pulse/RESEARCH-QUESTION.md) — current research question
+- [pulse/THIS-WEEK.md](./pulse/THIS-WEEK.md) — this week's focus
 - [resources/attention-is-all-you-need.md](./resources/attention-is-all-you-need.md) — Vaswani et al. (2017): self-attention transformer …
 ```
 
@@ -281,27 +285,11 @@ The one-line summary is sourced from frontmatter `summary:` if present, else the
 
 ### 6.4 Git commit policy
 
-Wiki paths split into two classes based on **who decides when the change becomes a commit**:
+IRE never creates git commits automatically. The application may initialize a git repository for a new workspace, write `.gitignore`, and write files under `.ire/`, but deciding when to stage and commit remains entirely with the user.
 
-| Class | Paths | Commit trigger |
-|---|---|---|
-| **Auto-tracked** | `status/**`, `_schema.md`, `_index.md` | Every `WikiStore` write commits immediately. |
-| **User-tracked** | `notes.md`, `ideas.md`, `resources/**` | Written to disk on every change, but **only committed** when the user explicitly submits (notes/ideas Submit button) or approves (resource summary review). |
+`WikiStore::write` and `WikiStore::rename` atomically update the target wiki path, regenerate `_index.md`, and emit `wiki-changed`. They do not run `git add` or `git commit`, regardless of path. This applies equally to `status/**`, `pulse/**`, `_schema.md`, `_index.md`, `notes.md`, `ideas.json`, and `resources/**`.
 
-Rationale: memory and operational state should be durably versioned without human-in-the-loop friction; user-facing artefacts deserve an explicit commit gesture so the user can review and edit before the change becomes part of git history.
-
-**Index handling.** `_index.md` is auto-tracked, but it can be touched by either class of write. Rule:
-
-- If the triggering write is **auto-tracked**: commit `<that path> + _index.md` in one commit. Auto-message, e.g. `auto: memory long-term.md`, `auto: pulse update`.
-- If the triggering write is **user-tracked**: write `_index.md` to disk but **do not commit it yet**. The index update lands in the eventual user commit alongside the user-tracked path. Until then, `_index.md` may legitimately reference uncommitted files in the working tree — that is fine.
-
-The `WikiStore` exposes `write(path, content, ...)` which classifies internally; the MCP server does not need to know which class a path is in.
-
-**Auto-commit implementation.** `WikiStore` calls `git add <paths>` then `git commit -m <auto-msg>` after the rename + index regen. Failures are logged but do not crash the write — the file is still on disk and a future write will re-stage it. Hooks are not skipped (per project policy on destructive flags).
-
-**User commit implementation.** Notes/ideas Submit and resource approval each flow through a `wiki::commit_user_changes(scope)` helper that stages the scoped paths + index and commits with a user-supplied or templated message (e.g. `notes: <first 50 chars of pane>`, `resources: add <slug>`).
-
-**Resource approval.** The resource ingestion pipeline ([§8.3](#83-resource-ingestion)) presents an executive summary to the user via a dedicated chat tab before writing anything to the wiki. Only on **Confirm** does CC write `resources/<slug>.md` via `wiki.write` (user-tracked). The Confirm flow also commits `resources/<slug>.md + _index.md` to git. On **Discard**, the cache file is deleted and the DB row is marked `rejected`; no wiki file is ever written.
+Resource approval follows the same rule: **Confirm** asks CC to write `resources/<slug>.md` via `wiki.write`; `index_resource` then records the DB row (`status=summarized`, `wiki_path`, `title`) and emits `wiki-changed`. The resulting wiki and index changes remain uncommitted until the user commits them.
 
 ---
 
@@ -340,7 +328,7 @@ Always injected into CC's context as a "do-not-propose" anchor. This directly ad
 When IRE spawns a CC turn, the system prompt is composed of:
 
 1. `wiki/_SYSTEM.md` — static IRE framework context (what IRE is, wiki layout, behavioral rules). MCP tool descriptions are received automatically via `tools/list` and are not duplicated here. Seeded from `assets/seed/_SYSTEM.md` on workspace init; always injected first.
-2. The mode-specific preamble (brainstorm vs. experiment), loaded from `src-tauri/assets/prompts/mode_{brainstorm,experiment}.md` via the `prompts` module. All CC-facing prompt text — mode preambles, the resource summarizer role, the resource-confirm follow-up, and the experiment wake-up template — lives in `src-tauri/assets/prompts/`. Edit those files to change CC's behaviour; never hardcode prompts at call sites.
+2. All CC-facing prompt text — the resource summarizer role, the resource-confirm follow-up, and the experiment wake-up template — lives in `src-tauri/assets/prompts/`. Edit those files to change CC's behaviour; never hardcode prompts at call sites. The experiment workflow instructions are part of `wiki/_SYSTEM.md` (point 1 above).
 3. `wiki/_schema.md` (conventions).
 4. `wiki/_index.md` (catalog).
 5. `wiki/status/pulse.md` (focus + blocker).
@@ -358,10 +346,9 @@ This is added via `--append-system-prompt`. Wiki/notes/resources are read on-dem
 
 ```
 User edits the notes pane (raw text)
-  → clicks Submit
+  → blur or Ctrl+Enter after content changed
   → save_notes(content) Tauri command
     → Rust writes content to .ire/wiki/notes.md (atomic)
-    → commits notes.md + _index.md to git
   → wiki-changed event causes the notes pane to re-render.
 ```
 
@@ -369,7 +356,7 @@ No CC turn is triggered. CC reads `notes.md` only if the user explicitly request
 
 ### 8.2 Ideas ingestion
 
-Identical to notes ingestion ([§8.1](#81-notes-ingestion)), target `wiki/ideas.md`. No CC turn is triggered.
+Ideas are stored directly in `wiki/ideas.json` through `read_ideas` / `save_ideas_json`. Clicking Add in `IdeasPane` opens an inline draft card; pressing Enter writes a new `{ id, text, trashed: false, order }` entry and reorders active ideas. Clicking the trash icon soft-deletes by setting `trashed: true`; trashed ideas remain in JSON but are hidden from the pane. Drag-to-reorder rewrites active `order` values. No CC turn is triggered.
 
 ### 8.3 Resource ingestion
 
@@ -396,39 +383,26 @@ User pastes URL → Submit
 
 CC streams the summary into the resource tab. When the turn ends, **Confirm** and **Discard** buttons appear.
 
-**Confirm**: triggers a second CC turn in the same tab with the instruction to write the summary to `resources/<slug>.md` via the `wiki.write` MCP tool. Frontmatter follows `_schema.md`: `title`, `type: summary`, `sources: [<url>]`, `updated: YYYY-MM-DD`. Body starts with a `#` heading matching the title, then the summary. The tab auto-closes when this second CC turn ends. The written file is user-tracked (not auto-committed — see §6.4); it is committed to git as part of the Confirm flow.
+**Confirm**: triggers a second CC turn in the same tab with the instruction to write the summary to `resources/<slug>.md` via the `wiki.write` MCP tool. Frontmatter follows `_schema.md`: `title`, `type: summary`, `sources: [<url>]`, `updated: YYYY-MM-DD`. Body starts with a `#` heading matching the title, then the summary. The tab auto-closes when this second CC turn ends. The written file is indexed in SQLite, but no git commit is created by IRE.
 
 **Discard**: deletes `.ire/cache/<sha256>.txt`, marks the DB row `status=rejected`, closes the tab immediately. No wiki file is written.
 
 ---
 
-## 9. Chat: Brainstorm & Experiment Modes
+## 9. Chat
 
-Both modes use a **single CC subprocess** in the central pane. The mode determines:
-
-- The **system prompt suffix** (`--append-system-prompt`).
-- The **MCP tool allowlist** advertised to CC.
-
-| | Brainstorm | Experiment |
-|---|---|---|
-| Allowed MCP tools | `wiki.*`, `memory.*`, `pulse.update`, `resource.*` | All brainstorm tools + `experiment.*` |
-| Allowed CC built-ins | `Read`, `Grep`, `Glob`, `WebFetch` | + `Bash`, `Edit`, `Write`, `MultiEdit` |
-| `--permission-mode` | `default` (prompts on edits) | `acceptEdits` |
-| Session id | one shared session per workspace, persisted in `workspace.json` | same session shared across modes |
-
-The session is shared across modes so that brainstorming context is available when the user asks for an experiment and vice versa. Mode is just a "lens" on the same conversation.
+IRE uses a **single unified agent** in the central pane. The agent always has access to all MCP tools (`wiki.*`, `memory.*`, `pulse.*`, `experiment.*`) and all CC built-ins (`Bash`, `Edit`, `Write`, `Read`, `Grep`, `Glob`, `WebFetch`). The experiment workflow instructions are part of `wiki/_SYSTEM.md` (injected on every turn per §7.4).
 
 ### 9.1 Send message flow
 
 ```
 User types in central pane → Send
-  → chat_send({ mode, message }) Tauri command
+  → chat_send({ message }) Tauri command
   → Rust spawns:
       claude -p "<message>"
         --output-format stream-json --verbose --include-partial-messages
         --mcp-config .ire/mcp.json --strict-mcp-config
-        --tools "<allowlist for mode>"
-        --append-system-prompt "<composed per §7.4 + mode suffix>"
+        --append-system-prompt "<composed per §7.4>"
         --resume <session_id_if_any>
   → Rust parses NDJSON line-by-line, emits chat-stream events
   → on `system.init`: capture session_id, persist to workspace.json
@@ -481,7 +455,7 @@ T6  CC reads result files, calls wiki.write for any new findings,
 ```
 
 **Subtleties.**
-- The user can keep using the brainstorm pane during T3–T5. The next user message and the wake-up share the same session id; whichever arrives first runs first. We serialise CC turns: only one CC subprocess per session at a time. If a user message arrives while a wake-up is running, it queues; if a wake-up fires while the user is mid-turn, it queues. The pending-queue is shown in the UI ("1 wake-up pending").
+- The user can keep using the chat pane during T3–T5. The next user message and the wake-up share the same session id; whichever arrives first runs first. We serialise CC turns: only one CC subprocess per session at a time. If a user message arrives while a wake-up is running, it queues; if a wake-up fires while the user is mid-turn, it queues. The pending-queue is shown in the UI ("1 wake-up pending").
 - `process_group(0)` (Linux/macOS) ensures killing IRE doesn't kill running experiments. On Windows we use `CREATE_NEW_PROCESS_GROUP`.
 - Logs are streamed to disk; the UI tails them via `experiment-log-line` events.
 
@@ -499,10 +473,11 @@ IRE supports multiple independent chat tabs in the central pane.
 
 | Type | Created by | Closeable | Description |
 |---|---|---|---|
-| Main | On workspace open (id `"main"`) | No (pinned) | Hosts the Brainstorm / Experiment mode selector. The primary research conversation. |
+| Main | On workspace open (id `"main"`) | No (pinned) | The primary research conversation. |
 | Chat | User clicks + button | Yes | Fresh CC session, independent conversation history. |
 | Resource | Backend resource ingestion (§8.3) | Auto-closes on Confirm/Discard | Dedicated to reviewing a single resource summary; shows Confirm / Discard instead of a free-form Composer when CC finishes. |
-| Preview | User clicks a resource in the Resources list | Yes | Renders a `MarkdownPane` (edit/preview toggle + Submit) for the resource's wiki file. Clicking the same resource again focuses the existing tab rather than opening a duplicate. Submit persists edits to disk via `save_wiki_file` and commits. |
+| Preview | User clicks a resource in the Resources list | Yes | Renders a `ResourcePreviewPane` (edit/preview toggle + Submit) for the resource's wiki file. Clicking the same resource again focuses the existing tab rather than opening a duplicate. Submit persists edits to disk via `save_wiki_file`; the user commits when ready. |
+| Experiment | User clicks an experiment in the left-rail ExperimentsSection | Yes | Dedicated full view of a single experiment: metadata grid (status, runtime, command), live log tail (stdout only, scrolls to bottom automatically). Clicking the same experiment again focuses the existing tab rather than opening a duplicate. |
 
 **Session isolation.** Each tab carries its own `tab_id` (UUID for dynamically created tabs; `"main"` for the pinned tab). The backend `SessionManager` maintains a `HashMap<tab_id, PerTabSession>` where `PerTabSession` holds `{ session_id: Option<String>, running_pid: Option<u32> }`. This replaces the old single `ChatSession` global.
 
@@ -513,7 +488,7 @@ IRE supports multiple independent chat tabs in the central pane.
 ```
 User types → handleSend(tabId)
   → beginAssistantMessage(tabId)
-  → ipc.chatSend(tabId, text, mode)
+  → ipc.chatSend(tabId, text)
   → Rust: resume CC for tabId with --resume <session_id>
   → events emitted as { tab_id, event }
   → frontend routes to tabId's messages
@@ -535,7 +510,7 @@ submit_resource() kicks CC with a new tab_id
 
 | Command / Event | Old signature | New signature |
 |---|---|---|
-| `chat_send` | `{ mode, message }` | `{ tab_id, mode, message }` |
+| `chat_send` | `{ mode, message }` | `{ tab_id, message }` |
 | `chat_cancel` | `{}` | `{ tab_id }` |
 | `chat_reset_session` | `{}` | `{ tab_id }` |
 | `chat-stream` event | `StreamEvent` | `{ tab_id, event: StreamEvent }` |
@@ -576,9 +551,8 @@ enum StreamEvent {
     Init { session_id: String },
     TextDelta { text: String },
     ThinkingDelta { text: String },
-    ToolStart { tool_id: String, tool_name: String, input_preview: Option<String> },
-    ToolInputDelta { tool_id: String, partial_json: String },
-    ToolDone { tool_id: String, output_preview: Option<String> },
+    ToolStart { tool_id: String, tool_name: String, input_preview: Option<String>, input_full: Option<String> },
+    ToolDone { tool_id: String, output_preview: Option<String>, output_full: Option<String> },
     Result { text: Option<String>, session_id: String },
     Error { message: String },
     Done,
@@ -627,14 +601,14 @@ The MCP server is a **thin RPC bridge** to the Rust backend over a Unix domain s
 | Tool | Description |
 |---|---|
 | `wiki.read({ path })` | Read any wiki markdown file. Returns content + frontmatter. |
-| `wiki.write({ path, content, summary? })` | Atomic write; updates `_index.md`. **Auto-committed** if `path` is in the auto-tracked class ([§6.4](#64-git-commit-policy)); otherwise uncommitted until the user submits/approves. |
-| `wiki.append({ path, content })` | Append content to a wiki file. Same commit semantics as `wiki.write`. |
+| `wiki.write({ path, content, summary? })` | Atomic write; updates `_index.md`; emits `wiki-changed`. Does not commit. |
+| `wiki.append({ path, content })` | Append content to a wiki file. Same persistence semantics as `wiki.write`. |
 | `wiki.list({ glob? })` | List wiki paths; defaults to all. |
-| `wiki.rename({ from, to })` | Atomic rename + index update. Auto-committed iff both `from` and `to` are auto-tracked. |
-| `memory.write_long_term({ section, content })` | Append to `status/long-term.md` under section. **Auto-committed.** |
-| `memory.write_short_term({ content })` | Append to today's `status/short-term/YYYY-MM-DD.md`. **Auto-committed.** |
-| `memory.record_failure({ method, reason, context_ref? })` | Append structured entry to `status/failures.md`. **Auto-committed.** |
-| `pulse.update({ question?, blocker?, focus? })` | Patch fields in `status/pulse.md`. **Auto-committed.** |
+| `wiki.rename({ from, to })` | Atomic rename + index update; emits `wiki-changed`. Does not commit. |
+| `memory.write_long_term({ section, content })` | Append to `status/long-term.md` under section. Does not commit. |
+| `memory.write_short_term({ content })` | Append to today's `status/short-term/YYYY-MM-DD.md`. Does not commit. |
+| `memory.record_failure({ method, reason, context_ref? })` | Append structured entry to `status/failures.md`. Does not commit. |
+| `pulse.update({ question?, blocker?, focus? })` | Patch pulse fields. Does not commit. |
 | `resource.fetch({ url })` | Fetch URL, extract text, return it (does not save to wiki). |
 | `experiment.start({ name, plan_md, command, working_dir?, wake_prompt })` | Spawn detached subprocess, return `{ uuid }`. |
 | `experiment.status({ uuid })` | Return `{ status, exit_code?, started_at, ended_at? }`. |
@@ -704,72 +678,78 @@ No table for chat messages — the CC session is the source of truth, and `--res
 
 ### 13.1 Layout
 
+The Tauri window opens in windowed mode at 1280 × 820 so the primary rails, center tab area, navbar, and status bar are visible on launch.
+
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│ Top bar:    [Workspace name]  [Mode: Brainstorm | Experiment]   ⚙   │
-├─────────────┬───────────────────────────────────────┬───────────────┤
-│ ▸ FOCUS     │                                       │ ▸ Notes       │
-│  pulse.md   │                                       │  notes.md     │
-│  [edit/pre] │                                       │  [edit/pre]   │
-│             │     Central pane: Chat / Preview      │  [Submit]     │
-├─────────────┤     - streaming text                  ├───────────────┤
-│ ▸ Resources │     - thinking blocks (collapsible)   │ ▸ Ideas       │
-│  list view  │     - tool cards (Read, Bash, …)      │  ideas.md     │
-│  click→pane │     - experiment status cards         │  [edit/pre]   │
-│             │     [input box]                       │  [Submit]     │
-│             │                                       │               │
-│             │                                       │ ▸ Resource    │
-│             │                                       │  url + Submit │
-└─────────────┴───────────────────────────────────────┴───────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│ Navbar (h-10):  full workspace path [running N exp]     [close] [⚙] │
+├──────────────────┬──────────────────────────────┬────────────────────┤
+│ Left rail 280px  │   ChatPane (flex-1)           │ Right rail 320px   │
+│  FocusPane       │   - tab bar                  │  NotesPane         │
+│  - Research Q.   │   - message list              │  - inline edit     │
+│  - This Week     │   - composer                 │  IdeasPane         │
+│  ResourcesSection│   - experiment tab view      │  - draggable cards │
+│  ExperimentsSection   (kind="experiment")        │  AddResourceSection│
+│  - experiment list                               │  - URL input       │
+└──────────────────┴──────────────────────────────┴────────────────────┘
+│ StatusBar: full workspace path + git diff · CPU · GPU · RAM · host   │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
-- All splits use `react-resizable-panels`. Each pane has a collapse button.
-- The **Focus banner** is the top of the left column (`pulse.md`'s `focus` field), permanently visible unless the whole left column is collapsed.
-- Markdown panes have a single toggle: **Edit** (textarea) ↔ **Preview** (rendered). No side-by-side.
+- The body uses `react-resizable-panels` group `body` with panels `left`, `center`, and `right`. Left/right default to 280px/320px, have no maximum width, and keep minimum widths of 160px / 180px. The center panel takes the remaining space and has a 320px minimum.
+- The left rail is a vertical `react-resizable-panels` group `left` with panels `pulse`, `resources`, and `experiments`; row handles sit between Focus / Resources and Resources / Experiments.
+- The right rail is a vertical `react-resizable-panels` group `right` with panels `notes`, `ideas`, and `resource-input`; row handles sit between Notes / Ideas and Ideas / Add resource.
+- `ResourcesSection` and `ExperimentsSection` use the same outer pane padding as `NotesPane` and `IdeasPane`, and render compact inline SVG title icons. Empty lists show `no resources yet` and `no experiments yet`.
+- `IdeasPane` renders active ideas sorted by `order`, opens an inline draft card on Add, saves the draft to `ideas.json` on Enter, and hides trashed ideas by persisting `trashed: true`.
+- `FocusPane` and `NotesPane` use **inline editing**: clicking a field activates a textarea in place; blur/Enter saves. No separate Edit/Preview toggle.
+- Clicking an experiment row in `ExperimentsSection` opens (or re-focuses) an `experiment` tab in the centre column; the tab renders `ExperimentTabView` with a metadata grid and live log tail.
+- The top navbar shows the full workspace path on the far left as the project title. The bottom `StatusBar` polls `get_system_status` every 5 s and displays (left-to-right): workspace path + git branch + insertions/deletions, CPU model + usage %, GPU model + usage % + VRAM (or `n/a` when unavailable), RAM total GB, `username@hostname`, and a `claude-code · connected/disconnected` indicator pushed to the far right. The CC indicator is `connected` when `find_claude_binary()` succeeds, meaning the CLI is available for interaction; it does not require an active subprocess.
 
 ### 13.2 Chat rendering
 
 **Tab bar.** The chat pane opens with a standard Tabbed Document Interface (TDI) bar at the top — the same pattern as Chrome or the VS Code editor. Each tab is a horizontal button in a single row:
 
-- The active tab has its background set to match the content area (`--surface`) and its bottom border removed so it visually merges with the content below. A 2 px gold accent line (`--focus-accent`) runs along the top edge of the active tab.
-- Inactive tabs have a dimmer foreground (`--text-dim`) and a darker background (`--bg`). Hovering brightens them.
-- The close button (×) is hidden until the tab is hovered or active. Pinned tabs (Main) have no close button.
-- A + button at the right end of the bar opens a new chat tab.
-- If there are more tabs than fit the bar width the row scrolls horizontally (scrollbar hidden).
-- A spinning indicator inside the tab label signals a resource tab that is still being summarised.
+- The active tab uses `bg-surface-container-highest` and a 1 px top border in the `primary` colour token (light silver), visually merging with the content area below. The tab bar background is `bg-surface-container-low`.
+- Inactive tabs use `text-on-surface-variant` with no background fill. Hovering applies `bg-surface-container-highest` and `text-on-surface`.
+- The close button (×) is hidden until the tab row is **hovered** (`group-hover`). It does not appear simply because the tab is active. Pinned tabs (Main) have no close button.
+- A `+` button (Material Symbol `add`) at the right end of the bar opens a new chat tab.
+- If there are more tabs than fit the bar width the row scrolls horizontally (scrollbar hidden via `.no-scrollbar`).
+- Each tab shows a Material Symbol icon left of the label: `chat` for chat tabs, `description` for resource/preview tabs, `science` for experiment tabs. A resource tab that is actively being summarised shows a `progress_activity` icon instead, with `animate-spin`.
 
 **Messages.** Text is streamed character-by-character into the latest assistant bubble.
 - Both user and assistant text are rendered through `MessageMarkdown` (`react-markdown` + `remark-gfm` + `remark-math` + `rehype-katex`). GitHub-flavoured markdown — tables, fenced code, task lists — and LaTeX (`$…$`, `$$…$$`) display inline. KaTeX CSS is imported once in `main.tsx`. Inline HTML is intentionally **not** enabled (no `rehype-raw`); raw HTML in the model output is shown as text or inside a fenced code block, never injected into the DOM.
-- Thinking blocks render as a collapsed-by-default accordion ("Thinking…"). Content is plain text (not markdown-parsed) since thinking traces are rarely well-formed markdown.
-- Tool calls render as cards: `[Read] path/to/file ▸ output preview`. Clicking expands the full output.
-- Experiment cards are special: collapsed by default; clicking the header toggles a log body. The header contains a status dot (blinking green while `starting`/`running`, solid green for `completed`, solid red for `failed`/`cancelled`), a text status pill, a chevron (▸/▾), and a **Cancel** button (visible only while `starting` or `running`). Expanded body shows the last 10 log lines streamed live from the experiment, or "No output yet." if none have arrived. The Cancel button calls `e.stopPropagation()` so it does not toggle the card.
+- Thinking blocks render as a collapsed-by-default accordion whose only collapsed label is `thinking...`. Clicking the label expands or collapses the full thinking content. Content is plain text (not markdown-parsed) since thinking traces are rarely well-formed markdown.
+- Tool calls render as compact cards (`ToolCard`, defined inline in `MessageList.tsx`). Clicking expands a Claude-Code-style I/O panel with labeled `IN` and `OUT` monospace fields when the tool input/output is available. `experiment.start` tool calls render as `ExperimentCard` instead (see below).
+- Experiment cards are special: collapsed by default; clicking the header toggles a log body. The header contains: a status dot (blinking amber while `starting`/`running`, solid green for `completed`, solid red for `failed`/`cancelled`); a `⚗ <tool_name>` label; a text status badge; optionally a `PID <n>` label while running; optionally an `exit <n>` label when failed; a chevron (▸/▾); and a **Cancel** button (visible only while `starting` or `running` and only when the UUID is known). Expanded body shows the tool input (IN) and the last 10 live log lines (OUT) or "No output yet." if none have arrived. The Cancel button calls `e.stopPropagation()` so it does not toggle the card.
 
 **Composer footer.** Below the textarea, a footer bar holds two dropdown selectors and the Send button. Both dropdowns share the same visual style (a small pill button that opens a menu above it):
+- The textarea starts at 52px high, grows with content, caps at 240px, then scrolls internally.
+- Each composer instance samples one placeholder sentence from the built-in research/discovery prompt list when it mounts, and keeps that placeholder stable until the composer is remounted.
 - **Model** — selects the Claude model; options come from `MODELS` in `state/chatOptions.ts` (Haiku 4.5, Sonnet 4.6, Opus 4.7). Default: Haiku 4.5.
 - **Effort** — selects the thinking-budget level; options come from `EFFORT_LEVELS` (Low → Med → High → XHigh → Max). Default: **Low**. Persisted to `.ire/workspace.json` (debounced 1 s) and rehydrated on workspace open.
 Both values are passed as `options: { model, effort }` on every `chat_send` invocation.
 
+**ExperimentTabView.** When the active tab has `kind === "experiment"`, the chat pane renders `ExperimentTabView` instead of the message list + composer. It shows: a name header with a status badge; a metadata grid (status + elapsed timer, runtime, command); and a scrollable log pane (stdout only, `h-48`, auto-scrolls to bottom). Elapsed time is updated every second via `setInterval` while the experiment is running, and frozen to the final elapsed on completion. Live log lines arrive via the `experiment-log-line` event. The pane polls `experiment_list` once on mount to load initial state and loads existing stdout via `experiment_logs`.
+
 ### 13.3 Edit/preview toggle behaviour
 
-- Default state per pane: **Preview**.
-- Switching to Edit loads the raw file contents.
-- Switching back to Preview without Submit **discards** local edits (with a confirm if dirty).
-- Submit runs the corresponding ingestion pipeline ([§8](#8-pipelines)) **and commits** the cleaned `notes.md` / `ideas.md` (+ index) to git with a templated message.
+- Resource preview tabs open in **Preview** by default, rendering the wiki markdown via `ResourcePreviewPane`. Switching to Edit loads the raw file contents into a textarea; switching back to Preview without Submit discards local edits (with a confirm if dirty). Submit calls `save_wiki_file`.
+- `NotesPane` edits `notes.md` inline and saves through `save_notes` on blur / Ctrl+Enter.
+- `IdeasPane` does not use markdown edit/preview. It writes the structured `ideas.json` list directly via `save_ideas_json`.
 
 ### 13.4 Resource list
 
-The Resources list shows only confirmed (indexed) resources — those where the user clicked Confirm and the wiki file was written and committed. Each entry shows the extracted title (frontmatter `title:` → first `#` heading → filename stem). No status label is shown. Resources in progress (being fetched or summarised) do not appear in the list; they are visible only in the open resource chat tab.
+The Resources list shows only confirmed (indexed) resources — those where the user clicked Confirm, the wiki file was written, and `index_resource` recorded a non-null `wiki_path`. Each entry shows the extracted title (frontmatter `title:` → first `#` heading → filename stem). No status label is shown. Resources in progress (being fetched or summarised) do not appear in the list; they are visible only in the open resource chat tab.
 
-Clicking a resource entry (only enabled when `wiki_path` is non-null) opens a **Preview tab** in the central column. The tab fetches the wiki file content via `read_wiki_file` and renders it in a `MarkdownPane` with edit/preview toggle and a Submit button. Submit calls `save_wiki_file` to persist edits and commit. Clicking the same resource while its Preview tab is already open re-focuses that tab instead of opening a duplicate.
+Clicking a resource entry (only enabled when `wiki_path` is non-null) opens a **Preview tab** in the central column. The tab fetches the wiki file content via `read_wiki_file` and renders it in a `ResourcePreviewPane` with edit/preview toggle and a Submit button. Submit calls `save_wiki_file` to persist edits; it does not commit. Clicking the same resource while its Preview tab is already open re-focuses that tab instead of opening a duplicate.
 
 ### 13.5 Theming
 
-The UI supports dark and light themes. Dark is the default. A toggle button in the topbar switches between them.
+The UI uses a fixed dark theme. All colours are defined as Tailwind token extensions in `tailwind.config.ts` (e.g. `surface-container-low`, `on-surface`, `primary`, `error`, `warn`, `ok`, `accent`). There are no light-mode overrides and no theme-toggle button in the current implementation.
 
-- All colors are defined as CSS custom properties in `:root` (dark values). `[data-theme="light"]` overrides them with light values.
-- Theme state lives in the Zustand workspace store (`theme: "dark" | "light"`). A `toggleTheme` action flips it; `setTheme` sets it directly.
-- `App` (not `Layout`) syncs `document.documentElement.dataset.theme` to the store value via `useEffect` — setting the attribute to `"light"` or removing it to revert to the dark `:root` defaults. This runs at the app level so the setup screen also respects the stored preference.
-- Theme preference is persisted to `~/.config/ire/config.json` (see [§13.7](#137-user-config-configireconfig.json)) — **not** in `workspace.json`. It is rehydrated at app startup before any workspace is opened. When the user toggles the theme inside an open workspace, `Layout` debounces a `save_user_config` call (1 s) that writes the updated theme alongside the current `recent_workspaces` to avoid clobbering them.
+Typography uses bundled `geist` package font files (`Geist`, `Geist Mono`) referenced from `styles.css`; icons are inline SVGs from `src/components/Icon.tsx`. The app does not load Google Fonts at runtime.
+
+`~/.config/ire/config.json` still has a `theme` field in its schema (reserved for future use), and `read_user_config` returns it, but the frontend does not apply it: `hydrateFromUserConfig` in the workspace Zustand store only restores `recentWorkspaces`.
 
 ### 13.6 Workspace state (`workspace.json`)
 
@@ -779,8 +759,8 @@ The UI supports dark and light themes. Dark is the default. A toggle button in t
   "panel_layout": {
     "groups": {
       "body":  { "left": 22, "center": 56, "right": 22 },
-      "left":  { "pulse": 55, "resources": 45 },
-      "right": { "notes": 40, "ideas": 40, "resource-input": 20 }
+      "left":  { "pulse": 33.33, "resources": 33.33, "experiments": 33.34 },
+      "right": { "notes": 33.33, "ideas": 33.33, "resource-input": 33.34 }
     }
   },
   "last_opened": "2026-05-06T10:14:00Z",
@@ -794,7 +774,7 @@ Each entry under `panel_layout.groups.<group-id>` is the `Layout` map (`{ panel-
 
 Theme is **not** stored here — it is a user-level preference and lives in `~/.config/ire/config.json` (see [§13.7](#137-user-config-configireconfig.json)).
 
-Per-tab CC `session_id`s and the central pane mode are intentionally **not** persisted in MVP: sessions live in the in-memory `SessionManager` and are reset on app close.
+Per-tab CC `session_id`s are intentionally **not** persisted in MVP: sessions live in the in-memory `SessionManager` and are reset on app close.
 
 ### 13.7 User config (`~/.config/ire/config.json`)
 
@@ -814,7 +794,7 @@ Stores preferences that apply across all workspaces. Path: `$XDG_CONFIG_HOME/ire
 
 **Written by two paths:**
 - `push_recent` (Rust, `user_config.rs`) — called at the end of every successful `open_workspace` / `init_workspace`. Reads the existing config, prepends the path, deduplicates, truncates to 10, writes back.
-- `save_user_config` (Tauri command, called from `Layout.tsx`) — debounced 1 s after a theme toggle. Always sends the full config object including `recent_workspaces` from the store to avoid clobbering entries written by `push_recent`.
+- `save_user_config` (Tauri command) — reserved for future callers (e.g. a theme toggle if re-introduced). Must always send the full config object including `recent_workspaces` from the store to avoid clobbering entries written by `push_recent`.
 
 **Frontend store fields.** `recentWorkspaces: string[]` in the workspace Zustand store mirrors the persisted list. `pushRecentWorkspace(path)` prepends and caps to 10 in-memory; the actual disk write is done by the Rust backend.
 
@@ -824,31 +804,38 @@ Stores preferences that apply across all workspaces. Path: `$XDG_CONFIG_HOME/ire
 
 ### 14.1 Commands (frontend → backend)
 
+Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog plugin directly (`@tauri-apps/plugin-dialog`) via the `pickDirectory` helper in `ipc.ts`; the path is then passed to `open_workspace` or `init_workspace`.
+
 | Command | Args | Returns |
 |---|---|---|
-| `setup_status` | — | `{ binary: "found"\|"missing"\|"unauth", version?, recent_workspaces: [] }` |
-| `pick_workspace` | `{ kind: "open"\|"init" }` | `{ path }` (uses native dialog) |
-| `open_workspace` | `{ path }` | `{ workspace: WorkspaceState }` |
-| `init_workspace` | `{ path }` | `{ workspace: WorkspaceState }` |
+| `setup_status` | — | `{ binary: BinaryStatus }` where `BinaryStatus` is `{ kind: "found"; path: string; version: string \| null } \| { kind: "missing" }` |
+| `open_workspace` | `{ path }` | `WorkspaceState` (`{ path, name }`) |
+| `init_workspace` | `{ path }` | `WorkspaceState` |
 | `close_workspace` | — | `{}` |
 | `read_wiki_file` | `{ path }` | `{ content, frontmatter }` |
-| `save_wiki_file` | `{ path, content }` | `{}` (atomic write + user commit for the given wiki-relative path) |
-| `save_notes` | `{ content }` | `{}` (kicks ingestion + user commit on success) |
-| `save_ideas` | `{ content }` | `{}` (kicks ingestion + user commit on success) |
-| `submit_resource` | `{ url }` | `{ resource_id }` |
-| `index_resource` | `{ resource_id }` | `{}` (commits `resources/<slug>.md` + `_index.md`) |
-| `discard_resource` | `{ resource_id }` | `{}` (deletes file, marks rejected) |
-| `chat_send` | `{ tab_id, mode, message, options: { model: string, effort: EffortLevel } }` | `{}` (events follow) |
+| `save_wiki_file` | `{ path, content }` | `{}` (atomic write) |
+| `save_notes` | `{ content }` | `{}` (atomic write) |
+| `read_ideas` | — | `IdeaItem[]` from `ideas.json` |
+| `save_ideas_json` | `{ ideas }` | `{}` (writes `ideas.json`) |
+| `read_pulse` | — | `{ research_question, this_week }` |
+| `save_pulse_field` | `{ field: "research_question" \| "this_week", content }` | `{}` (writes the matching split pulse file) |
+| `submit_resource` | `{ url }` | `resource_id: string` |
+| `index_resource` | `{ resource_id }` | `{}` (records `wiki_path` + title and emits `wiki-changed`) |
+| `discard_resource` | `{ resource_id }` | `{}` (deletes cache file, marks DB row `rejected`) |
+| `list_resources` | — | `ResourceItem[]` (only `summarized` entries) |
+| `get_resource_confirm_prompt` | — | `string` (the second-turn confirm prompt loaded from `assets/prompts/`) |
+| `chat_send` | `{ tab_id, message, options: { model: string, effort: EffortLevel } }` | `{}` (events follow) |
 | `chat_cancel` | `{ tab_id }` | `{}` |
 | `chat_reset_session` | `{ tab_id }` | `{}` (forgets session id for that tab) |
 | `experiment_list` | `{ limit? }` | `[ExperimentRow]` |
 | `experiment_logs` | `{ uuid, kb? }` | `{ stdout, stderr }` |
 | `experiment_cancel` | `{ uuid }` | `{}` |
+| `experiment_delete` | `{ uuid }` | `{}` (refuses running experiments; removes `.ire/logs/<uuid>/`, `.ire/experiments/<uuid>/`, and the DB row) |
+| `get_system_status` | — | `SystemStatus` (workspace path, git branch/diff, CPU/GPU/RAM metrics, CC connected flag) |
 | `read_workspace_state` | — | `PersistedWorkspace` (panel layout from `.ire/workspace.json`) |
 | `save_workspace_state` | `{ state: PersistedWorkspace }` | `{}` (debounced from frontend; atomic write) |
-| `read_user_config` | — | `UserConfig` (theme + recent workspaces from `~/.config/ire/config.json`) |
-| `save_user_config` | `{ config: UserConfig }` | `{}` (writes full config; called on theme toggle) |
-| `update_pulse_focus` | `{ focus }` | `{}` (replaces `**Focus:** …` line in `status/pulse.md`; auto-committed) |
+| `read_user_config` | — | `UserConfig` (`{ theme?, recent_workspaces? }` from `~/.config/ire/config.json`) |
+| `save_user_config` | `{ config: UserConfig }` | `{}` (writes full config) |
 
 ### 14.2 Events (backend → frontend)
 
@@ -857,6 +844,7 @@ Stores preferences that apply across all workspaces. Path: `$XDG_CONFIG_HOME/ire
 | `chat-stream` | `{ tab_id: string, event: StreamEvent }` (see [§10.3](#103-ndjson-parser-ccstream) and [§9.4](#94-multi-tab-chat)) |
 | `tab-created` | `{ tab_id: string, label: string, kind: "chat"\|"resource", resource_id?: string }` (preview tabs are created client-side only) |
 | `chat-cancelled` | `{ tab_id: string }` |
+| `experiment-starting` | `{ tab_id: string, uuid: string, pid?: number }` (fired when the detached process has been spawned; links the pending experiment card in `tab_id` to its assigned UUID and PID) |
 | `experiment-status` | `{ uuid, status, exit_code? }` |
 | `experiment-log-line` | `{ uuid, stream: "stdout"\|"stderr", line }` |
 | `wiki-changed` | `{ path }` |
@@ -895,31 +883,46 @@ ire/
 │   └── blueprints/...
 ├── package.json
 ├── vite.config.ts
+├── tailwind.config.ts                  # design-token colour palette
 ├── tsconfig.json
 ├── index.html
 ├── src/                                # React frontend
 │   ├── main.tsx
 │   ├── App.tsx
-│   ├── types.ts                        # shared types (StreamEvent, WorkspaceState, …)
-│   ├── ipc.ts                          # invoke/listen wrappers, typed
+│   ├── types.ts                        # shared types (StreamEvent, Tab, ExperimentRow, …)
+│   ├── ipc.ts                          # invoke/listen wrappers + pickDirectory helper
 │   ├── state/                          # zustand stores
-│   │   ├── workspace.ts
-│   │   ├── chat.ts
-│   │   └── experiments.ts
+│   │   ├── workspace.ts                # phase, mode, panelLayout, recentWorkspaces
+│   │   ├── chat.ts                     # tabs, messages, tool calls, experiment state
+│   │   ├── chatOptions.ts              # model + effort selection (MODELS, EFFORT_LEVELS)
+│   │   └── toasts.ts                   # error toast queue
+│   ├── hooks/
+│   │   └── useSystemStatus.ts          # polls get_system_status every 5 s
 │   ├── components/
-│   │   ├── Layout.tsx                  # five-pane shell
-│   │   ├── FocusBanner.tsx
-│   │   ├── MarkdownPane.tsx            # edit/preview toggle
-│   │   ├── ResourceInput.tsx
-│   │   ├── ResourcesList.tsx
+│   │   ├── Layout.tsx                  # five-pane shell + data loading + debounced saves
+│   │   ├── StatusBar.tsx               # bottom status bar
+│   │   ├── ToastStack.tsx              # top-right error toasts
+│   │   ├── left/
+│   │   │   ├── LeftRail.tsx            # vertical resizable group (pulse/resources/experiments)
+│   │   │   ├── FocusPane.tsx           # research-question + this-week inline editor
+│   │   │   ├── ResourcesSection.tsx    # confirmed resource list → opens preview tab
+│   │   │   └── ExperimentsSection.tsx  # experiment list → opens experiment tab
+│   │   ├── right/
+│   │   │   ├── RightRail.tsx           # vertical resizable group (notes/ideas/resource-input)
+│   │   │   ├── NotesPane.tsx           # notes.md inline editor
+│   │   │   ├── IdeasPane.tsx           # ideas.json card list
+│   │   │   └── AddResourceSection.tsx  # URL input for resource ingestion
 │   │   ├── chat/
-│   │   │   ├── ChatPane.tsx
-│   │   │   ├── MessageList.tsx
-│   │   │   ├── ToolCard.tsx
-│   │   │   ├── ExperimentCard.tsx
-│   │   │   └── Composer.tsx
+│   │   │   ├── ChatPane.tsx            # tab router: chat / resource / preview / experiment
+│   │   │   ├── TabBar.tsx              # TDI tab bar with icons and + button
+│   │   │   ├── MessageList.tsx         # message bubbles, ToolCard (inline), ExperimentCard
+│   │   │   ├── MessageMarkdown.tsx     # react-markdown + remark-gfm + KaTeX renderer
+│   │   │   ├── ExperimentCard.tsx      # experiment.start tool-call card with live log tail
+│   │   │   ├── ExperimentTabView.tsx   # full experiment detail view (metadata + logs)
+│   │   │   ├── ResourcePreviewPane.tsx # edit/preview toggle for resource wiki files
+│   │   │   └── Composer.tsx            # floating textarea + model/effort pickers + Send
 │   │   └── setup/
-│   │       └── SetupScreen.tsx
+│   │       └── SetupScreen.tsx         # workspace picker + recent list + CC status
 │   └── styles.css
 ├── src-tauri/
 │   ├── Cargo.toml
@@ -931,52 +934,45 @@ ire/
 │       ├── user_config.rs              # UserConfig struct, read/write, push_recent
 │       ├── commands/
 │       │   ├── mod.rs
-│       │   ├── workspace.rs
-│       │   ├── wiki.rs
-│       │   ├── chat.rs
-│       │   ├── experiments.rs
-│       │   └── resources.rs
+│       │   ├── workspace.rs            # setup_status, open/init/close_workspace, workspace state, user config
+│       │   ├── wiki.rs                 # read/save wiki, notes, pulse, ideas
+│       │   ├── chat.rs                 # chat_send, chat_cancel, chat_reset_session
+│       │   ├── resources.rs            # submit/index/discard/list_resources, get_resource_confirm_prompt,
+│       │   │                           #   experiment_list/logs/cancel/delete
+│       │   └── system.rs               # get_system_status
 │       ├── workspace/
 │       │   ├── mod.rs
 │       │   ├── lock.rs                 # .lock PID file
 │       │   ├── init.rs                 # scaffold + git init
-│       │   └── state.rs                # WorkspaceState struct
+│       │   ├── state.rs                # WorkspaceState + ActiveWorkspace managed state
+│       │   └── persisted.rs            # PersistedWorkspace (workspace.json schema)
 │       ├── wiki/
 │       │   ├── mod.rs
-│       │   ├── store.rs                # atomic write, mutex, log append
+│       │   ├── store.rs                # atomic write, index regeneration, wiki-changed events
 │       │   ├── index.rs                # _index.md regenerator
 │       │   └── frontmatter.rs
-│       ├── memory/
-│       │   ├── mod.rs
-│       │   ├── long_term.rs
-│       │   ├── short_term.rs
-│       │   └── failures.rs
 │       ├── resources/
 │       │   ├── mod.rs
-│       │   ├── fetch.rs                # reqwest
-│       │   ├── pdf.rs                  # pdf-extract
-│       │   └── html.rs                 # readability
+│       │   ├── fetch.rs                # reqwest fetcher
+│       │   ├── arxiv.rs                # arXiv shortcut: abs/pdf URL → LaTeX tarball extract
+│       │   ├── pdf.rs                  # pdf-extract crate
+│       │   └── html.rs                 # readability extraction
 │       ├── cc/
 │       │   ├── mod.rs
 │       │   ├── discovery.rs            # find_claude_binary
 │       │   ├── spawn.rs                # Command setup
 │       │   ├── stream.rs               # NDJSON parser → StreamEvent
-│       │   └── session.rs              # session_id persistence + queue
-│       ├── experiments/
-│       │   ├── mod.rs
-│       │   ├── runner.rs               # detached spawn + monitor
-│       │   └── wake.rs                 # wake-up turn composition
+│       │   └── session.rs              # SessionManager (per-tab session_id + PID)
+│       ├── prompts/
+│       │   └── mod.rs                  # load prompts from assets/prompts/ at runtime
 │       ├── mcp/
 │       │   ├── mod.rs
 │       │   ├── config.rs               # write .ire/mcp.json
-│       │   ├── server_proc.rs          # spawn/teardown of node mcp/server.js
 │       │   └── rpc.rs                  # Unix socket / TCP RPC handler
-│       ├── db/
-│       │   ├── mod.rs
-│       │   ├── migrations.rs
-│       │   └── models.rs               # Experiment, Resource
-│       └── util/
-│           └── atomic_write.rs
+│       └── db/
+│           ├── mod.rs
+│           ├── migrations.rs
+│           └── models.rs               # Experiment, Resource
 └── mcp/                                # bundled Node MCP server
     ├── package.json
     ├── server.js                       # stdio server, JSON-RPC bridge to Rust
@@ -993,17 +989,17 @@ Each phase ends with a demoable milestone.
 
 **Phase 1 — Workspace lifecycle.** Implement setup screen, binary discovery, `init_workspace`, `open_workspace`, `.lock`, `close_workspace`. Scaffold `.ire/` with seed wiki. *Milestone:* user can pick or init a workspace; `.ire/` materialises; lock works across restarts. ✅
 
-**Phase 2 — Wiki store + memory tools (no CC yet).** `WikiStore` with atomic writes, `_index.md` regeneration, `log.md` append. SQLite migrations. Frontend reads `pulse.md`, `notes.md`, `ideas.md` and renders edit/preview. *Milestone:* user can manually edit notes and see them persisted; `wiki-changed` events propagate. ✅
+**Phase 2 — Wiki store + memory tools (no CC yet).** `WikiStore` with atomic writes, `_index.md` regeneration, `log.md` append. SQLite migrations. Frontend reads split pulse files, `notes.md`, and `ideas.json`. *Milestone:* user can manually edit notes and see them persisted; `wiki-changed` events propagate. ✅
 
 **Phase 3 — CC subprocess layer.** Binary discovery + spawn + NDJSON parser + session management. A debug "Send" button next to the chat pane that sends a raw message and renders streaming text only (no tool cards yet). No MCP yet. *Milestone:* user can chat with CC inside the central pane, multi-turn via `--resume`. ✅
 
-**Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. CC config wired up via `--mcp-config`. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` extended with `workspace_root`, git auto-commit for auto-tracked paths, and a `rename` method. System prompt composed from wiki context files on every CC turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and CC actually does it. ✅
+**Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. CC config wired up via `--mcp-config`. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` handles atomic writes, index regeneration, `wiki-changed` events, and renames without creating git commits. System prompt composed from wiki context files on every CC turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and CC actually does it. ✅
 
-**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML extractors. `submit_resource` fetches a URL, extracts text via `scraper` (HTML) or `pdf-extract` (PDF), writes to `.ire/cache/<sha256>.txt`, inserts a DB row, emits `tab-created`, and kicks a CC summarisation turn. Confirm sends a second CC turn that writes `resources/<slug>.md` via `wiki.write`; when Done fires, `index_resource` scans `wiki/resources/` for the file whose frontmatter `sources:` array contains the resource URL (`_schema.md`-aligned), extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), commits, and emits `wiki-changed` to refresh the pane. Discard calls `discard_resource` (deletes cache, marks `rejected`). Notes/ideas Submit commits via `user_commit`. The resources list shows only `summarized` resources with their title; no status label is shown. *Milestone:* paste an arXiv URL → resource summary appears in the right pane. ✅
+**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML extractors. `submit_resource` fetches a URL, extracts text via `scraper` (HTML) or `pdf-extract` (PDF), writes to `.ire/cache/<sha256>.txt`, inserts a DB row, emits `tab-created`, and kicks a CC summarisation turn. Confirm sends a second CC turn that writes `resources/<slug>.md` via `wiki.write`; when Done fires, `index_resource` scans `wiki/resources/` for the file whose frontmatter `sources:` array contains the resource URL (`_schema.md`-aligned), extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), and emits `wiki-changed` to refresh the pane. Discard calls `discard_resource` (deletes cache, marks `rejected`). Notes and ideas write directly to disk without committing. The resources list shows only `summarized` resources with their title and non-null `wiki_path`; no status label is shown. *Milestone:* paste an arXiv URL → resource summary appears in the right pane. ✅
 
 **Phase 6 — Experiments.** `experiment.start`, detached subprocess, monitor, wake-up turn composition. Experiment cards in chat with live log tail. *Milestone:* CC can run a Python script ablation, tell the user "I'll be back", and resume with results when the script exits. ✅
 
-**Phase 7 — Polish.** `workspace.json` persistence (theme + per-group panel layouts via `read_workspace_state` / `save_workspace_state`, debounced 1 s, hydrated before the Layout mounts). Error toast stack (top-right) wired to a frontend `useToasts` zustand store; subscribes to the backend `error` event and replaces silent `console.error` calls in user-facing flows. Cancel button on `ExperimentCard` (visible while status is `starting` or `running`) calls `experiment_cancel`. Inline focus-banner editor: click the banner to edit, Enter / blur saves through `update_pulse_focus`, Escape cancels. *Milestone:* layout, theme, and focus survive restart; user-visible failures surface as toasts; experiments can be cancelled from the chat.
+**Phase 7 — Polish.** `workspace.json` persistence (theme + per-group panel layouts via `read_workspace_state` / `save_workspace_state`, debounced 1 s, hydrated before the Layout mounts). Error toast stack (top-right) wired to a frontend `useToasts` zustand store; subscribes to the backend `error` event and replaces silent `console.error` calls in user-facing flows. Cancel button on `ExperimentCard` (visible while status is `starting` or `running`) calls `experiment_cancel`. Inline focus editor saves split fields through `save_pulse_field`. *Milestone:* layout, theme, and focus survive restart; user-visible failures surface as toasts; experiments can be cancelled from the chat.
 
 ---
 
@@ -1026,5 +1022,4 @@ A stubbed CC binary lives at `src-tauri/tests/fixtures/fake_claude.sh`; it reads
 - **Index regeneration cost.** Walking the whole `wiki/` tree on every write is fine at MVP scale (tens to low-hundreds of files). At scale, switch to incremental index updates.
 - **Frontmatter parsing.** No formal frontmatter spec — using the YAML convention. We accept files without frontmatter; required fields are derived heuristically.
 - **CC `--tools` flag stability.** The tool allowlist syntax may evolve; the [wrapper blueprint](./blueprints/claude-code-wrapper.md) reflects the current behaviour. If breaking changes land, `cc::spawn` is the only place that needs to update.
-- **Git noise from auto-commits.** Memory and operational paths auto-commit on every write ([§6.4](#64-git-commit-policy)), which can produce many small commits during a busy session (e.g. CC writing short-term notes mid-experiment). Acceptable for MVP — git history is cheap and reviewable. If it becomes painful, batch auto-commits with a debounce window or squash on session close.
-- **Repos with pre-commit hooks.** Auto-commits run in the user's repo and respect hooks. A slow or failing hook on `wiki/**` paths will surface as a logged error and the file remains uncommitted until the next write. Document this in onboarding so users scope their hooks to non-`wiki/**` paths if they're sensitive.
+- **Uncommitted `.ire/` changes.** IRE writes wiki, resource index, and workspace files but never commits them. Users must commit `.ire/` changes explicitly when they want those updates captured in git history.

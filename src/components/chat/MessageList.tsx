@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AssistantMessage, ChatMessage, ToolCallState } from "../../types";
 import { ExperimentCard } from "./ExperimentCard";
 import { MessageMarkdown } from "./MessageMarkdown";
+import { Icon } from "../Icon";
 
 // CC may prefix MCP tool names with the server name (e.g. "ire__experiment.start"
 // or "mcp__ire__experiment__start"). Strip any prefix to get the bare tool name.
@@ -25,26 +26,23 @@ interface MessageListProps {
 export function MessageList({ messages }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
+  const lastMsg = messages[messages.length - 1];
+  const lastMsgText = lastMsg && "text" in lastMsg ? lastMsg.text : "";
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
+  }, [messages.length, lastMsgText]);
 
   if (messages.length === 0) {
-    return (
-      <div className="messages messages--empty">
-        <p>Start a conversation. Brainstorm ideas or kick off an experiment.</p>
-      </div>
-    );
+    return <div className="flex-1" />;
   }
 
   return (
-    <div className="messages">
+    <div className="space-y-6">
       {messages.map((m) =>
         m.role === "user" ? (
-          <div key={m.id} className="message message--user">
-            <div className="message__role">You</div>
-            <div className="message__text">
-              <MessageMarkdown content={m.text} />
+          <div key={m.id} className="flex justify-end">
+            <div className="bg-surface-container text-on-surface px-4 py-3 rounded border border-outline-variant max-w-[560px] text-[14px] leading-relaxed whitespace-pre-wrap">
+              {m.text}
             </div>
           </div>
         ) : (
@@ -67,27 +65,32 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
   }, [msg.thinking, msg.isStreaming, thinkingOpen]);
 
   return (
-    <div className="message message--assistant">
-      <div className="message__role">IRE</div>
-
+    <div className="flex flex-col items-start max-w-[720px] space-y-4">
       {msg.thinking && (
-        <div className="thinking-block">
-          <button
-            className="thinking-block__toggle"
-            onClick={() => setThinkingOpen((v) => !v)}
-          >
-            {thinkingOpen ? "▾" : "▸"} Thinking
-          </button>
-          {thinkingOpen && (
-            <div ref={thinkingRef} className="thinking-block__content">
-              {msg.thinking}
-            </div>
-          )}
+        <div className="flex gap-3 text-on-surface-variant text-[13px] w-full">
+          <div className="w-px bg-outline-variant shrink-0 my-1" />
+          <div className="flex-1 min-w-0">
+            <button
+              type="button"
+              className="italic py-1 opacity-80 text-xs hover:text-on-surface transition-colors"
+              onClick={() => setThinkingOpen((v) => !v)}
+            >
+              thinking...
+            </button>
+            {thinkingOpen && (
+              <div
+                ref={thinkingRef}
+                className="mt-1 max-h-40 overflow-y-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed"
+              >
+                {msg.thinking}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {msg.tools && msg.tools.length > 0 && (
-        <div className="message__tools">
+        <div className="w-full space-y-2">
           {msg.tools.map((tool) =>
             isExperimentStart(tool.tool_name) ? (
               <ExperimentCard key={tool.tool_id} tool={tool} />
@@ -99,17 +102,13 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
       )}
 
       {msg.error ? (
-        <div className="message__text message__error">{msg.error}</div>
+        <div className="text-[14px] text-error">{msg.error}</div>
       ) : msg.text ? (
-        <div className="message__text">
+        <div className="text-on-surface text-[14px] leading-relaxed">
           <MessageMarkdown content={msg.text} />
         </div>
       ) : msg.isStreaming ? (
-        <div className="message__text">
-          <span className="typing-dot" />
-          <span className="typing-dot" />
-          <span className="typing-dot" />
-        </div>
+        <div className="text-on-surface-variant animate-pulse text-[14px]">▌</div>
       ) : null}
     </div>
   );
@@ -118,44 +117,52 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
 function ToolCard({ tool }: { tool: ToolCallState }) {
   const [expanded, setExpanded] = useState(false);
   const canExpand = !!(tool.input_full || tool.output_full);
+  const input = formatToolInput(tool);
 
   return (
-    <div className="tool-card-wrapper">
+    <div className="w-full flex flex-col">
       <div
-        className={`tool-card${canExpand ? " tool-card--clickable" : ""}`}
+        className="w-full bg-surface-container-low border border-outline-variant rounded px-3 py-2 flex items-center gap-3 text-xs cursor-pointer hover:bg-surface-container transition-colors"
         onClick={() => canExpand && setExpanded((v) => !v)}
       >
-        <span className="tool-card__name">[{tool.tool_name}]</span>
-        {tool.input_preview && (
-          <span className="tool-card__input"> {tool.input_preview}</span>
-        )}
-        {tool.isDone && tool.output_preview && (
-          <>
-            <span className="tool-card__sep"> ▸ </span>
-            <span className="tool-card__preview">{tool.output_preview}</span>
-          </>
-        )}
-        {!tool.isDone && <span className="tool-card__running"> …</span>}
-        {canExpand && (
-          <span className="tool-card__chevron">{expanded ? " ▾" : " ▸"}</span>
-        )}
+        <Icon name="build" className="w-[16px] h-[16px] text-on-surface-variant" />
+        <span className="font-mono text-on-surface-variant flex-1">{tool.tool_name}</span>
       </div>
       {expanded && (
-        <div className="tool-card__expanded">
-          {tool.input_full && (
-            <>
-              <div className="tool-card__section-label">Input</div>
-              <pre className="tool-card__section-pre">{tool.input_full}</pre>
-            </>
-          )}
-          {tool.output_full && (
-            <>
-              <div className="tool-card__section-label">Output</div>
-              <pre className="tool-card__section-pre">{tool.output_full}</pre>
-            </>
-          )}
+        <div className="bg-surface-container-lowest border-x border-b border-outline-variant rounded-b overflow-hidden font-mono text-[11px] leading-relaxed">
+          {input && <ToolIoField label="IN" content={input} />}
+          {tool.output_full && <ToolIoField label="OUT" content={tool.output_full} />}
         </div>
       )}
     </div>
   );
+}
+
+function ToolIoField({ label, content }: { label: string; content: string }) {
+  return (
+    <div className="grid grid-cols-[42px_minmax(0,1fr)] border-t border-outline-variant first:border-t-0">
+      <div className="px-3 py-2 text-on-surface-variant/60 uppercase">{label}</div>
+      <pre className="px-3 py-2 text-on-surface-variant whitespace-pre-wrap break-words overflow-x-auto">{content}</pre>
+    </div>
+  );
+}
+
+function formatToolInput(tool: ToolCallState): string | null {
+  if (!tool.input_full) return null;
+
+  try {
+    const parsed = JSON.parse(tool.input_full);
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      if (typeof parsed.command === "string" && parsed.command.length > 0) {
+        return parsed.command;
+      }
+
+      const values = Object.values(parsed).filter((value): value is string => typeof value === "string" && value.length > 0);
+      if (values.length === 1) return values[0];
+    }
+  } catch {
+    // Fall back to the raw input below.
+  }
+
+  return tool.input_full;
 }

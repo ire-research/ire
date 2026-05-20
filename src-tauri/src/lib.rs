@@ -11,11 +11,12 @@ mod workspace;
 
 use cc::session::SessionManager;
 use commands::chat::{chat_cancel, chat_reset_session, chat_send};
-use commands::experiments::{experiment_cancel, experiment_list, experiment_logs};
+use commands::experiments::{experiment_cancel, experiment_delete, experiment_list, experiment_logs};
 use commands::resources::{
     discard_resource, get_resource_confirm_prompt, index_resource, list_resources, submit_resource,
 };
-use commands::wiki::{read_wiki_file, save_ideas, save_notes, save_wiki_file, update_pulse_focus};
+use commands::wiki::{read_wiki_file, save_notes, save_wiki_file, read_pulse, save_pulse_field, read_ideas, save_ideas_json};
+use commands::system::get_system_status;
 use commands::workspace::{
     close_workspace, init_workspace, open_workspace, read_user_config, read_workspace_state,
     save_user_config, save_workspace_state, setup_status,
@@ -52,8 +53,11 @@ pub fn run() {
             read_wiki_file,
             save_wiki_file,
             save_notes,
-            save_ideas,
-            update_pulse_focus,
+            read_pulse,
+            save_pulse_field,
+            read_ideas,
+            save_ideas_json,
+            get_system_status,
             chat_send,
             chat_cancel,
             chat_reset_session,
@@ -65,6 +69,7 @@ pub fn run() {
             experiment_list,
             experiment_logs,
             experiment_cancel,
+            experiment_delete,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

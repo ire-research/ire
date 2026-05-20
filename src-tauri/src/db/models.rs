@@ -89,6 +89,12 @@ pub fn get_experiment(ire_dir: &Path, uuid: &str) -> Result<Option<ExperimentRow
         .context("get_experiment")
 }
 
+pub fn delete_experiment(ire_dir: &Path, uuid: &str) -> Result<()> {
+    let conn = open(ire_dir)?;
+    conn.execute("DELETE FROM experiments WHERE uuid = ?1", params![uuid])?;
+    Ok(())
+}
+
 pub fn list_experiments(ire_dir: &Path, limit: usize) -> Result<Vec<ExperimentRow>> {
     let conn = open(ire_dir)?;
     let mut stmt = conn.prepare(
