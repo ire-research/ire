@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AssistantMessage, ExperimentStatus, ResourceStatus, Tab, ToolCallState } from "../types";
+import type { AssistantContentBlock, AssistantMessage, ExperimentStatus, ResourceStatus, Tab, ToolCallState } from "../types";
 
 const MAIN_TAB_ID = "main";
 
@@ -65,8 +65,25 @@ function updateToolInMessage(
 ): AssistantMessage {
   return {
     ...msg,
-    tools: (msg.tools ?? []).map((t) => (predicate(t) ? updater(t) : t)),
+    blocks: msg.blocks.map((block) =>
+      block.kind === "tool" && predicate(block.tool)
+        ? { ...block, tool: updater(block.tool) }
+        : block
+    ),
   };
+}
+
+function appendTextBlock(msg: AssistantMessage, kind: "text" | "thinking", chunk: string): AssistantMessage {
+  const last = msg.blocks[msg.blocks.length - 1];
+  if (last?.kind === kind) {
+    const updatedLast: AssistantContentBlock = { ...last, text: last.text + chunk };
+    return { ...msg, blocks: [...msg.blocks.slice(0, -1), updatedLast] };
+  }
+  return { ...msg, blocks: [...msg.blocks, { id: String(seq++), kind, text: chunk }] };
+}
+
+function messageHasTool(msg: AssistantMessage, predicate: (t: ToolCallState) => boolean): boolean {
+  return msg.blocks.some((block) => block.kind === "tool" && predicate(block.tool));
 }
 
 // CC prefixes MCP tool names with the server name (e.g. "ire__experiment.start").
@@ -85,9 +102,7 @@ function findPendingExperimentMsgId(tabs: Tab[], tabId: string): string | null {
     const m = tab.messages[i];
     if (m.role === "assistant") {
       const am = m as AssistantMessage;
-      const pending = am.tools?.find(
-        (t) => isExperimentToolName(t.tool_name) && !t.experimentUuid
-      );
+      const pending = messageHasTool(am, (t) => isExperimentToolName(t.tool_name) && !t.experimentUuid);
       if (pending) return am.id;
     }
   }
@@ -185,7 +200,7 @@ export const useChat = create<ChatStore>((set) => ({
         ...t,
         messages: [
           ...t.messages,
-          { id, role: "assistant", text: "", isStreaming: true } as AssistantMessage,
+          { id, role: "assistant", blocks: [], isStreaming: true } as AssistantMessage,
         ],
       })),
     }));
@@ -194,15 +209,12 @@ export const useChat = create<ChatStore>((set) => ({
 
   appendText: (tabId, msgId, chunk) =>
     set((s) => ({
-      tabs: updateMessage(s.tabs, tabId, msgId, (m) => ({ ...m, text: m.text + chunk })),
+      tabs: updateMessage(s.tabs, tabId, msgId, (m) => appendTextBlock(m, "text", chunk)),
     })),
 
   appendThinking: (tabId, msgId, chunk) =>
     set((s) => ({
-      tabs: updateMessage(s.tabs, tabId, msgId, (m) => ({
-        ...m,
-        thinking: (m.thinking ?? "") + chunk,
-      })),
+      tabs: updateMessage(s.tabs, tabId, msgId, (m) => appendTextBlock(m, "thinking", chunk)),
     })),
 
   finishMessage: (tabId, msgId) =>
@@ -242,7 +254,7 @@ export const useChat = create<ChatStore>((set) => ({
     set((s) => ({
       tabs: updateMessage(s.tabs, tabId, msgId, (m) => ({
         ...m,
-        tools: [...(m.tools ?? []), tool],
+        blocks: [...m.blocks, { id: String(seq++), kind: "tool", tool }],
       })),
     })),
 
@@ -253,7 +265,7 @@ export const useChat = create<ChatStore>((set) => ({
       for (const msg of tab.messages) {
         if (msg.role !== "assistant") continue;
         const am = msg as AssistantMessage;
-        if (am.tools?.some((t) => t.tool_id === toolId)) {
+        if (messageHasTool(am, (t) => t.tool_id === toolId)) {
           return {
             tabs: updateMessage(s.tabs, tabId, am.id, (m) =>
               updateToolInMessage(m, (t) => t.tool_id === toolId, (t) => ({
@@ -295,7 +307,7 @@ export const useChat = create<ChatStore>((set) => ({
         for (const msg of tab.messages) {
           if (msg.role !== "assistant") continue;
           const am = msg as AssistantMessage;
-          if (am.tools?.some((t) => t.experimentUuid === uuid)) {
+          if (messageHasTool(am, (t) => t.experimentUuid === uuid)) {
             return {
               tabs: updateMessage(s.tabs, tab.id, am.id, (m) =>
                 updateToolInMessage(
@@ -317,7 +329,7 @@ export const useChat = create<ChatStore>((set) => ({
         for (const msg of tab.messages) {
           if (msg.role !== "assistant") continue;
           const am = msg as AssistantMessage;
-          if (am.tools?.some((t) => t.experimentUuid === uuid)) {
+          if (messageHasTool(am, (t) => t.experimentUuid === uuid)) {
             return {
               tabs: updateMessage(s.tabs, tab.id, am.id, (m) =>
                 updateToolInMessage(
@@ -345,8 +357,11 @@ export const useChat = create<ChatStore>((set) => ({
         messages: tab.messages.map((m) => {
           if (m.role !== "assistant") return m;
           const am = m as AssistantMessage;
-          if (!am.tools?.some((t) => t.tool_id === toolId)) return m;
-          return { ...am, tools: am.tools.filter((t) => t.tool_id !== toolId) };
+          if (!messageHasTool(am, (t) => t.tool_id === toolId)) return m;
+          return {
+            ...am,
+            blocks: am.blocks.filter((block) => block.kind !== "tool" || block.tool.tool_id !== toolId),
+          };
         }),
       })),
     })),
