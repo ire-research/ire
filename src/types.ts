@@ -28,14 +28,17 @@ export interface ToolCallState {
   logLines?: string[];
 }
 
+export type AssistantContentBlock =
+  | { id: string; kind: "text"; text: string }
+  | { id: string; kind: "thinking"; text: string }
+  | { id: string; kind: "tool"; tool: ToolCallState };
+
 export interface AssistantMessage {
   id: string;
   role: "assistant";
-  text: string;
-  thinking?: string;
+  blocks: AssistantContentBlock[];
   isStreaming: boolean;
   error?: string;
-  tools?: ToolCallState[];
 }
 
 export type ChatMessage = UserMessage | AssistantMessage;
