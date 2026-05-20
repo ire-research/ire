@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ipc, onExperimentLogLine } from "../../ipc";
+import { toastError } from "../../state/toasts";
 import type { ExperimentRow } from "../../types";
+import { Icon } from "../Icon";
 
 interface Props {
   uuid: string;
@@ -42,6 +44,9 @@ export function ExperimentTabView({ uuid, name }: Props) {
   const [experiment, setExperiment] = useState<ExperimentRow | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
   const [elapsed, setElapsed] = useState<string>("");
+  const [displayName, setDisplayName] = useState(name);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(name);
   const logRef = useRef<HTMLDivElement>(null);
 
   // Load experiment data and initial logs
@@ -97,6 +102,36 @@ export function ExperimentTabView({ uuid, name }: Props) {
     return () => clearInterval(id);
   }, [experiment]);
 
+  const startRename = () => {
+    setRenameValue(displayName);
+    setIsRenaming(true);
+  };
+
+  const commitRename = async () => {
+    const trimmed = renameValue.trim();
+    if (!trimmed) {
+      setIsRenaming(false);
+      return;
+    }
+    try {
+      await ipc.experimentRename(uuid, trimmed);
+      setDisplayName(trimmed);
+    } catch (err) {
+      toastError("rename experiment", err);
+    } finally {
+      setIsRenaming(false);
+    }
+  };
+
+  const handleRenameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitRename();
+    } else if (e.key === "Escape") {
+      setIsRenaming(false);
+    }
+  };
+
   if (!experiment) {
     return (
       <div className="text-on-surface-variant text-[12px] p-4">Loading…</div>
@@ -110,8 +145,30 @@ export function ExperimentTabView({ uuid, name }: Props) {
   return (
     <>
       {/* Header */}
-      <div className="flex items-center gap-3 mb-4">
-        <span className="font-mono font-semibold text-[14px] text-on-surface">{name}</span>
+      <div className="group flex items-center gap-2 mb-4">
+        {isRenaming ? (
+          <input
+            autoFocus
+            className="font-mono font-semibold text-[14px] text-on-surface bg-transparent border-b border-outline outline-none"
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onKeyDown={handleRenameKeyDown}
+            onBlur={() => setIsRenaming(false)}
+          />
+        ) : (
+          <>
+            <span className="font-mono font-semibold text-[14px] text-on-surface">
+              {displayName}
+            </span>
+            <button
+              className="opacity-0 group-hover:opacity-100 flex h-5 w-5 items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors shrink-0"
+              title="Rename experiment"
+              onClick={startRename}
+            >
+              <Icon name="edit_document" className="w-[14px] h-[14px]" />
+            </button>
+          </>
+        )}
         <span className={`text-[10px] uppercase border ${pill.borderColor} px-1.5 py-0.5 rounded ${pill.bgColor} ${pill.textColor}`}>
           {pill.text}
         </span>
