@@ -142,6 +142,16 @@ fn attach(
 }
 
 #[tauri::command]
+pub fn open_in_vscode(path: String) -> Result<(), String> {
+    tracing::info!(path = %path, "open_in_vscode");
+    std::process::Command::new("code")
+        .args(["--new-window", "--force", &path])
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn read_workspace_state(
     active: State<'_, ActiveWorkspace>,
 ) -> Result<PersistedWorkspace, String> {
