@@ -1,7 +1,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum StreamEvent {
     Init { session_id: String },
@@ -18,8 +18,8 @@ pub enum StreamEvent {
 pub struct StreamState {
     pub session_id: String,
     pub emitted_text: bool,
-    emitted_text_chars: usize,
-    emitted_thinking_chars: usize,
+    emitted_text_chars_by_block: Vec<usize>,
+    emitted_thinking_chars_by_block: Vec<usize>,
     emitted_tool_ids: Vec<String>,
 }
 
@@ -68,14 +68,14 @@ fn dispatch_assistant<F: FnMut(StreamEvent)>(
     emit: &mut F,
 ) {
     let Some(arr) = json["message"]["content"].as_array() else { return };
-    for block in arr {
+    for (index, block) in arr.iter().enumerate() {
         match block["type"].as_str() {
             Some("text") => {
                 let full = block["text"].as_str().unwrap_or("");
                 let n = full.chars().count();
-                if n > state.emitted_text_chars {
-                    let delta: String = full.chars().skip(state.emitted_text_chars).collect();
-                    state.emitted_text_chars = n;
+                let previous = advance_cursor(&mut state.emitted_text_chars_by_block, index, n);
+                if n > previous {
+                    let delta: String = full.chars().skip(previous).collect();
                     state.emitted_text = true;
                     emit(StreamEvent::TextDelta { text: delta });
                 }
@@ -83,9 +83,9 @@ fn dispatch_assistant<F: FnMut(StreamEvent)>(
             Some("thinking") => {
                 let full = block["thinking"].as_str().unwrap_or("");
                 let n = full.chars().count();
-                if n > state.emitted_thinking_chars {
-                    let delta: String = full.chars().skip(state.emitted_thinking_chars).collect();
-                    state.emitted_thinking_chars = n;
+                let previous = advance_cursor(&mut state.emitted_thinking_chars_by_block, index, n);
+                if n > previous {
+                    let delta: String = full.chars().skip(previous).collect();
                     emit(StreamEvent::ThinkingDelta { text: delta });
                 }
             }
@@ -102,6 +102,17 @@ fn dispatch_assistant<F: FnMut(StreamEvent)>(
             _ => {}
         }
     }
+}
+
+fn advance_cursor(cursors: &mut Vec<usize>, index: usize, next: usize) -> usize {
+    if cursors.len() <= index {
+        cursors.resize(index + 1, 0);
+    }
+    let previous = cursors[index];
+    if next > previous {
+        cursors[index] = next;
+    }
+    previous
 }
 
 fn extract_result_text(json: &Value, state: &StreamState) -> Option<String> {
@@ -164,5 +175,95 @@ fn trunc_chars(s: &str, max: usize) -> String {
         s.to_string()
     } else {
         s.chars().take(max).collect::<String>() + "…"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn collect_assistant_events(content: Value, state: &mut StreamState) -> Vec<StreamEvent> {
+        let mut events = Vec::new();
+        let json = json!({
+            "type": "assistant",
+            "message": { "content": content },
+        });
+        dispatch(&json, state, &mut |event| events.push(event));
+        events
+    }
+
+    #[test]
+    fn emits_text_tool_text_in_content_order() {
+        let mut state = StreamState::default();
+
+        let first = collect_assistant_events(
+            json!([
+                { "type": "text", "text": "A" },
+            ]),
+            &mut state,
+        );
+        assert_eq!(first, vec![StreamEvent::TextDelta { text: "A".into() }]);
+
+        let second = collect_assistant_events(
+            json!([
+                { "type": "text", "text": "A" },
+                { "type": "tool_use", "id": "tool-1", "name": "Read", "input": { "path": "src/App.tsx" } },
+            ]),
+            &mut state,
+        );
+        assert_eq!(
+            second,
+            vec![StreamEvent::ToolStart {
+                tool_id: "tool-1".into(),
+                tool_name: "Read".into(),
+                input_preview: Some("src/App.tsx".into()),
+                input_full: Some("{\n  \"path\": \"src/App.tsx\"\n}".into()),
+            }]
+        );
+
+        let third = collect_assistant_events(
+            json!([
+                { "type": "text", "text": "A" },
+                { "type": "tool_use", "id": "tool-1", "name": "Read", "input": { "path": "src/App.tsx" } },
+                { "type": "text", "text": "B" },
+            ]),
+            &mut state,
+        );
+        assert_eq!(third, vec![StreamEvent::TextDelta { text: "B".into() }]);
+    }
+
+    #[test]
+    fn emits_thinking_text_tool_thinking_in_content_order() {
+        let mut state = StreamState::default();
+
+        let first = collect_assistant_events(
+            json!([
+                { "type": "thinking", "thinking": "plan" },
+                { "type": "text", "text": "A" },
+                { "type": "tool_use", "id": "tool-1", "name": "Search", "input": { "query": "rust" } },
+                { "type": "thinking", "thinking": "done" },
+            ]),
+            &mut state,
+        );
+
+        assert_eq!(
+            first,
+            vec![
+                StreamEvent::ThinkingDelta {
+                    text: "plan".into()
+                },
+                StreamEvent::TextDelta { text: "A".into() },
+                StreamEvent::ToolStart {
+                    tool_id: "tool-1".into(),
+                    tool_name: "Search".into(),
+                    input_preview: Some("rust".into()),
+                    input_full: Some("{\n  \"query\": \"rust\"\n}".into()),
+                },
+                StreamEvent::ThinkingDelta {
+                    text: "done".into()
+                },
+            ]
+        );
     }
 }
