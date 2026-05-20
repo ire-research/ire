@@ -12,11 +12,8 @@ const paths: Record<string, JSX.Element> = {
   ),
   add_link: (
     <>
-      <path d="M12 5v6" />
-      <path d="M9 8h6" />
-      <path d="M10 14H8a4 4 0 0 1 0-8h2" />
-      <path d="M14 18h2a4 4 0 0 0 0-8h-2" />
-      <path d="M8 12h8" />
+      <path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1" />
+      <path d="M14 11a5 5 0 0 0-7.1 0l-2 2a5 5 0 0 0 7.1 7.1l1.1-1.1" />
     </>
   ),
   arrow_upward: (
