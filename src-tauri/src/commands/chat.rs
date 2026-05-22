@@ -71,23 +71,21 @@ pub async fn chat_send(
         let stdout = child.stdout.take().ok_or("no stdout")?;
         let mut state = StreamState::default();
 
-        for line in BufReader::new(stdout).lines() {
-            if let Ok(line) = line {
-                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
-                    dispatch(&json, &mut state, &mut |event| {
-                        if let StreamEvent::Init { ref session_id } = event {
-                            session_clone.set_session_id(&tab_id, session_id.clone());
-                            tracing::debug!(tab_id = %tab_id, session_id = %session_id, "stream session init");
-                        }
-                        if let StreamEvent::Error { message: ref errmsg } = event {
-                            tracing::warn!(tab_id = %tab_id, error = %errmsg, "claude stream error");
-                        }
-                        let _ = app_handle.emit(
-                            "chat-stream",
-                            serde_json::json!({ "tab_id": &tab_id, "event": &event }),
-                        );
-                    });
-                }
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                dispatch(&json, &mut state, &mut |event| {
+                    if let StreamEvent::Init { ref session_id } = event {
+                        session_clone.set_session_id(&tab_id, session_id.clone());
+                        tracing::debug!(tab_id = %tab_id, session_id = %session_id, "stream session init");
+                    }
+                    if let StreamEvent::Error { message: ref errmsg } = event {
+                        tracing::warn!(tab_id = %tab_id, error = %errmsg, "claude stream error");
+                    }
+                    let _ = app_handle.emit(
+                        "chat-stream",
+                        serde_json::json!({ "tab_id": &tab_id, "event": &event }),
+                    );
+                });
             }
         }
 

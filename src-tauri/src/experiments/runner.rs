@@ -78,21 +78,18 @@ pub fn start_experiment(
         serde_json::json!({ "tab_id": tab_id, "uuid": uuid, "pid": pid }),
     );
 
-    let uuid_m = uuid.clone();
-    let root_m = workspace_root.to_path_buf();
-    let app_m = app.clone();
+    let monitor_args = MonitorArgs {
+        uuid: uuid.clone(),
+        workspace_root: workspace_root.to_path_buf(),
+        tab_id,
+        session_id,
+        wake_prompt,
+        app: app.clone(),
+        session_manager,
+    };
     tauri::async_runtime::spawn(async move {
         let r = tokio::task::spawn_blocking(move || {
-            monitor(
-                child,
-                uuid_m,
-                root_m,
-                tab_id,
-                session_id,
-                wake_prompt,
-                app_m,
-                session_manager,
-            );
+            monitor(child, monitor_args);
         })
         .await;
         if let Err(e) = r {
@@ -104,6 +101,16 @@ pub fn start_experiment(
 }
 
 // ── internal ──────────────────────────────────────────────────────────────────
+
+struct MonitorArgs {
+    uuid: String,
+    workspace_root: PathBuf,
+    tab_id: String,
+    session_id: String,
+    wake_prompt: String,
+    app: AppHandle,
+    session_manager: SessionManager,
+}
 
 fn spawn_detached(
     command: &str,
@@ -130,16 +137,17 @@ fn spawn_detached(
     cmd.spawn().context("spawn experiment subprocess")
 }
 
-fn monitor(
-    mut child: Child,
-    uuid: String,
-    workspace_root: PathBuf,
-    tab_id: String,
-    session_id: String,
-    wake_prompt: String,
-    app: AppHandle,
-    session_manager: SessionManager,
-) {
+fn monitor(mut child: Child, args: MonitorArgs) {
+    let MonitorArgs {
+        uuid,
+        workspace_root,
+        tab_id,
+        session_id,
+        wake_prompt,
+        app,
+        session_manager,
+    } = args;
+
     let ire_dir = workspace_root.join(".ire");
     let log_dir = ire_dir.join("logs").join(&uuid);
     let mut stdout_pos = 0u64;
@@ -169,16 +177,16 @@ fn monitor(
                 );
                 tracing::info!(uuid = %uuid, exit_code = exit_code, "experiment finished");
 
-                super::wake::fire_wakeup(
-                    &workspace_root,
-                    &uuid,
+                super::wake::fire_wakeup(super::wake::FireWakeupArgs {
+                    workspace_root: &workspace_root,
+                    uuid: &uuid,
                     exit_code,
-                    &tab_id,
-                    &session_id,
-                    &wake_prompt,
-                    &app,
-                    &session_manager,
-                );
+                    tab_id: &tab_id,
+                    session_id: &session_id,
+                    wake_prompt: &wake_prompt,
+                    app: &app,
+                    session_manager: &session_manager,
+                });
                 break;
             }
             Ok(None) => {

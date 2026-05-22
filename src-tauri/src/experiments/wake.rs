@@ -11,16 +11,29 @@ use crate::cc::stream::{dispatch, StreamEvent, StreamState};
 use crate::commands::chat::build_system_prompt;
 use crate::prompts::{self, WakeupArgs};
 
-pub fn fire_wakeup(
-    workspace_root: &Path,
-    uuid: &str,
-    exit_code: i32,
-    tab_id: &str,
-    session_id: &str,
-    wake_prompt: &str,
-    app: &AppHandle,
-    session_manager: &SessionManager,
-) {
+pub struct FireWakeupArgs<'a> {
+    pub workspace_root: &'a Path,
+    pub uuid: &'a str,
+    pub exit_code: i32,
+    pub tab_id: &'a str,
+    pub session_id: &'a str,
+    pub wake_prompt: &'a str,
+    pub app: &'a AppHandle,
+    pub session_manager: &'a SessionManager,
+}
+
+pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
+    let FireWakeupArgs {
+        workspace_root,
+        uuid,
+        exit_code,
+        tab_id,
+        session_id,
+        wake_prompt,
+        app,
+        session_manager,
+    } = args;
+
     let ire_dir = workspace_root.join(".ire");
     let log_dir = ire_dir.join("logs").join(uuid);
     let plan_path = format!(".ire/experiments/{uuid}/plan.md");

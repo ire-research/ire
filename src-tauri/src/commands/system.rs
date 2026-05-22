@@ -99,7 +99,7 @@ fn git_diff_stat(path: &std::path::Path) -> (u32, u32) {
 fn parse_stat(s: &str, keyword: &str) -> u32 {
     s.split(',')
         .find(|part| part.contains(keyword))
-        .and_then(|part| part.trim().split_whitespace().next())
+        .and_then(|part| part.split_whitespace().next())
         .and_then(|n| n.parse().ok())
         .unwrap_or(0)
 }
