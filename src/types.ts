@@ -92,7 +92,7 @@ export interface TabCreatedPayload {
 export interface ResourceItem {
   resource_id: string;
   url: string;
-  source_type: "url" | "local_file";
+  source_type: "url" | "local_file" | "batch";
   source_label: string;
   title: string | null;
   wiki_path: string | null;

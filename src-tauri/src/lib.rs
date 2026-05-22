@@ -13,7 +13,7 @@ use cc::session::SessionManager;
 use commands::chat::{chat_cancel, chat_reset_session, chat_send};
 use commands::experiments::{experiment_cancel, experiment_delete, experiment_list, experiment_logs, experiment_rename};
 use commands::resources::{
-    discard_resource, get_resource_confirm_prompt, index_resource, list_resources, submit_local_resource, submit_resource,
+    discard_resource, get_resource_confirm_prompt, index_resource, list_resources, submit_local_resource, submit_resource, submit_resources,
 };
 use commands::system::get_system_status;
 use commands::wiki::{read_wiki_file, save_notes, save_wiki_file, read_pulse, save_pulse_field, read_ideas, save_ideas_json};
@@ -64,6 +64,7 @@ pub fn run() {
             chat_reset_session,
             submit_resource,
             submit_local_resource,
+            submit_resources,
             discard_resource,
             index_resource,
             list_resources,
