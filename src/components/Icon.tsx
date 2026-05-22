@@ -78,6 +78,13 @@ const paths: Record<string, JSX.Element> = {
       <path d="M14 18l5-5 2 2-5 5h-2z" />
     </>
   ),
+  error: (
+    <>
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+      <path d="M10.3 4.3 2.8 17.2A2 2 0 0 0 4.5 20h15a2 2 0 0 0 1.7-2.8L13.7 4.3a2 2 0 0 0-3.4 0z" />
+    </>
+  ),
   expand_more: <path d="M6 9l6 6 6-6" />,
   folder: (
     <>
