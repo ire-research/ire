@@ -2,7 +2,7 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{Emitter, State};
 
 use crate::cc::discovery::find_claude_binary;
@@ -45,6 +45,29 @@ pub struct ResourceItem {
     pub wiki_path: Option<String>,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ResourceSourceInput {
+    Url { url: String },
+    LocalFile { path: String },
+}
+
+#[derive(Debug, Clone)]
+struct PreparedSource {
+    source_ref: String,
+    source_label: String,
+    cache_rel: String,
+    text: String,
+    content_type: String,
+    source_type: String,
+}
+
+#[derive(Debug, Clone)]
+struct SummarySource {
+    source_ref: String,
+    cache_rel: String,
+}
+
 #[tauri::command]
 pub async fn submit_resource(
     app_handle: tauri::AppHandle,
@@ -56,7 +79,12 @@ pub async fn submit_resource(
 
     let workspace_path = {
         let guard = active.0.lock().map_err(|e| e.to_string())?;
-        guard.as_ref().ok_or("no workspace open")?.state.path.clone()
+        guard
+            .as_ref()
+            .ok_or("no workspace open")?
+            .state
+            .path
+            .clone()
     };
 
     let sha256 = sha256_hex(&url);
@@ -85,7 +113,10 @@ pub async fn submit_resource(
         (*session).clone(),
         workspace_path,
         sha256.clone(),
-        url.clone(),
+        vec![SummarySource {
+            source_ref: url.clone(),
+            cache_rel: format!(".ire/cache/{sha256}.txt"),
+        }],
         hostname_from_url(&url),
     )?;
 
@@ -104,7 +135,12 @@ pub async fn submit_local_resource(
 
     let workspace_path = {
         let guard = active.0.lock().map_err(|e| e.to_string())?;
-        guard.as_ref().ok_or("no workspace open")?.state.path.clone()
+        guard
+            .as_ref()
+            .ok_or("no workspace open")?
+            .state
+            .path
+            .clone()
     };
 
     let path_buf = PathBuf::from(path);
@@ -142,12 +178,110 @@ pub async fn submit_local_resource(
         (*session).clone(),
         workspace_path,
         sha256.clone(),
-        source_ref,
+        vec![SummarySource {
+            source_ref,
+            cache_rel: format!(".ire/cache/{sha256}.txt"),
+        }],
         source_label,
     )?;
 
     tracing::info!(sha256 = %sha256, "submit_local_resource complete");
     Ok(sha256)
+}
+
+#[tauri::command]
+pub async fn submit_resources(
+    app_handle: tauri::AppHandle,
+    active: State<'_, ActiveWorkspace>,
+    session: State<'_, SessionManager>,
+    sources: Vec<ResourceSourceInput>,
+) -> Result<String, String> {
+    tracing::info!(source_count = sources.len(), "submit_resources");
+
+    if sources.is_empty() {
+        return Err("at least one resource source is required".to_string());
+    }
+
+    let workspace_path = {
+        let guard = active.0.lock().map_err(|e| e.to_string())?;
+        guard
+            .as_ref()
+            .ok_or("no workspace open")?
+            .state
+            .path
+            .clone()
+    };
+
+    let workspace_clone = workspace_path.clone();
+    let (resource_id, summary_sources, tab_label) = tokio::task::spawn_blocking(
+        move || -> Result<(String, Vec<SummarySource>, String), String> {
+            let prepared = prepare_sources(&sources)?;
+            let source_refs: Vec<String> = prepared.iter().map(|s| s.source_ref.clone()).collect();
+            let resource_id = batch_resource_id(&prepared, &source_refs)?;
+            let multi_source = prepared.len() > 1;
+
+            if let Err(e) =
+                write_prepared_sources(&workspace_clone, &resource_id, &prepared, multi_source)
+            {
+                cleanup_resource_cache(&workspace_clone, &resource_id);
+                return Err(e);
+            }
+
+            let source_label = batch_source_label(&prepared);
+            let source_type = if multi_source {
+                "batch".to_string()
+            } else {
+                prepared[0].source_type.clone()
+            };
+            let content_type = if multi_source {
+                "multiple".to_string()
+            } else {
+                prepared[0].content_type.clone()
+            };
+            let source_ref = if multi_source {
+                serde_json::to_string(&source_refs).map_err(|e| e.to_string())?
+            } else {
+                prepared[0].source_ref.clone()
+            };
+
+            let ire_dir = workspace_clone.join(".ire");
+            if let Err(e) = models::insert_resource_with_source(
+                &ire_dir,
+                &resource_id,
+                &source_ref,
+                &source_label,
+                &source_type,
+                &content_type,
+            ) {
+                cleanup_resource_cache(&workspace_clone, &resource_id);
+                return Err(e.to_string());
+            }
+
+            let summary_sources = prepared
+                .into_iter()
+                .map(|source| SummarySource {
+                    source_ref: source.source_ref,
+                    cache_rel: source.cache_rel.replace("{resource_id}", &resource_id),
+                })
+                .collect();
+
+            Ok((resource_id, summary_sources, source_label))
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())??;
+
+    start_resource_summary(
+        app_handle,
+        (*session).clone(),
+        workspace_path,
+        resource_id.clone(),
+        summary_sources,
+        tab_label,
+    )?;
+
+    tracing::info!(resource_id = %resource_id, "submit_resources complete");
+    Ok(resource_id)
 }
 
 fn write_resource_cache(workspace_path: &Path, sha256: &str, text: &str) -> Result<(), String> {
@@ -156,12 +290,119 @@ fn write_resource_cache(workspace_path: &Path, sha256: &str, text: &str) -> Resu
     fs::write(cache_dir.join(format!("{sha256}.txt")), text).map_err(|e| e.to_string())
 }
 
+fn prepare_sources(sources: &[ResourceSourceInput]) -> Result<Vec<PreparedSource>, String> {
+    let mut prepared = Vec::with_capacity(sources.len());
+    let multi_source = sources.len() > 1;
+
+    for (index, source) in sources.iter().enumerate() {
+        let source_number = index + 1;
+        let mut item = match source {
+            ResourceSourceInput::Url { url } => {
+                let trimmed = url.trim();
+                if trimmed.is_empty() {
+                    return Err(format!("source {source_number}: URL is empty"));
+                }
+                let result = fetch_and_extract(trimmed)
+                    .map_err(|e| format!("source {source_number}: {e}"))?;
+                PreparedSource {
+                    source_ref: trimmed.to_string(),
+                    source_label: hostname_from_url(trimmed),
+                    cache_rel: String::new(),
+                    text: result.text,
+                    content_type: result.content_type,
+                    source_type: "url".to_string(),
+                }
+            }
+            ResourceSourceInput::LocalFile { path } => {
+                let path_buf = PathBuf::from(path);
+                let result = extract_local_file(&path_buf)
+                    .map_err(|e| format!("source {source_number}: {e}"))?;
+                let sha256 = sha256_hex_bytes(&result.bytes);
+                PreparedSource {
+                    source_ref: format!("file:{sha256}:{}", result.filename),
+                    source_label: result.filename,
+                    cache_rel: String::new(),
+                    text: result.text,
+                    content_type: result.content_type,
+                    source_type: "local_file".to_string(),
+                }
+            }
+        };
+
+        item.cache_rel = if multi_source {
+            format!(".ire/cache/{{resource_id}}/source-{source_number:03}.txt")
+        } else {
+            ".ire/cache/{resource_id}.txt".to_string()
+        };
+        prepared.push(item);
+    }
+
+    Ok(prepared)
+}
+
+fn batch_resource_id(
+    prepared: &[PreparedSource],
+    source_refs: &[String],
+) -> Result<String, String> {
+    if prepared.len() == 1 && prepared[0].source_type == "url" {
+        return Ok(sha256_hex(&prepared[0].source_ref));
+    }
+    if prepared.len() == 1 && prepared[0].source_type == "local_file" {
+        if let Some(source_id) = prepared[0].source_ref.split(':').nth(1) {
+            return Ok(source_id.to_string());
+        }
+    }
+    let serialized = serde_json::to_string(source_refs).map_err(|e| e.to_string())?;
+    Ok(sha256_hex(&serialized))
+}
+
+fn write_prepared_sources(
+    workspace_path: &Path,
+    resource_id: &str,
+    prepared: &[PreparedSource],
+    multi_source: bool,
+) -> Result<(), String> {
+    if multi_source {
+        let cache_dir = workspace_path.join(".ire/cache").join(resource_id);
+        fs::create_dir_all(&cache_dir).map_err(|e| e.to_string())?;
+        for (index, source) in prepared.iter().enumerate() {
+            fs::write(
+                cache_dir.join(format!("source-{:03}.txt", index + 1)),
+                &source.text,
+            )
+            .map_err(|e| e.to_string())?;
+        }
+    } else if let Some(source) = prepared.first() {
+        write_resource_cache(workspace_path, resource_id, &source.text)?;
+    }
+    Ok(())
+}
+
+fn batch_source_label(prepared: &[PreparedSource]) -> String {
+    if prepared.len() == 1 {
+        return prepared[0].source_label.clone();
+    }
+    format!("{} sources", prepared.len())
+}
+
+fn cleanup_resource_cache(workspace_path: &Path, resource_id: &str) {
+    let cache_root = workspace_path.join(".ire/cache");
+    let cache_file = cache_root.join(format!("{resource_id}.txt"));
+    if cache_file.exists() {
+        let _ = fs::remove_file(cache_file);
+    }
+    let cache_dir = cache_root.join(resource_id);
+    if cache_dir.exists() {
+        let _ = fs::remove_dir_all(cache_dir);
+    }
+}
+
 fn start_resource_summary(
     app_handle: tauri::AppHandle,
     session: SessionManager,
     workspace_path: PathBuf,
     sha256: String,
-    source_ref: String,
+    sources: Vec<SummarySource>,
     tab_label: String,
 ) -> Result<(), String> {
     let tab_id = uuid::Uuid::new_v4().to_string();
@@ -177,32 +418,29 @@ fn start_resource_summary(
         )
         .map_err(|e| e.to_string())?;
 
-    // Fire-and-forget: kick a CC turn to summarise the cached file
+    // Fire-and-forget: kick a CC turn to summarise the cached source file(s).
     let bin = find_claude_binary().map_err(|e| e.to_string())?.path;
     let app = app_handle.clone();
     let workspace_clone2 = workspace_path.clone();
-    let sha256_clone2 = sha256.clone();
-    let source_ref_clone = source_ref.clone();
+    let sources_clone = sources.clone();
     let tab_id_clone = tab_id.clone();
 
     tokio::spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
             let mcp_config = workspace_clone2.join(".ire/mcp.json");
             let system_prompt = build_resource_system_prompt(&workspace_clone2);
-            let cache_rel = format!(".ire/cache/{sha256_clone2}.txt");
-            let prompt = format!(
-                "Read {cache_rel} (source: {source_ref_clone}). \
-                 Provide an executive summary — what this resource is, what is relevant to this project, \
-                 why it matters, and how it could be used. Use bullet points.\n\
-                 Do NOT write to the wiki yet."
-            );
+            let prompt = build_resource_summary_prompt(&sources_clone);
 
             let mut cmd = build_command(&SpawnArgs {
                 bin: &bin,
                 workspace: &workspace_clone2,
                 message: &prompt,
                 resume_id: None,
-                mcp_config: if mcp_config.exists() { Some(&mcp_config) } else { None },
+                mcp_config: if mcp_config.exists() {
+                    Some(&mcp_config)
+                } else {
+                    None
+                },
                 system_prompt: Some(&system_prompt),
                 model: "claude-haiku-4-5-20251001",
                 effort: "high",
@@ -216,19 +454,17 @@ fn start_resource_summary(
             let stdout = child.stdout.take().ok_or("no stdout")?;
             let mut state = StreamState::default();
 
-            for line in BufReader::new(stdout).lines() {
-                if let Ok(line) = line {
-                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
-                        dispatch(&json, &mut state, &mut |event| {
-                            if let StreamEvent::Init { ref session_id } = event {
-                                session.set_session_id(&tab_id_clone, session_id.clone());
-                            }
-                            let _ = app.emit(
-                                "chat-stream",
-                                serde_json::json!({ "tab_id": &tab_id_clone, "event": &event }),
-                            );
-                        });
-                    }
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                    dispatch(&json, &mut state, &mut |event| {
+                        if let StreamEvent::Init { ref session_id } = event {
+                            session.set_session_id(&tab_id_clone, session_id.clone());
+                        }
+                        let _ = app.emit(
+                            "chat-stream",
+                            serde_json::json!({ "tab_id": &tab_id_clone, "event": &event }),
+                        );
+                    });
                 }
             }
 
@@ -253,6 +489,38 @@ fn start_resource_summary(
     Ok(())
 }
 
+fn build_resource_summary_prompt(sources: &[SummarySource]) -> String {
+    if sources.len() == 1 {
+        let source = &sources[0];
+        return format!(
+            "Read {} (source: {}). \
+             Provide an executive summary — what this resource is, what is relevant to this project, \
+             why it matters, and how it could be used. Use bullet points.\n\
+             Do NOT write to the wiki yet.",
+            source.cache_rel, source.source_ref
+        );
+    }
+
+    let mut prompt = String::from(
+        "Read all of these cached source files in order and synthesize them into one resource:\n",
+    );
+    for (index, source) in sources.iter().enumerate() {
+        prompt.push_str(&format!(
+            "{}. {} (source: {})\n",
+            index + 1,
+            source.cache_rel,
+            source.source_ref
+        ));
+    }
+    prompt.push_str(
+        "\nProvide one comprehensive executive summary across all sources — what the combined material is, \
+         what is relevant to this project, why it matters, and how it could be used. Use bullet points. \
+         Preserve the source order when referring to sources.\n\
+         Do NOT write to the wiki yet.",
+    );
+    prompt
+}
+
 #[tauri::command]
 pub fn discard_resource(
     active: State<'_, ActiveWorkspace>,
@@ -269,12 +537,7 @@ pub fn discard_resource(
             .clone()
     };
 
-    let cache_file = workspace_path
-        .join(".ire/cache")
-        .join(format!("{resource_id}.txt"));
-    if cache_file.exists() {
-        let _ = fs::remove_file(&cache_file);
-    }
+    cleanup_resource_cache(&workspace_path, &resource_id);
 
     let ire_dir = workspace_path.join(".ire");
     models::update_resource_status(&ire_dir, &resource_id, "rejected")
@@ -304,11 +567,12 @@ pub fn index_resource(
     let wiki = WikiStore::new(workspace_path.clone());
 
     // Find the wiki file CC wrote for this resource and extract its title.
-    let resource_url = models::get_resource_url(&ire_dir, &resource_id)
+    let stored_sources = models::get_resource_url(&ire_dir, &resource_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("resource {resource_id} not found in DB"))?;
 
-    let wiki_rel = find_resource_wiki_path(&wiki.wiki_root, &resource_url);
+    let source_refs = stored_source_refs(&stored_sources);
+    let wiki_rel = find_resource_wiki_path(&wiki.wiki_root, &source_refs);
 
     if let Some(ref rel_path) = wiki_rel {
         let title = extract_title(&wiki.wiki_root.join(rel_path));
@@ -327,12 +591,15 @@ pub fn index_resource(
 }
 
 /// Scan `wiki/resources/` for a `.md` file whose frontmatter `sources:` array
-/// contains `resource_url`. `_schema.md` makes `sources` the canonical field.
-fn find_resource_wiki_path(wiki_root: &std::path::Path, resource_url: &str) -> Option<String> {
+/// contains every expected source. `_schema.md` makes `sources` the canonical field.
+fn find_resource_wiki_path(
+    wiki_root: &std::path::Path,
+    expected_sources: &[String],
+) -> Option<String> {
     use crate::wiki::frontmatter;
 
     let resources_dir = wiki_root.join("resources");
-    if !resources_dir.exists() {
+    if !resources_dir.exists() || expected_sources.is_empty() {
         return None;
     }
 
@@ -347,15 +614,19 @@ fn find_resource_wiki_path(wiki_root: &std::path::Path, resource_url: &str) -> O
         let Some(sources) = fm.get("sources") else {
             continue;
         };
-        if parse_sources_array(sources)
-            .iter()
-            .any(|s| *s == resource_url)
-        {
+        let actual_sources = parse_sources_array(sources);
+        if expected_sources.iter().all(|expected| {
+            actual_sources.contains(&expected.as_str())
+        }) {
             let filename = path.file_name()?.to_str()?;
             return Some(format!("resources/{filename}"));
         }
     }
     None
+}
+
+fn stored_source_refs(value: &str) -> Vec<String> {
+    serde_json::from_str::<Vec<String>>(value).unwrap_or_else(|_| vec![value.to_string()])
 }
 
 /// Parse a YAML inline-array string like `[https://a, "https://b"]` into entries.
@@ -459,4 +730,27 @@ fn build_resource_system_prompt(workspace_root: &Path) -> String {
 #[tauri::command]
 pub fn get_resource_confirm_prompt() -> &'static str {
     prompts::resource_confirm()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_sources_array, stored_source_refs};
+
+    #[test]
+    fn stored_source_refs_reads_batch_json() {
+        let refs = stored_source_refs(r#"["https://example.com/a","file:abc:paper.pdf"]"#);
+        assert_eq!(refs, vec!["https://example.com/a", "file:abc:paper.pdf"]);
+    }
+
+    #[test]
+    fn stored_source_refs_keeps_legacy_single_source() {
+        let refs = stored_source_refs("https://example.com/a");
+        assert_eq!(refs, vec!["https://example.com/a"]);
+    }
+
+    #[test]
+    fn parse_sources_array_handles_inline_frontmatter() {
+        let refs = parse_sources_array(r#"[https://example.com/a, "file:abc:paper.pdf"]"#);
+        assert_eq!(refs, vec!["https://example.com/a", "file:abc:paper.pdf"]);
+    }
 }
