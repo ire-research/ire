@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -35,7 +35,7 @@ pub fn write(config: &UserConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn push_recent(workspace_path: &PathBuf) -> Result<()> {
+pub fn push_recent(workspace_path: &Path) -> Result<()> {
     let mut config = read();
     let s = workspace_path.to_string_lossy().to_string();
     config.recent_workspaces.retain(|p| p != &s);
