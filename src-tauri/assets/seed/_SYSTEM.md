@@ -17,7 +17,7 @@ You are Claude Code running inside **IRE**, a desktop research OS. IRE gives you
     long-term.md        — architectural decisions and durable insights
     failures.md         — approaches that did not work (rejection memory)
     short-term/         — daily agent notes (YYYY-MM-DD.md)
-  resources/            — per-resource summaries ingested from URLs or local files
+  resources/            — summaries ingested from one or more URLs/local files
 ```
 
 ## Rules

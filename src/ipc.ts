@@ -46,6 +46,10 @@ export interface PanelLayouts {
   groups?: Record<string, Record<string, number>>;
 }
 
+export type ResourceSourceInput =
+  | { kind: "url"; url: string }
+  | { kind: "local_file"; path: string };
+
 export const ipc = {
   setupStatus: (): Promise<SetupStatus> => invoke("setup_status"),
   openWorkspace: (path: string): Promise<WorkspaceState> =>
@@ -77,6 +81,8 @@ export const ipc = {
     invoke("submit_resource", { url }),
   submitLocalResource: (path: string): Promise<string> =>
     invoke("submit_local_resource", { path }),
+  submitResources: (sources: ResourceSourceInput[]): Promise<string> =>
+    invoke("submit_resources", { sources }),
   discardResource: (resourceId: string): Promise<void> =>
     invoke("discard_resource", { resourceId }),
   indexResource: (resourceId: string): Promise<void> =>
@@ -172,4 +178,20 @@ export async function pickResourceFile(): Promise<string | null> {
     ],
   });
   return typeof result === "string" ? result : null;
+}
+
+export async function pickResourceFiles(): Promise<string[]> {
+  const result = await open({
+    directory: false,
+    multiple: true,
+    title: "Choose resource files",
+    filters: [
+      {
+        name: "Supported resources",
+        extensions: ["txt", "md", "pdf", "docx"],
+      },
+    ],
+  });
+  if (Array.isArray(result)) return result;
+  return typeof result === "string" ? [result] : [];
 }
