@@ -30,4 +30,4 @@ summary: <one-line summary used by _index.md>
 
 ## Resources (`resources/`)
 
-One file per ingested paper / article. Each file holds a structured summary, links to existing pages, and a relevance assessment.
+One file per accepted ingest job. A resource may summarize one source or synthesize multiple URLs/local files into one document. Each file holds a structured summary, links to existing pages, and a relevance assessment.

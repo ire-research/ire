@@ -112,6 +112,28 @@
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
+.ingest-loading-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.ingest-loading-button::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 42%;
+  height: 1px;
+  background: #c6c6c9;
+  animation: ingest-progress 1.1s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes ingest-progress {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(270%); }
+}
+
 .drag-handle-col {
   width: 4px;
   cursor: col-resize;
