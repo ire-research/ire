@@ -18,6 +18,7 @@ interface WorkspaceStore {
   recentWorkspaces: string[];
   setPhase: (phase: Phase) => void;
   setGroupLayout: (groupId: string, layout: Record<string, number>) => void;
+  setPanelCollapsed: (panelId: "left" | "right", collapsed: boolean) => void;
   setRecentWorkspaces: (paths: string[]) => void;
   pushRecentWorkspace: (path: string) => void;
   hydrateFromPersisted: (state: PersistedWorkspace) => void;
@@ -37,6 +38,13 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => ({
         groups: { ...(s.panelLayout.groups ?? {}), [groupId]: layout },
       },
     })),
+  setPanelCollapsed: (panelId, collapsed) =>
+    set((s) => ({
+      panelLayout: {
+        ...s.panelLayout,
+        collapsed: { ...(s.panelLayout.collapsed ?? {}), [panelId]: collapsed },
+      },
+    })),
   setRecentWorkspaces: (paths) => set({ recentWorkspaces: paths }),
   pushRecentWorkspace: (path) =>
     set((s) => {
@@ -44,7 +52,17 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => ({
       return { recentWorkspaces: [path, ...filtered].slice(0, 10) };
     }),
   hydrateFromPersisted: (state) => {
-    set({ panelLayout: state.panel_layout ?? {} });
+    const panelLayout = state.panel_layout ?? {};
+    const bodyLayout = panelLayout.groups?.body;
+    set({
+      panelLayout: {
+        ...panelLayout,
+        collapsed: {
+          left: panelLayout.collapsed?.left ?? bodyLayout?.left === 0,
+          right: panelLayout.collapsed?.right ?? bodyLayout?.right === 0,
+        },
+      },
+    });
   },
   hydrateFromUserConfig: (config) => {
     set({
