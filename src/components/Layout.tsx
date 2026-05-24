@@ -22,10 +22,16 @@ export function Layout() {
   const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
   const wsDropdownRef = useRef<HTMLDivElement>(null);
 
+  const [helpOpen, setHelpOpen] = useState(false);
+  const helpRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (wsDropdownRef.current && !wsDropdownRef.current.contains(e.target as Node)) {
         setWsDropdownOpen(false);
+      }
+      if (helpRef.current && !helpRef.current.contains(e.target as Node)) {
+        setHelpOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -173,16 +179,44 @@ export function Layout() {
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
-            className="h-7 border border-outline-variant rounded px-3 text-xs font-medium text-on-surface-variant hover:bg-surface-container-low hover:border-outline transition-colors"
-            onClick={handleClose}
-          >
-            close
-          </button>
-          <button
             className="text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center p-1"
             aria-label="Settings"
           >
             <Icon name="settings" className="w-[18px] h-[18px]" />
+          </button>
+          <div className="relative" ref={helpRef}>
+            <button
+              className={`text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center w-7 h-7 rounded border ${helpOpen ? "border-outline-variant bg-surface-container-low text-on-surface" : "border-transparent"}`}
+              onClick={() => setHelpOpen((o) => !o)}
+              aria-label="Help"
+              aria-haspopup="true"
+              aria-expanded={helpOpen}
+            >
+              <Icon name="help" className="w-[16px] h-[16px]" />
+            </button>
+            {helpOpen && (
+              <div className="absolute top-full right-0 mt-1.5 w-[200px] bg-surface-container-high border border-outline-variant rounded-lg shadow-lg z-50 overflow-hidden">
+                <a
+                  className="flex items-center gap-2 w-full px-3 py-2 text-xs font-medium text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors"
+                  href="https://github.com/giacomo-ciro/ire/issues"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Icon name="info" className="w-[14px] h-[14px] shrink-0" />
+                  Report a bug
+                </a>
+                <div className="flex items-center gap-2 px-3 py-2 border-t border-outline-variant">
+                  <span className="text-xs font-normal text-outline-variant">IRE</span>
+                  <span className="text-[10px] font-medium text-on-surface-variant bg-surface-container-highest border border-outline-variant rounded px-[5px] py-[1px]">v0.0.0</span>
+                </div>
+              </div>
+            )}
+          </div>
+          <button
+            className="h-7 border border-outline-variant rounded px-3 text-xs font-medium text-on-surface-variant hover:bg-surface-container-low hover:border-outline transition-colors"
+            onClick={handleClose}
+          >
+            close
           </button>
         </div>
       </header>
