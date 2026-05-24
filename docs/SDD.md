@@ -714,7 +714,7 @@ The Tauri window opens in windowed mode at 1280 × 820 so the primary rails, cen
 - The right rail is a vertical `react-resizable-panels` group `right` with panels `notes`, `ideas`, and `resource-input`; row handles sit between Notes / Ideas and Ideas / Add resources.
 - `ResourcesSection` and `ExperimentsSection` use the same outer pane padding as `NotesPane` and `IdeasPane`, and render compact inline SVG title icons. Empty lists show `no resources yet` and `no experiments yet`.
 - `IdeasPane` renders active ideas sorted by `order`, opens an inline draft card on Add, saves the draft to `ideas.json` on Enter, and hides trashed ideas by persisting `trashed: true`.
-- `FocusPane` and `NotesPane` use **inline editing**: clicking a field activates a textarea in place; blur/Enter saves. No separate Edit/Preview toggle.
+- `FocusPane` and `NotesPane` use **inline editing**: clicking a field activates a textarea in place; blur/Enter saves. No separate Edit/Preview toggle. `NotesPane` renders saved `notes.md` content as markdown in display mode rather than forcing each line into a bullet item.
 - Clicking an experiment row in `ExperimentsSection` opens (or re-focuses) an `experiment` tab in the centre column; the tab renders `ExperimentTabView` with a metadata grid and live log tail. Hovering an experiment row reveals an `edit_document` rename button between the experiment name and status pill; pressing Enter commits the inline rename through `experiment_rename`, while Escape or blur cancels. `ExperimentTabView` uses the same hover-revealed `edit_document` rename button beside the header name.
 - The top navbar shows the full workspace path on the far left as the project title. The bottom `StatusBar` polls `get_system_status` every 5 s and displays (left-to-right): workspace path + git branch + insertions/deletions, CPU model + usage %, GPU model + usage % + VRAM (or `n/a` when unavailable), RAM total GB, `username@hostname`, and a `claude-code · connected/disconnected` indicator pushed to the far right. The CC indicator is `connected` when `find_claude_binary()` succeeds, meaning the CLI is available for interaction; it does not require an active subprocess.
 
@@ -747,7 +747,7 @@ Both values are passed as `options: { model, effort }` on every `chat_send` invo
 ### 13.3 Edit/preview toggle behaviour
 
 - Resource preview tabs open in **Preview** by default, rendering the wiki markdown via `ResourcePreviewPane`. Switching to Edit loads the raw file contents into a textarea; switching back to Preview without Submit discards local edits (with a confirm if dirty). Submit calls `save_wiki_file`.
-- `NotesPane` edits `notes.md` inline and saves through `save_notes` on blur / Ctrl+Enter.
+- `NotesPane` renders `notes.md` as markdown in display mode, edits it inline as raw markdown, and saves through `save_notes` on blur / Ctrl+Enter.
 - `IdeasPane` does not use markdown edit/preview. It writes the structured `ideas.json` list directly via `save_ideas_json`.
 
 ### 13.4 Resource list
