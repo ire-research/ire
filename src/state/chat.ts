@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AssistantContentBlock, AssistantMessage, ExperimentStatus, ResourceStatus, Tab, ToolCallState } from "../types";
+import type { AskAnswer, AskQuestion, AssistantContentBlock, AssistantMessage, ExperimentStatus, ResourceStatus, Tab, ToolCallState } from "../types";
 
 const MAIN_TAB_ID = "main";
 
@@ -25,6 +25,11 @@ interface ChatStore {
   setStreaming: (tabId: string, v: boolean) => void;
   setResourceStatus: (tabId: string, status: ResourceStatus) => void;
   clearMessages: (tabId: string) => void;
+
+  // AskUserQuestion
+  addAskQuestion: (tabId: string, msgId: string, toolId: string, questions: AskQuestion[]) => void;
+  setAskAnswer: (toolId: string, index: number, answer: AskAnswer | undefined) => void;
+  markAskSubmitted: (toolId: string) => void;
 
   // Tool call management
   addTool: (tabId: string, msgId: string, tool: ToolCallState) => void;
@@ -261,6 +266,67 @@ export const useChat = create<ChatStore>((set) => ({
       tabs: updateMessage(s.tabs, tabId, msgId, (m) => ({
         ...m,
         blocks: [...m.blocks, { id: String(seq++), kind: "tool", tool }],
+      })),
+    })),
+
+  addAskQuestion: (tabId, msgId, toolId, questions) =>
+    set((s) => ({
+      tabs: updateMessage(s.tabs, tabId, msgId, (m) => ({
+        ...m,
+        blocks: [
+          ...m.blocks,
+          {
+            id: String(seq++),
+            kind: "ask",
+            ask: {
+              tool_id: toolId,
+              questions,
+              answers: questions.map(() => undefined),
+              submitted: false,
+            },
+          },
+        ],
+      })),
+    })),
+
+  setAskAnswer: (toolId, index, answer) =>
+    set((s) => ({
+      tabs: s.tabs.map((tab) => ({
+        ...tab,
+        messages: tab.messages.map((m) => {
+          if (m.role !== "assistant") return m;
+          const am = m as AssistantMessage;
+          if (!am.blocks.some((b) => b.kind === "ask" && b.ask.tool_id === toolId)) return m;
+          return {
+            ...am,
+            blocks: am.blocks.map((block) => {
+              if (block.kind !== "ask" || block.ask.tool_id !== toolId) return block;
+              const nextAnswers = block.ask.answers.slice();
+              nextAnswers[index] = answer;
+              return { ...block, ask: { ...block.ask, answers: nextAnswers } };
+            }),
+          };
+        }),
+      })),
+    })),
+
+  markAskSubmitted: (toolId) =>
+    set((s) => ({
+      tabs: s.tabs.map((tab) => ({
+        ...tab,
+        messages: tab.messages.map((m) => {
+          if (m.role !== "assistant") return m;
+          const am = m as AssistantMessage;
+          if (!am.blocks.some((b) => b.kind === "ask" && b.ask.tool_id === toolId)) return m;
+          return {
+            ...am,
+            blocks: am.blocks.map((block) =>
+              block.kind === "ask" && block.ask.tool_id === toolId
+                ? { ...block, ask: { ...block.ask, submitted: true } }
+                : block
+            ),
+          };
+        }),
       })),
     })),
 
