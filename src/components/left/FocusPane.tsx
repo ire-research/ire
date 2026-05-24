@@ -1,14 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import type { PulseContent } from "../../types";
 import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
+import { useWorkspaceData } from "../../state/workspaceData";
 import { Icon } from "../Icon";
 
-interface Props {
-  pulse: PulseContent;
-}
-
-export function FocusPane({ pulse }: Props) {
+export function FocusPane() {
+  const pulse = useWorkspaceData((s) => s.pulse);
   const [editingField, setEditingField] = useState<"research_question" | "this_week" | null>(null);
   const [draftRq, setDraftRq] = useState(pulse.research_question);
   const [draftTw, setDraftTw] = useState(pulse.this_week);

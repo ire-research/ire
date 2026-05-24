@@ -1,16 +1,18 @@
 import { useEffect, useRef, useState } from "react";
+import { ipc } from "../../ipc";
+import { toastError } from "../../state/toasts";
+import { useWorkspaceData } from "../../state/workspaceData";
 import type { IdeaItem } from "../../types";
 import { Icon } from "../Icon";
 
-interface Props {
-  ideas: IdeaItem[];
-  onSave: (ideas: IdeaItem[]) => Promise<void>;
-}
-
-export function IdeasPane({ ideas, onSave }: Props) {
+export function IdeasPane() {
+  const ideas = useWorkspaceData((s) => s.ideas);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const draftRef = useRef<HTMLInputElement>(null);
+
+  const save = (next: IdeaItem[]) =>
+    ipc.saveIdeasJson(next).catch((e) => toastError("save ideas", e));
 
   const activeIdeas = ideas
     .filter((idea) => !idea.trashed)
@@ -38,7 +40,7 @@ export function IdeasPane({ ideas, onSave }: Props) {
 
     const updated = [newIdea, ...activeIdeas].map((idea, idx) => ({ ...idea, order: idx }));
     const allIdeas = [...updated, ...ideas.filter((idea) => idea.trashed)];
-    await onSave(allIdeas);
+    await save(allIdeas);
     setDraft(null);
   };
 
@@ -46,7 +48,7 @@ export function IdeasPane({ ideas, onSave }: Props) {
     const updated = ideas.map((idea) =>
       idea.id === id ? { ...idea, trashed: true } : idea
     );
-    await onSave(updated);
+    await save(updated);
   };
 
   const handleDragStart = (id: string) => {
@@ -77,7 +79,7 @@ export function IdeasPane({ ideas, onSave }: Props) {
 
     const updated = reordered.map((idea, idx) => ({ ...idea, order: idx }));
     const allIdeas = [...updated, ...ideas.filter((idea) => idea.trashed)];
-    await onSave(allIdeas);
+    await save(allIdeas);
     setDraggedId(null);
   };
 

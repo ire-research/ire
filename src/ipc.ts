@@ -8,12 +8,11 @@ import type {
   ExperimentStartingPayload,
   ExperimentStatusPayload,
   IdeaItem,
-  PulseContent,
-  ResourceItem,
   SystemStatus,
   TabCreatedPayload,
   TabStreamPayload,
   WikiFile,
+  WorkspaceEvent,
 } from "./types";
 
 export type BinaryStatus =
@@ -70,10 +69,8 @@ export const ipc = {
     invoke("read_wiki_file", { path }),
   saveNotes: (content: string): Promise<void> =>
     invoke("save_notes", { content }),
-  readPulse: (): Promise<PulseContent> => invoke("read_pulse"),
   savePulseField: (field: "research_question" | "this_week", content: string): Promise<void> =>
     invoke("save_pulse_field", { field, content }),
-  readIdeas: (): Promise<IdeaItem[]> => invoke("read_ideas"),
   saveIdeasJson: (ideas: IdeaItem[]): Promise<void> => invoke("save_ideas_json", { ideas }),
   getSystemStatus: (): Promise<SystemStatus> => invoke("get_system_status"),
   chatSend: (tabId: string, message: string, options: ChatOptions): Promise<void> =>
@@ -90,10 +87,6 @@ export const ipc = {
     invoke("submit_resources", { sources }),
   discardResource: (resourceId: string): Promise<void> =>
     invoke("discard_resource", { resourceId }),
-  indexResource: (resourceId: string): Promise<void> =>
-    invoke("index_resource", { resourceId }),
-  listResources: (): Promise<ResourceItem[]> =>
-    invoke("list_resources"),
   getResourceConfirmPrompt: (): Promise<string> =>
     invoke("get_resource_confirm_prompt"),
   saveWikiFile: (path: string, content: string): Promise<void> =>
@@ -115,12 +108,10 @@ export const ipc = {
     invoke("open_in_vscode", { path }),
 };
 
-export function onWikiChanged(
-  cb: (payload: { path: string }) => void
+export function onWorkspaceEvent(
+  cb: (event: WorkspaceEvent) => void
 ): Promise<() => void> {
-  return listen<{ path: string }>("wiki-changed", (event) =>
-    cb(event.payload)
-  );
+  return listen<WorkspaceEvent>("workspace-event", (event) => cb(event.payload));
 }
 
 export function onBackendError(

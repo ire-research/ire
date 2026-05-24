@@ -7,8 +7,6 @@ import { Icon } from "../Icon";
 interface Props {
   experiments: ExperimentRow[];
   onOpen: (uuid: string, name: string) => void;
-  onDelete: (uuid: string) => void;
-  onRename: (uuid: string, newName: string) => void;
 }
 
 function getStatusPill(status: string): { text: string; textColor: string; borderColor: string; bgColor: string } {
@@ -26,7 +24,7 @@ function getStatusPill(status: string): { text: string; textColor: string; borde
   return { text: truncated, textColor: "text-on-surface-variant", borderColor: "border-on-surface-variant/30", bgColor: "bg-on-surface-variant/10" };
 }
 
-export function ExperimentsSection({ experiments, onOpen, onDelete, onRename }: Props) {
+export function ExperimentsSection({ experiments, onOpen }: Props) {
   const [deletingUuid, setDeletingUuid] = useState<string | null>(null);
   const [renamingUuid, setRenamingUuid] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -37,7 +35,6 @@ export function ExperimentsSection({ experiments, onOpen, onDelete, onRename }: 
     setDeletingUuid(uuid);
     try {
       await ipc.experimentDelete(uuid);
-      onDelete(uuid);
     } catch (err) {
       toastError("delete experiment", err);
     } finally {
@@ -59,7 +56,6 @@ export function ExperimentsSection({ experiments, onOpen, onDelete, onRename }: 
     }
     try {
       await ipc.experimentRename(uuid, trimmed);
-      onRename(uuid, trimmed);
     } catch (err) {
       toastError("rename experiment", err);
     } finally {

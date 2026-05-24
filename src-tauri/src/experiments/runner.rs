@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::cc::session::SessionManager;
 use crate::db::models as db;
+use crate::events;
 
 pub fn start_experiment(
     params: &serde_json::Value,
@@ -70,6 +71,9 @@ pub fn start_experiment(
         "experiment-status",
         serde_json::json!({ "uuid": uuid, "status": "running" }),
     );
+    if let Ok(Some(row)) = db::get_experiment(&ire_dir, &uuid) {
+        events::emit_experiment_changed(&app, events::EventSource::Mutation, &row);
+    }
     // Bridge event: lets the frontend link this UUID to the pending ToolStart card.
     let _ = app.emit(
         "experiment-starting",
@@ -173,6 +177,9 @@ fn monitor(mut child: Child, args: MonitorArgs) {
                         "exit_code": exit_code,
                     }),
                 );
+                if let Ok(Some(row)) = db::get_experiment(&ire_dir, &uuid) {
+                    events::emit_experiment_changed(&app, events::EventSource::Mutation, &row);
+                }
                 tracing::info!(uuid = %uuid, exit_code = exit_code, "experiment finished");
 
                 super::wake::fire_wakeup(super::wake::FireWakeupArgs {
@@ -197,6 +204,9 @@ fn monitor(mut child: Child, args: MonitorArgs) {
                     "experiment-status",
                     serde_json::json!({ "uuid": uuid, "status": "failed" }),
                 );
+                if let Ok(Some(row)) = db::get_experiment(&ire_dir, &uuid) {
+                    events::emit_experiment_changed(&app, events::EventSource::Mutation, &row);
+                }
                 break;
             }
         }

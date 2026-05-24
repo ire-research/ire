@@ -1,14 +1,22 @@
 import { useState } from "react";
+import { useWorkspaceData } from "../../state/workspaceData";
 import { Icon } from "../Icon";
 import { AddResourceModal } from "../AddResourceModal";
 
 interface Props {
-  resources: Array<{ resourceId: string; label: string; wikiPath: string }>;
   onOpen: (label: string, wikiPath: string) => void;
 }
 
-export function ResourcesSection({ resources, onOpen }: Props) {
+export function ResourcesSection({ onOpen }: Props) {
+  const resources = useWorkspaceData((s) => s.resources);
   const [modalOpen, setModalOpen] = useState(false);
+  const rail = resources
+    .filter((r) => r.wiki_path)
+    .map((r) => ({
+      resourceId: r.resource_id,
+      label: r.title ?? r.source_label,
+      wikiPath: r.wiki_path!,
+    }));
 
   return (
     <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
@@ -24,8 +32,8 @@ export function ResourcesSection({ resources, onOpen }: Props) {
         </button>
       </div>
       <div className="space-y-0.5">
-        {resources.length > 0 ? (
-          resources.map((resource) => (
+        {rail.length > 0 ? (
+          rail.map((resource) => (
             <button
               key={resource.resourceId}
               onClick={() => onOpen(resource.label, resource.wikiPath)}

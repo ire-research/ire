@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import type { PanelImperativeHandle } from "react-resizable-panels";
-import { ipc, onWikiChanged } from "../ipc";
+import { ipc } from "../ipc";
 import { useWorkspace } from "../state/workspace";
 import { useChat } from "../state/chat";
+import { useWorkspaceData, selectRunningCount } from "../state/workspaceData";
 import { useChatOptions } from "../state/chatOptions";
 import { toastError } from "../state/toasts";
-import type { IdeaItem, PulseContent, ResourceItem } from "../types";
 import { ChatPane } from "./chat/ChatPane";
 import { LeftRail } from "./left/LeftRail";
 import { RightRail } from "./right/RightRail";
@@ -48,47 +48,7 @@ export function Layout() {
     await ipc.openInVscode(workspacePath).catch((e: unknown) => toastError("open in VS Code", e));
   };
 
-  const [pulseObject, setPulseObject] = useState<PulseContent>({ research_question: "", this_week: "" });
-  const [notesContent, setNotesContent] = useState("");
-  const [ideas, setIdeas] = useState<IdeaItem[]>([]);
-  const [resources, setResources] = useState<ResourceItem[]>([]);
-  const [runningCount, setRunningCount] = useState(0);
-
-  // Load data on workspace ready
-  useEffect(() => {
-    if (phase.kind !== "ready") return;
-    Promise.all([
-      ipc.readPulse(),
-      ipc.readWikiFile("notes.md"),
-      ipc.readIdeas(),
-      ipc.listResources(),
-      ipc.experimentList(50),
-    ])
-      .then(([pulseData, notes, ideasData, resourcesData, exps]) => {
-        setPulseObject(pulseData);
-        setNotesContent(notes.content);
-        setIdeas(ideasData);
-        setResources(resourcesData);
-        setRunningCount(exps.filter((e) => e.status === "running").length);
-      })
-      .catch((e: unknown) => toastError("load workspace data", e));
-  }, [phase.kind]);
-
-  // Wiki-changed listener
-  useEffect(() => {
-    const unlisten = onWikiChanged(({ path }) => {
-      if (path === "pulse.json") {
-        ipc.readPulse().then(setPulseObject).catch((e) => toastError("load pulse", e));
-      } else if (path === "notes.md") {
-        ipc.readWikiFile("notes.md").then((f) => setNotesContent(f.content)).catch(() => {});
-      } else if (path === "ideas.json") {
-        ipc.readIdeas().then(setIdeas).catch(() => {});
-      } else if (path.startsWith("resources/")) {
-        ipc.listResources().then(setResources).catch((e) => toastError("load resources", e));
-      }
-    });
-    return () => { unlisten.then((fn) => fn()); };
-  }, []);
+  const runningCount = useWorkspaceData(selectRunningCount);
 
   // Debounced workspace state persistence
   const skipInitialSave = useRef(true);
@@ -117,24 +77,6 @@ export function Layout() {
     setPhase({ kind: "setup", status });
   };
 
-  const handleSaveNotes = async (content: string) => {
-    await ipc.saveNotes(content).catch((e) => toastError("save notes", e));
-  };
-
-  const handleSaveIdeas = async (updatedIdeas: IdeaItem[]) => {
-    try {
-      await ipc.saveIdeasJson(updatedIdeas);
-      setIdeas(updatedIdeas);
-    } catch (e) {
-      toastError("save ideas", e);
-    }
-  };
-
-  const railResources = resources.filter((r) => r.wiki_path).map((r) => ({
-    resourceId: r.resource_id,
-    label: r.title ?? r.source_label,
-    wikiPath: r.wiki_path!,
-  }));
   const workspacePath = phase.kind === "ready" ? phase.workspace.path : "";
   const storedBodyLayout = panelLayout.groups?.body;
   const bodyLayout =
@@ -318,7 +260,7 @@ export function Layout() {
           panelRef={leftPanelRef}
           onResize={syncLeftCollapsed}
         >
-          <LeftRail pulse={pulseObject} resources={railResources} />
+          <LeftRail />
         </Panel>
         <Separator id="body-left-center" className={leftCollapsed ? "hidden" : "drag-handle-col"} disabled={leftCollapsed} />
         <Panel id="center" className="h-full min-w-0" minSize="320px">
@@ -336,12 +278,7 @@ export function Layout() {
           panelRef={rightPanelRef}
           onResize={syncRightCollapsed}
         >
-          <RightRail
-            notes={notesContent}
-            ideas={ideas}
-            onSaveNotes={handleSaveNotes}
-            onSaveIdeas={handleSaveIdeas}
-          />
+          <RightRail />
         </Panel>
       </Group>
       {/* Bottom status bar */}

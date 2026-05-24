@@ -3,7 +3,8 @@ import { Layout } from "./components/Layout";
 import { SetupScreen } from "./components/setup/SetupScreen";
 import { ToastStack } from "./components/ToastStack";
 import { useWorkspace } from "./state/workspace";
-import { ipc, onBackendError } from "./ipc";
+import { useWorkspaceData } from "./state/workspaceData";
+import { ipc, onBackendError, onWorkspaceEvent } from "./ipc";
 import { useToasts } from "./state/toasts";
 
 export default function App() {
@@ -17,6 +18,29 @@ export default function App() {
     });
     return () => {
       unlisten.then((fn) => fn());
+    };
+  }, []);
+
+  // Reset slice on workspace close. The initial state for a newly-opened
+  // workspace arrives via the `workspace-event` channel (Rust emits a `hydrate`
+  // burst at the end of `open_workspace` / `init_workspace`), so there is no
+  // explicit hydrate IPC call from the frontend.
+  useEffect(() => {
+    if (phase.kind !== "ready") {
+      useWorkspaceData.getState().reset();
+    }
+  }, [phase.kind]);
+
+  // Single subscriber for workspace-event — dispatches every variant into the slice.
+  // The cancelled flag handles Strict Mode unmount before listen() resolves.
+  useEffect(() => {
+    let cancelled = false;
+    const p = onWorkspaceEvent((event) => useWorkspaceData.getState().apply(event));
+    let unlisten: (() => void) | null = null;
+    p.then((fn) => { if (cancelled) fn(); else unlisten = fn; });
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
     };
   }, []);
 

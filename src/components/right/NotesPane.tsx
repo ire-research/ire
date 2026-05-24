@@ -1,13 +1,12 @@
 import { useState, useRef, useEffect } from "react";
+import { ipc } from "../../ipc";
+import { toastError } from "../../state/toasts";
+import { useWorkspaceData } from "../../state/workspaceData";
 import { Icon } from "../Icon";
 import { MessageMarkdown } from "../chat/MessageMarkdown";
 
-interface Props {
-  content: string;
-  onSave: (content: string) => Promise<void>;
-}
-
-export function NotesPane({ content, onSave }: Props) {
+export function NotesPane() {
+  const content = useWorkspaceData((s) => s.notes);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(content);
   const [isSaving, setIsSaving] = useState(false);
@@ -31,7 +30,7 @@ export function NotesPane({ content, onSave }: Props) {
       return;
     }
     setIsSaving(true);
-    await onSave(next);
+    await ipc.saveNotes(next).catch((e) => toastError("save notes", e));
     setIsSaving(false);
     setIsEditing(false);
   };
