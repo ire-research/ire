@@ -698,7 +698,7 @@ The Tauri window opens in windowed mode at 1280 × 820 so the primary rails, cen
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-- The body uses `react-resizable-panels` group `body` with panels `left`, `center`, and `right`. Left/right default to 280px/320px, have no maximum width, and keep minimum widths of 160px / 180px. The center panel takes the remaining space and has a 320px minimum.
+- The body uses `react-resizable-panels` group `body` with panels `left`, `center`, and `right`. Left/right default to 280px/320px, have no maximum width, keep minimum widths of 160px / 180px, and are collapsible to `0px` through two top-navbar icon buttons (`sidebar_left`, `sidebar_right`). The matching body separator is disabled and hidden while a side rail is collapsed. The center panel takes the remaining space and has a 320px minimum.
 - The left rail is a vertical `react-resizable-panels` group `left` with panels `pulse`, `resources`, and `experiments`; row handles sit between Focus / Resources and Resources / Experiments.
 - The right rail is a vertical `react-resizable-panels` group `right` with panels `notes`, `ideas`, and `resource-input`; row handles sit between Notes / Ideas and Ideas / Add resources.
 - `ResourcesSection` and `ExperimentsSection` use the same outer pane padding as `NotesPane` and `IdeasPane`, and render compact inline SVG title icons. Empty lists show `no resources yet` and `no experiments yet`.
@@ -764,6 +764,10 @@ Typography uses bundled `geist` package font files (`Geist`, `Geist Mono`) refer
       "body":  { "left": 22, "center": 56, "right": 22 },
       "left":  { "pulse": 33.33, "resources": 33.33, "experiments": 33.34 },
       "right": { "notes": 27.5, "ideas": 27.5, "resource-input": 45 }
+    },
+    "collapsed": {
+      "left": false,
+      "right": false
     }
   },
   "last_opened": "2026-05-06T10:14:00Z",
@@ -771,7 +775,7 @@ Typography uses bundled `geist` package font files (`Geist`, `Geist Mono`) refer
 }
 ```
 
-Each entry under `panel_layout.groups.<group-id>` is the `Layout` map (`{ panel-id: percentage }`) that `react-resizable-panels` accepts as `defaultLayout` on `<Group>`. Unknown / missing groups fall back to per-`<Panel>` `defaultSize` props. Persisted via `save_workspace_state` (debounced 1 s on layout change). Hydrated by `read_workspace_state` from `SetupScreen.handlePick` immediately after `open_workspace`/`init_workspace`, before the workspace transitions to `phase = "ready"` so the panels mount with the correct sizes.
+Each entry under `panel_layout.groups.<group-id>` is the `Layout` map (`{ panel-id: percentage }`) that `react-resizable-panels` accepts as `defaultLayout` on `<Group>`. `panel_layout.collapsed.left/right` stores the independent top-navbar sidebar collapsed state; older layouts without this field infer it from `panel_layout.groups.body.left/right === 0`. Unknown / missing groups fall back to per-`<Panel>` `defaultSize` props. Persisted via `save_workspace_state` (debounced 1 s on layout or collapsed-state change). Hydrated by `read_workspace_state` from `SetupScreen.handlePick` immediately after `open_workspace`/`init_workspace`, before the workspace transitions to `phase = "ready"` so the panels mount with the correct sizes.
 
 `effort` stores the last-used thinking-budget level (`"low"` | `"medium"` | `"high"` | `"xhigh"` | `"max"`). Defaults to `"low"` on first open. Persisted by `Layout` (debounced 1 s on change) and applied to `useChatOptions` during workspace hydration in `SetupScreen`.
 
