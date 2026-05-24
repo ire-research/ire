@@ -16,7 +16,7 @@ import { TabBar } from "./TabBar";
 import { ResourcePreviewPane } from "./ResourcePreviewPane";
 import { ExperimentTabView } from "./ExperimentTabView";
 import { Icon } from "../Icon";
-import type { Tab } from "../../types";
+import type { AskAnswer, AskBlockState, Tab } from "../../types";
 
 export function ChatPane() {
   const { model, effort } = useChatOptions();
@@ -40,6 +40,7 @@ export function ChatPane() {
     clearMessages,
     addTool,
     markToolDone,
+    addAskQuestion,
     linkExperimentUuid,
     updateExperimentStatus,
     appendExperimentLog,
@@ -114,6 +115,10 @@ export function ChatPane() {
 
         case "ToolDone":
           markToolDone(tab_id, event.tool_id, event.output_preview, event.output_full);
+          break;
+
+        case "AskUserQuestion":
+          if (msgId) addAskQuestion(tab_id, msgId, event.tool_id, event.questions);
           break;
 
         case "Result":
@@ -204,6 +209,16 @@ export function ChatPane() {
     }
   };
 
+  const handleAskSubmit = (ask: AskBlockState, answers: AskAnswer[]) => {
+    const lines = ask.questions.map((q, i) => {
+      const a = answers[i];
+      const value = Array.isArray(a) ? (a.length ? a.join(", ") : "(no answer)") : (a || "(no answer)");
+      return `- **${q.header}**: ${value}`;
+    });
+    const text = `Answers to your questions:\n${lines.join("\n")}`;
+    void handleSend(text);
+  };
+
   const handleNewTab = () => {
     createTab();
   };
@@ -288,7 +303,7 @@ export function ChatPane() {
       <div className="flex-1 overflow-hidden relative">
         {/* Chat view */}
         <div className="absolute inset-0 overflow-y-auto px-4 md:px-8 lg:px-12 pt-4 pb-40 space-y-6">
-          <MessageList messages={activeTab.messages} />
+          <MessageList messages={activeTab.messages} onAskSubmit={handleAskSubmit} />
         </div>
         {/* Floating composer */}
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-full px-6 pointer-events-none" style={{ zIndex: 20 }}>

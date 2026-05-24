@@ -564,6 +564,7 @@ enum StreamEvent {
     ThinkingDelta { text: String },
     ToolStart { tool_id: String, tool_name: String, input_preview: Option<String>, input_full: Option<String> },
     ToolDone { tool_id: String, output_preview: Option<String>, output_full: Option<String> },
+    AskUserQuestion { tool_id: String, questions: Vec<AskQuestion> },
     Result { text: Option<String>, session_id: String },
     Error { message: String },
     Done,
@@ -571,6 +572,14 @@ enum StreamEvent {
 ```
 
 Deduplicate `Result.text` against streamed `TextDelta`s using an `emitted_text: bool` flag (blueprint §3).
+
+`AskUserQuestion` is emitted when CC's built-in `AskUserQuestion` tool fires. The parser
+intercepts that `tool_use` block, parses its `questions[]` payload
+(`{ header, question, multi_select, options: [{ label, description? }] }`), and tracks the
+tool id so the matching `tool_result` is suppressed (it would otherwise render as a generic
+ToolCard). The frontend renders an `AskQuestionCard` in the assistant bubble (see
+§13.2) and, on submit, sends the formatted answers as the next chat turn via `chat_send` —
+CC resumes the session and continues from there.
 
 ### 10.4 Session management
 
@@ -734,6 +743,7 @@ The Tauri window opens in windowed mode at 1280 × 820 so the primary rails, cen
 - Thinking blocks render in chronological position as collapsed-by-default accordions whose only collapsed label is `thinking...`. Clicking the label expands or collapses the full thinking content. Content is plain text (not markdown-parsed) since thinking traces are rarely well-formed markdown.
 - Tool blocks render in chronological position as compact cards (`ToolCard`, defined inline in `MessageList.tsx`). Clicking expands a Claude-Code-style I/O panel with labeled `IN` and `OUT` monospace fields when the tool input/output is available. `experiment.start` tool calls render as `ExperimentCard` instead (see below).
 - Experiment cards are special: collapsed by default; clicking the header toggles a log body. The header contains: a status dot (blinking amber while `starting`/`running`, solid green for `completed`, solid red for `failed`/`cancelled`); a `⚗ <tool_name>` label; a text status badge; optionally a `PID <n>` label while running; optionally an `exit <n>` label when failed; a chevron (▸/▾); and a **Cancel** button (visible only while `starting` or `running` and only when the UUID is known). Expanded body shows the tool input (IN) and the last 10 live log lines (OUT) or "No output yet." if none have arrived. The Cancel button calls `e.stopPropagation()` so it does not toggle the card.
+- **AskUserQuestion cards** (`AskQuestionCard`) render in chronological position when CC calls the built-in `AskUserQuestion` tool. The card is a wizard: one question per step, a fixed 380px stage so the surrounding chrome (header counter, prev/next arrows, progress dots) does not shift while the user navigates. Single-select picks auto-advance after 220 ms; multi-select and `Other` (which expands an inline text input) wait for an explicit Next. The last question's right-side button switches from `Next` (▸) to `Review`; the Review step lists every question with its current answer and an edit-pencil affordance — clicking a row opens an `EditModal` with that question pre-populated. Submit lives only on the Review step. On submit, the card formats answers as a `- **<header>**: <value>` markdown bullet list prefixed with `Answers to your questions:` and sends it through the normal `chat_send` path; CC resumes the session and continues from there. After submit the card locks into an "Answered" summary view (green check, `→ <answer>` per question). Step transitions use a 220 ms `cubic-bezier(.4,0,.2,1)` slide (outgoing panel slides left/right, incoming panel slides in from the opposite side).
 
 **Composer footer.** Below the textarea, a footer bar holds two dropdown selectors and the Send button. Both dropdowns share the same visual style (a small pill button that opens a menu above it):
 - The textarea starts at 52px high, grows with content, caps at 240px, then scrolls internally.
