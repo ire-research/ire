@@ -117,10 +117,10 @@ function findPendingExperimentMsgId(tabs: Tab[], tabId: string): string | null {
 
 export const MAIN_TAB: Tab = {
   id: MAIN_TAB_ID,
-  label: "Main",
+  label: "Chat",
   messages: [],
   isStreaming: false,
-  isPinned: true,
+  isPinned: false,
   kind: "chat",
 };
 
@@ -178,13 +178,14 @@ export const useChat = create<ChatStore>((set) => ({
   closeTab: (tabId) =>
     set((s) => {
       const tab = s.tabs.find((t) => t.id === tabId);
-      if (!tab || tab.isPinned) return s;
+      if (!tab) return s;
+      const remaining = s.tabs.filter((t) => t.id !== tabId);
       const newActiveTabId =
         s.activeTabId === tabId
-          ? (s.previousTabId ?? MAIN_TAB_ID)
+          ? (remaining.find((t) => t.id === s.previousTabId)?.id ?? remaining[0]?.id ?? "")
           : s.activeTabId;
       return {
-        tabs: s.tabs.filter((t) => t.id !== tabId),
+        tabs: remaining,
         activeTabId: newActiveTabId,
         previousTabId: null,
       };
@@ -439,4 +440,4 @@ export const useChat = create<ChatStore>((set) => ({
     })),
 }));
 
-export { MAIN_TAB_ID };
+

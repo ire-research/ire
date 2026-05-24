@@ -88,8 +88,7 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename }
                     <Icon name="edit_document" className="w-[12px] h-[12px]" />
                   </button>
                 )}
-                {!tab.isPinned && (
-                  <button
+                <button
                     className="opacity-0 group-hover:opacity-100 text-[10px] ml-1 text-on-surface-variant hover:text-on-surface"
                     onClick={(e) => {
                       e.stopPropagation();
@@ -99,7 +98,6 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename }
                   >
                     ×
                   </button>
-                )}
               </>
             )}
           </div>
