@@ -177,11 +177,28 @@ pub fn update_resource_status(ire_dir: &Path, sha256: &str, status: &str) -> Res
     Ok(())
 }
 
-pub fn get_resource_url(ire_dir: &Path, sha256: &str) -> Result<Option<String>> {
+/// Rows without a linked `wiki_path` — candidates for inline indexing when CC writes
+/// a `resources/*.md` file.
+pub fn list_unindexed_resources(ire_dir: &Path) -> Result<Vec<ResourceRow>> {
     let conn = open(ire_dir)?;
-    let mut stmt = conn.prepare("SELECT url FROM resources WHERE url_sha256 = ?1")?;
-    let mut rows = stmt.query(params![sha256])?;
-    Ok(rows.next()?.map(|r| r.get(0)).transpose()?)
+    let mut stmt = conn.prepare(
+        "SELECT url_sha256, url, source_type, source_label, title, status, content_type, wiki_path, fetched_at \
+         FROM resources WHERE wiki_path IS NULL",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok(ResourceRow {
+            url_sha256: r.get(0)?,
+            url: r.get(1)?,
+            source_type: r.get(2)?,
+            source_label: r.get(3)?,
+            title: r.get(4)?,
+            status: r.get(5)?,
+            content_type: r.get(6)?,
+            wiki_path: r.get(7)?,
+            fetched_at: r.get(8)?,
+        })
+    })?;
+    rows.map(|r| r.context("resource row")).collect()
 }
 
 /// Mark a resource as fully indexed with its wiki path and extracted title.

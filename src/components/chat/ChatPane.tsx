@@ -141,10 +141,8 @@ export function ChatPane() {
             if (currentTab.resourceStatus === "summarizing") {
               setResourceStatus(tab_id, "ready");
             } else if (currentTab.resourceStatus === "confirmed") {
-              // CC has written the wiki file; index it, then close the tab.
-              if (currentTab.resourceId) {
-                ipc.indexResource(currentTab.resourceId).catch((e) => toastError("index resource", e));
-              }
+              // CC wrote the wiki file; WikiStore::write linked the DB row and
+              // emitted `resource-changed` already, so just close the tab.
               closeTab(tab_id);
             }
           }

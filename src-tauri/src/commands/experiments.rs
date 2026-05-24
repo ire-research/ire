@@ -1,9 +1,10 @@
 use std::fs;
 
 use serde::Serialize;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::db::models::{self as db, ExperimentRow};
+use crate::events;
 use crate::workspace::state::ActiveWorkspace;
 
 #[derive(Debug, Serialize)]
@@ -46,6 +47,7 @@ pub fn experiment_logs(
 
 #[tauri::command]
 pub fn experiment_cancel(
+    app: AppHandle,
     active: State<'_, ActiveWorkspace>,
     uuid: String,
 ) -> Result<(), String> {
@@ -66,11 +68,15 @@ pub fn experiment_cancel(
     db::update_experiment_completed(&ire_dir, &uuid, "cancelled", None)
         .map_err(|e| e.to_string())?;
 
+    if let Ok(Some(row)) = db::get_experiment(&ire_dir, &uuid) {
+        events::emit_experiment_changed(&app, events::EventSource::Mutation, &row);
+    }
     Ok(())
 }
 
 #[tauri::command]
 pub fn experiment_delete(
+    app: AppHandle,
     active: State<'_, ActiveWorkspace>,
     uuid: String,
 ) -> Result<(), String> {
@@ -92,11 +98,13 @@ pub fn experiment_delete(
         }
     }
     db::delete_experiment(&ire_dir, &uuid).map_err(|e| e.to_string())?;
+    events::emit_experiment_deleted(&app, &uuid);
     Ok(())
 }
 
 #[tauri::command]
 pub fn experiment_rename(
+    app: AppHandle,
     active: State<'_, ActiveWorkspace>,
     uuid: String,
     name: String,
@@ -106,7 +114,11 @@ pub fn experiment_rename(
         guard.as_ref().ok_or("no workspace open")?.state.path.clone()
     };
     let ire_dir = workspace_path.join(".ire");
-    db::rename_experiment(&ire_dir, &uuid, &name).map_err(|e| e.to_string())
+    db::rename_experiment(&ire_dir, &uuid, &name).map_err(|e| e.to_string())?;
+    if let Ok(Some(row)) = db::get_experiment(&ire_dir, &uuid) {
+        events::emit_experiment_changed(&app, events::EventSource::Mutation, &row);
+    }
+    Ok(())
 }
 
 fn read_tail(path: &std::path::Path, max_bytes: u64) -> String {
