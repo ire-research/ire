@@ -170,6 +170,21 @@ export interface PulseContent {
   this_week: string;
 }
 
+/** Why a workspace-event fired. `hydrate` = initial burst on workspace open;
+ *  `mutation` = a live change (CC write, command, etc.). Side-effect listeners
+ *  (panel-flash animations, toasts) typically filter to `mutation` only. */
+export type WorkspaceEventSource = "hydrate" | "mutation";
+
+/** Payload for the "workspace-event" Tauri event. */
+export type WorkspaceEvent =
+  | { kind: "pulse-changed"; source: WorkspaceEventSource; research_question: string; this_week: string }
+  | { kind: "notes-changed"; source: WorkspaceEventSource; content: string }
+  | { kind: "ideas-changed"; source: WorkspaceEventSource; ideas: IdeaItem[] }
+  | { kind: "resource-changed"; source: WorkspaceEventSource; resource: ResourceItem }
+  | { kind: "resource-deleted"; source: WorkspaceEventSource; resource_id: string }
+  | { kind: "experiment-changed"; source: WorkspaceEventSource; experiment: ExperimentRow }
+  | { kind: "experiment-deleted"; source: WorkspaceEventSource; uuid: string };
+
 export interface SystemStatus {
   workspace_path: string;
   git_branch: string;

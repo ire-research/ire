@@ -260,7 +260,7 @@ All wiki mutations go through `WikiStore` (Rust) which holds the in-process `tok
 3. `sync_all()` the temp file.
 4. `fs::rename(tmp, final)` — atomic on local FS.
 5. Re-derive `_index.md` from a directory walk (cheap; <1k files in MVP) and atomic-rename it.
-6. Emit `wiki-changed { path }` event.
+6. Dispatch a typed `workspace-event` variant on the `workspace-event` channel, chosen by the path (see [§14.3](#143-workspace-event)). For `resources/*.md`, also link the DB row inline and emit `resource-changed` with the linked row.
 7. Release mutex.
 
 No CAS, no advisory file lock, no WAL — single-instance is enforced by `.lock` (see [§15](#15-concurrency--data-safety)).
@@ -282,9 +282,9 @@ The one-line summary is sourced from frontmatter `summary:` if present, else the
 
 IRE never creates git commits automatically. The application may initialize a git repository for a new workspace, write `.gitignore`, and write files under `.ire/`, but deciding when to stage and commit remains entirely with the user.
 
-`WikiStore::write` and `WikiStore::rename` atomically update the target wiki path, regenerate `_index.md`, and emit `wiki-changed`. They do not run `git add` or `git commit`, regardless of path. This applies equally to `pulse.json`, `long-term.md`, `short-term/**`, `_index.md`, `notes.md`, `ideas.json`, `resources/**`, and `experiments/**`.
+`WikiStore::write` and `WikiStore::rename` atomically update the target wiki path, regenerate `_index.md`, and dispatch a typed `workspace-event` variant (see [§14.3](#143-workspace-event)). They do not run `git add` or `git commit`, regardless of path. This applies equally to `pulse.json`, `long-term.md`, `short-term/**`, `_index.md`, `notes.md`, `ideas.json`, `resources/**`, and `experiments/**`.
 
-Resource approval follows the same rule: **Confirm** asks CC to write `resources/<slug>.md` via `wiki.write`; `index_resource` then records the DB row (`status=summarized`, `wiki_path`, `title`) and emits `wiki-changed`. The resulting wiki and index changes remain uncommitted until the user commits them.
+Resource approval follows the same rule: **Confirm** asks CC to write `resources/<slug>.md` via `wiki.write`. `WikiStore::write` then parses the new file's frontmatter `sources:` array, looks up each URL in the DB, updates the matching row (`status=summarized`, `wiki_path`, `title`), and emits a `workspace-event resource-changed { resource }` for each linked row — all in the same call, before `wiki.write` returns. No second-pass indexing step exists. The resulting wiki and index changes remain uncommitted until the user commits them.
 
 ---
 
@@ -329,7 +329,7 @@ User edits the notes pane (raw text)
   → blur or Ctrl+Enter after content changed
   → save_notes(content) Tauri command
     → Rust writes content to .ire/wiki/notes.md (atomic)
-  → wiki-changed event causes the notes pane to re-render.
+  → `workspace-event notes-changed { content }` is emitted; the workspace-data slice applies it and the notes pane re-renders.
 ```
 
 No CC turn is triggered. CC reads `notes.md` only if the user explicitly requests it, or if the context warrants it; it is never injected into the system prompt by default.
@@ -602,10 +602,10 @@ The MCP server is a **thin RPC bridge** to the Rust backend over a Unix domain s
 | Tool | Description |
 |---|---|
 | `wiki.read({ path })` | Read any wiki markdown or JSON file. Returns content + frontmatter for markdown. |
-| `wiki.write({ path, content, summary? })` | Atomic write; updates `_index.md`; emits `wiki-changed`. Does not commit. |
+| `wiki.write({ path, content, summary? })` | Atomic write; updates `_index.md`; dispatches a typed `workspace-event` variant (and for `resources/*.md`, links the DB row + emits `resource-changed`). Does not commit. |
 | `wiki.append({ path, content })` | Append content to a wiki file. Same persistence semantics as `wiki.write`. |
 | `wiki.list({ glob? })` | List wiki paths; defaults to all. |
-| `wiki.rename({ from, to })` | Atomic rename + index update; emits `wiki-changed`. Does not commit. |
+| `wiki.rename({ from, to })` | Atomic rename + index update; dispatches the same `workspace-event` variant the path would emit on write. Does not commit. |
 | `memory.write_long_term({ section, content })` | Append to `long-term.md` under section. Does not commit. |
 | `memory.write_short_term({ content })` | Append to today's `short-term/YYYY-MM-DD.md`. Does not commit. |
 | `pulse.update({ research_question?, this_week? })` | Patch `pulse.json`. Does not commit. |
@@ -742,7 +742,7 @@ Both values are passed as `options: { model, effort }` on every `chat_send` invo
 
 ### 13.4 Resource list
 
-The Resources list shows only confirmed (indexed) resources — those where the user clicked Confirm, the wiki file was written, and `index_resource` recorded a non-null `wiki_path`. Each entry shows the extracted title (frontmatter `title:` → first `#` heading → filename stem). No status label is shown. Resources in progress (being fetched or summarised) do not appear in the list; they are visible only in the open resource chat tab.
+The Resources list shows only confirmed (indexed) resources — those where the user clicked Confirm, CC wrote the wiki file via `wiki.write`, and `WikiStore::write` linked the matching DB row (`status=summarized`, non-null `wiki_path`) inline as part of that same write. Each entry shows the extracted title (frontmatter `title:` → first `#` heading → filename stem). No status label is shown. Resources in progress (being fetched or summarised) do not appear in the list; they are visible only in the open resource chat tab.
 
 Clicking a resource entry (only enabled when `wiki_path` is non-null) opens a **Preview tab** in the central column. The tab fetches the wiki file content via `read_wiki_file` and renders it in a `ResourcePreviewPane` with edit/preview toggle and a Submit button. Submit calls `save_wiki_file` to persist edits; it does not commit. Clicking the same resource while its Preview tab is already open re-focuses that tab instead of opening a duplicate.
 
@@ -829,8 +829,7 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 | `submit_resource` | `{ url }` | `resource_id: string` |
 | `submit_local_resource` | `{ path }` | `resource_id: string` |
 | `submit_resources` | `{ sources: ({ kind: "url", url } \| { kind: "local_file", path })[] }` | `resource_id: string` |
-| `index_resource` | `{ resource_id }` | `{}` (records `wiki_path` + title and emits `wiki-changed`) |
-| `discard_resource` | `{ resource_id }` | `{}` (deletes cache file, marks DB row `rejected`) |
+| `discard_resource` | `{ resource_id }` | `{}` (deletes cache file, marks DB row `rejected`, emits `workspace-event resource-deleted`) |
 | `list_resources` | — | `ResourceItem[]` (only `summarized` entries) |
 | `get_resource_confirm_prompt` | — | `string` (the second-turn confirm prompt loaded from `assets/prompts/`) |
 | `chat_send` | `{ tab_id, message, options: { model: string, effort: EffortLevel } }` | `{}` (events follow) |
@@ -855,12 +854,39 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 | `tab-created` | `{ tab_id: string, label: string, kind: "chat"\|"resource", resource_id?: string }` (preview tabs are created client-side only) |
 | `chat-cancelled` | `{ tab_id: string }` |
 | `experiment-starting` | `{ tab_id: string, uuid: string, pid?: number }` (fired when the detached process has been spawned; links the pending experiment card in `tab_id` to its assigned UUID and PID) |
-| `experiment-status` | `{ uuid, status, exit_code? }` |
+| `experiment-status` | `{ uuid, status, exit_code? }` (per-tab tool-card update; see also `workspace-event experiment-changed` for the panel) |
 | `experiment-log-line` | `{ uuid, stream: "stdout"\|"stderr", line }` |
-| `wiki-changed` | `{ path }` |
-| `pulse-changed` | `{ question, blocker, focus }` |
+| `workspace-event` | Tagged union — see [§14.3](#143-workspace-event) |
 | `setup-needed` | `{ reason }` |
 | `error` | `{ scope, message }` |
+
+### 14.3 workspace-event
+
+A single typed channel carrying workspace-level state changes for the side panels. Every payload carries a `kind` discriminator and a `source: "hydrate" | "mutation"` field. The `source` lets side-effect listeners (panel-flash animations, toasts, sound) distinguish the initial state burst on workspace open from live mutations; the slice reducer treats both identically.
+
+| `kind` | Payload (excl. `source`) | Emitted from |
+|---|---|---|
+| `pulse-changed` | `{ research_question: string, this_week: string }` | `WikiStore::write` on `pulse/RESEARCH-QUESTION.md` or `pulse/THIS-WEEK.md`; initial-state burst (§14.4) |
+| `notes-changed` | `{ content: string }` | `WikiStore::write` on `notes.md`; initial-state burst (§14.4) |
+| `ideas-changed` | `{ ideas: IdeaItem[] }` | `WikiStore::write` on `ideas.json`; initial-state burst (§14.4) |
+| `resource-changed` | `{ resource: ResourceItem }` | `WikiStore::write` on `resources/*.md`, after inline DB linking; initial-state burst (§14.4) |
+| `resource-deleted` | `{ resource_id: string }` | `discard_resource` command |
+| `experiment-changed` | `{ experiment: ExperimentRow }` | `experiments/runner.rs` on state transitions; `experiment_cancel` / `experiment_rename` commands; initial-state burst (§14.4) |
+| `experiment-deleted` | `{ uuid: string }` | `experiment_delete` command |
+
+The frontend has one subscriber (in `App.tsx`) that applies every variant to the `workspaceData` Zustand slice. Panels read from selectors on the slice. There is no per-panel listener, no path-string filtering, and no polling.
+
+### 14.4 Initial-state burst on workspace open
+
+Side-panel state arrives through the same channel as live mutations. At the end of `attach()` in `commands/workspace.rs` (called by both `open_workspace` and `init_workspace`), `emit_initial_state(app, workspace_root)` fires the initial burst:
+
+1. Read `pulse/RESEARCH-QUESTION.md` and `pulse/THIS-WEEK.md` → one `pulse-changed` event.
+2. Read `notes.md` → one `notes-changed` event.
+3. Read and parse `ideas.json` → one `ideas-changed` event (skipped silently if the JSON is not a parseable array — only this variant drops, the rest still fire).
+4. `models::list_resources(ire_dir)` → one `resource-changed` per row.
+5. `models::list_experiments(ire_dir, 50)` → one `experiment-changed` per row.
+
+Every event in the burst carries `source: "hydrate"`. Live mutations later carry `source: "mutation"`. Replacing a per-IPC `hydrate()` Promise.all with the burst gives three properties: (a) single code path for filling the slice (frontend reducer is symmetric); (b) per-variant resilience (a malformed `ideas.json` doesn't blank pulse/notes/resources/experiments); (c) animation listeners can filter to `source === "mutation"` to avoid flashing every panel on workspace open.
 
 ---
 
@@ -942,12 +968,13 @@ ire/
 │       ├── main.rs
 │       ├── lib.rs                      # tauri::Builder, .manage, command registration
 │       ├── user_config.rs              # UserConfig struct, read/write, push_recent
+│       ├── events.rs                   # workspace-event emit helpers + EventSource (hydrate vs mutation)
 │       ├── commands/
 │       │   ├── mod.rs
-│       │   ├── workspace.rs            # setup_status, open/init/close_workspace, workspace state, user config
+│       │   ├── workspace.rs            # setup_status, open/init/close_workspace, workspace state, user config, emit_initial_state burst
 │       │   ├── wiki.rs                 # read/save wiki, notes, pulse, ideas
 │       │   ├── chat.rs                 # chat_send, chat_cancel, chat_reset_session
-│       │   ├── resources.rs            # submit/index/discard/list_resources, get_resource_confirm_prompt
+│       │   ├── resources.rs            # submit/discard/list_resources, get_resource_confirm_prompt
 │       │   └── system.rs               # get_system_status
 │       ├── workspace/
 │       │   ├── mod.rs
@@ -957,7 +984,7 @@ ire/
 │       │   └── persisted.rs            # PersistedWorkspace (workspace.json schema)
 │       ├── wiki/
 │       │   ├── mod.rs
-│       │   ├── store.rs                # atomic write, index regeneration, wiki-changed events
+│       │   ├── store.rs                # atomic write, index regeneration, workspace-event dispatch (incl. inline resource indexing)
 │       │   ├── index.rs                # _index.md regenerator
 │       │   └── frontmatter.rs
 │       ├── resources/
@@ -999,13 +1026,13 @@ Each phase ends with a demoable milestone.
 
 **Phase 1 — Workspace lifecycle.** Implement setup screen, binary discovery, `init_workspace`, `open_workspace`, `.lock`, `close_workspace`. Scaffold `.ire/` with seed wiki. *Milestone:* user can pick or init a workspace; `.ire/` materialises; lock works across restarts. ✅
 
-**Phase 2 — Wiki store + memory tools (no CC yet).** `WikiStore` with atomic writes, `_index.md` regeneration, `log.md` append. SQLite migrations. Frontend reads `pulse.json`, `notes.md`, and `ideas.json`. *Milestone:* user can manually edit notes and see them persisted; `wiki-changed` events propagate. ✅
+**Phase 2 — Wiki store + memory tools (no CC yet).** `WikiStore` with atomic writes, `_index.md` regeneration, `log.md` append. SQLite migrations. Frontend reads `pulse.json`, `notes.md`, and `ideas.json`. *Milestone:* user can manually edit notes and see them persisted; `workspace-event` variants propagate from `WikiStore::write` to the panels. ✅
 
 **Phase 3 — CC subprocess layer.** Binary discovery + spawn + NDJSON parser + session management. A debug "Send" button next to the chat pane that sends a raw message and renders streaming text only (no tool cards yet). No MCP yet. *Milestone:* user can chat with CC inside the central pane, multi-turn via `--resume`. ✅
 
-**Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. CC config wired up via `--mcp-config`. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` handles atomic writes, index regeneration, `wiki-changed` events, and renames without creating git commits. System prompt composed from wiki context files on every CC turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and CC actually does it. ✅
+**Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. CC config wired up via `--mcp-config`. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` handles atomic writes, index regeneration, typed `workspace-event` dispatch, and renames without creating git commits. System prompt composed from wiki context files on every CC turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and CC actually does it. ✅
 
-**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML/local-file extractors. `submit_resources` accepts an ordered list of URL and local-file sources, extracts all text all-or-nothing, writes one cache file for a single source or `.ire/cache/<batch_sha>/source-NNN.txt` for multiple sources, inserts one DB row, emits `tab-created`, and kicks one CC summarisation turn. The legacy `submit_resource` and `submit_local_resource` commands remain available for single-source callers. Confirm sends a second CC turn that writes `resources/<slug>.md` via `wiki.write`; when Done fires, `index_resource` scans `wiki/resources/` for the file whose frontmatter `sources:` array contains every stored source ref (schema-aligned URL or `file:<sha256>:<filename>`), extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), and emits `wiki-changed` to refresh the pane. Discard calls `discard_resource` (deletes cache, marks `rejected`). Notes and ideas write directly to disk without committing. The resources list shows only `summarized` resources with their title and non-null `wiki_path`; no status label is shown. *Milestone:* ingest one or more supported sources → one resource summary appears in the right pane. ✅
+**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML/local-file extractors. `submit_resources` accepts an ordered list of URL and local-file sources, extracts all text all-or-nothing, writes one cache file for a single source or `.ire/cache/<batch_sha>/source-NNN.txt` for multiple sources, inserts one DB row (with `url` holding a single source ref or a JSON-encoded array of source refs for batches), emits `tab-created`, and kicks one CC summarisation turn. The legacy `submit_resource` and `submit_local_resource` commands remain available for single-source callers. Confirm sends a second CC turn that writes `resources/<slug>.md` via `wiki.write`; `WikiStore::write` parses the new file's frontmatter `sources:` array, lists unindexed DB rows, links any row whose stored source refs (schema-aligned URL or `file:<sha256>:<filename>`) are all present in the file's `sources:` array, extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), and emits `workspace-event resource-changed { resource }` for each linked row — all before `wiki.write` returns, so the panel updates the moment the file is written. Discard calls `discard_resource` (deletes cache, marks `rejected`, emits `resource-deleted`). Notes and ideas write directly to disk without committing. The resources list shows only `summarized` resources with their title and non-null `wiki_path`; no status label is shown. *Milestone:* ingest one or more supported sources → one resource summary appears in the right pane. ✅
 
 **Phase 6 — Experiments.** `experiment.start`, detached subprocess, monitor, wake-up turn composition. Experiment cards in chat with live log tail. *Milestone:* CC can run a Python script ablation, tell the user "I'll be back", and resume with results when the script exits. ✅
 

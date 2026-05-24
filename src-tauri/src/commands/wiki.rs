@@ -73,12 +73,6 @@ pub struct IdeaItem {
 }
 
 #[tauri::command]
-pub fn read_pulse(active: State<'_, ActiveWorkspace>) -> Result<PulseContent, String> {
-    let store = wiki_store(&active)?;
-    read_pulse_content(&store).map_err(|e| e.to_string())
-}
-
-#[tauri::command]
 pub fn save_pulse_field(
     field: String,
     content: String,
@@ -125,17 +119,6 @@ pub(crate) fn patch_pulse_content(
         pulse.this_week = this_week.to_string();
     }
     pulse
-}
-
-#[tauri::command]
-pub fn read_ideas(active: State<'_, ActiveWorkspace>) -> Result<Vec<IdeaItem>, String> {
-    let store = wiki_store(&active)?;
-    let path = store.wiki_root.join("ideas.json");
-    if !path.exists() {
-        return Ok(vec![]);
-    }
-    let raw = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&raw).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
