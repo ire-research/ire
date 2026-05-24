@@ -88,3 +88,10 @@ Do not use `npm run tauri dev` as routine verification. It starts an interactive
 **Be aware of possible multi-agent collaboration in the codebase**
 
 Multiple agents may be working simultaneously. If you see errors in files you did NOT edit, do not try to fix them. Wait 30 seconds and retry - the other agent is likely mid-edit.
+
+### 8. Git Hygiene
+
+**Do not stage, track, or commit work unless the user explicitly asks.**
+
+- Do not run `git add`, stage untracked files, or create commits unless explicitly instructed by the user.
+- Never add `Co-authored-by` trailers or otherwise mark commits as co-authored.
