@@ -32,7 +32,16 @@ const paths: Record<string, JSX.Element> = {
       <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
     </>
   ),
+  chevron_left: <path d="M15 18l-6-6 6-6" />,
   chevron_right: <path d="M9 18l6-6-6-6" />,
+  check: <path d="M20 6L9 17l-5-5" />,
+  help_outline: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+      <path d="M12 17h.01" />
+    </>
+  ),
   close: (
     <>
       <path d="M6 6l12 12" />

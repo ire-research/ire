@@ -2,6 +2,21 @@ use serde::Serialize;
 use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AskQuestionOption {
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct AskQuestion {
+    pub header: String,
+    pub question: String,
+    pub multi_select: bool,
+    pub options: Vec<AskQuestionOption>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum StreamEvent {
     Init { session_id: String },
@@ -9,6 +24,7 @@ pub enum StreamEvent {
     ThinkingDelta { text: String },
     ToolStart { tool_id: String, tool_name: String, input_preview: Option<String>, input_full: Option<String> },
     ToolDone { tool_id: String, output_preview: Option<String>, output_full: Option<String> },
+    AskUserQuestion { tool_id: String, questions: Vec<AskQuestion> },
     Result { text: Option<String>, session_id: String },
     Error { message: String },
     Done,
@@ -21,6 +37,7 @@ pub struct StreamState {
     emitted_text_chars_by_block: Vec<usize>,
     emitted_thinking_chars_by_block: Vec<usize>,
     emitted_tool_ids: Vec<String>,
+    ask_tool_ids: Vec<String>,
 }
 
 pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, emit: &mut F) {
@@ -33,7 +50,7 @@ pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, em
         "assistant" => dispatch_assistant(json, state, emit),
         "tool_result" => {
             let id = json["tool_use_id"].as_str().unwrap_or("").to_string();
-            if !id.is_empty() {
+            if !id.is_empty() && !state.ask_tool_ids.contains(&id) {
                 let (output_preview, output_full) = extract_tool_output(json);
                 emit(StreamEvent::ToolDone { tool_id: id, output_preview, output_full });
             }
@@ -94,6 +111,15 @@ fn dispatch_assistant<F: FnMut(StreamEvent)>(
                 if !id.is_empty() && !state.emitted_tool_ids.contains(&id) {
                     let name = block["name"].as_str().unwrap_or("").to_string();
                     state.emitted_tool_ids.push(id.clone());
+
+                    if is_ask_user_question(&name) {
+                        if let Some(questions) = parse_ask_questions(&block["input"]) {
+                            state.ask_tool_ids.push(id.clone());
+                            emit(StreamEvent::AskUserQuestion { tool_id: id, questions });
+                            continue;
+                        }
+                    }
+
                     let input_preview = extract_input_preview(&block["input"]);
                     let input_full = extract_input_full(&block["input"]);
                     emit(StreamEvent::ToolStart { tool_id: id, tool_name: name, input_preview, input_full });
@@ -169,6 +195,34 @@ fn extract_tool_output(json: &Value) -> (Option<String>, Option<String>) {
     (Some(output_preview), Some(output_full))
 }
 
+fn is_ask_user_question(name: &str) -> bool {
+    let bare = name.rsplit("__").next().unwrap_or(name);
+    bare == "AskUserQuestion"
+}
+
+fn parse_ask_questions(input: &Value) -> Option<Vec<AskQuestion>> {
+    let arr = input.get("questions")?.as_array()?;
+    let mut out = Vec::with_capacity(arr.len());
+    for q in arr {
+        let header = q.get("header")?.as_str()?.to_string();
+        let question = q.get("question")?.as_str()?.to_string();
+        let multi_select = q.get("multiSelect").and_then(|v| v.as_bool()).unwrap_or(false);
+        let options = q.get("options")?.as_array()?
+            .iter()
+            .filter_map(|o| {
+                let label = o.get("label")?.as_str()?.to_string();
+                let description = o.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+                Some(AskQuestionOption { label, description })
+            })
+            .collect::<Vec<_>>();
+        if options.is_empty() {
+            continue;
+        }
+        out.push(AskQuestion { header, question, multi_select, options });
+    }
+    if out.is_empty() { None } else { Some(out) }
+}
+
 fn trunc_chars(s: &str, max: usize) -> String {
     let count = s.chars().count();
     if count <= max {
@@ -231,6 +285,66 @@ mod tests {
             &mut state,
         );
         assert_eq!(third, vec![StreamEvent::TextDelta { text: "B".into() }]);
+    }
+
+    #[test]
+    fn emits_ask_user_question_for_builtin_tool() {
+        let mut state = StreamState::default();
+        let events = collect_assistant_events(
+            json!([
+                {
+                    "type": "tool_use",
+                    "id": "tool-ask-1",
+                    "name": "AskUserQuestion",
+                    "input": {
+                        "questions": [
+                            {
+                                "header": "Lib",
+                                "question": "Which date library?",
+                                "multiSelect": false,
+                                "options": [
+                                    { "label": "date-fns", "description": "Tree-shakable" },
+                                    { "label": "Day.js" }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]),
+            &mut state,
+        );
+
+        assert_eq!(
+            events,
+            vec![StreamEvent::AskUserQuestion {
+                tool_id: "tool-ask-1".into(),
+                questions: vec![AskQuestion {
+                    header: "Lib".into(),
+                    question: "Which date library?".into(),
+                    multi_select: false,
+                    options: vec![
+                        AskQuestionOption { label: "date-fns".into(), description: Some("Tree-shakable".into()) },
+                        AskQuestionOption { label: "Day.js".into(), description: None },
+                    ],
+                }],
+            }]
+        );
+        assert!(state.ask_tool_ids.contains(&"tool-ask-1".to_string()));
+    }
+
+    #[test]
+    fn suppresses_tool_result_for_ask_user_question() {
+        let mut state = StreamState::default();
+        state.ask_tool_ids.push("tool-ask-1".into());
+
+        let mut events = Vec::new();
+        let json = json!({
+            "type": "tool_result",
+            "tool_use_id": "tool-ask-1",
+            "content": "anything",
+        });
+        dispatch(&json, &mut state, &mut |event| events.push(event));
+        assert!(events.is_empty(), "ask tool_result should be suppressed");
     }
 
     #[test]

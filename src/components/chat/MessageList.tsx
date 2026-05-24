@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { AssistantMessage, ChatMessage, ToolCallState } from "../../types";
+import type { AskAnswer, AskBlockState, AssistantMessage, ChatMessage, ToolCallState } from "../../types";
+import { AskQuestionCard } from "./AskQuestionCard";
 import { ExperimentCard } from "./ExperimentCard";
 import { MessageMarkdown } from "./MessageMarkdown";
 import { Icon } from "../Icon";
@@ -21,9 +22,10 @@ function isExperimentStart(toolName: string): boolean {
 
 interface MessageListProps {
   messages: ChatMessage[];
+  onAskSubmit?: (ask: AskBlockState, answers: AskAnswer[]) => void;
 }
 
-export function MessageList({ messages }: MessageListProps) {
+export function MessageList({ messages, onAskSubmit }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const lastMsg = messages[messages.length - 1];
@@ -46,7 +48,7 @@ export function MessageList({ messages }: MessageListProps) {
             </div>
           </div>
         ) : (
-          <AssistantBubble key={m.id} msg={m as AssistantMessage} />
+          <AssistantBubble key={m.id} msg={m as AssistantMessage} onAskSubmit={onAskSubmit} />
         )
       )}
       <div ref={bottomRef} />
@@ -61,7 +63,7 @@ function formatElapsed(s: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}.${tenths}`;
 }
 
-function AssistantBubble({ msg }: { msg: AssistantMessage }) {
+function AssistantBubble({ msg, onAskSubmit }: { msg: AssistantMessage; onAskSubmit?: (ask: AskBlockState, answers: AskAnswer[]) => void }) {
   // Timer: starts at mount (when the assistant turn begins), freezes when streaming stops.
   const startRef = useRef(Date.now());
   const [elapsed, setElapsed] = useState(0);
@@ -92,6 +94,16 @@ function AssistantBubble({ msg }: { msg: AssistantMessage }) {
             <ExperimentCard key={block.id} tool={block.tool} />
           ) : (
             <ToolCard key={block.id} tool={block.tool} />
+          );
+        }
+
+        if (block.kind === "ask") {
+          return (
+            <AskQuestionCard
+              key={block.id}
+              ask={block.ask}
+              onSubmit={(answers) => onAskSubmit?.(block.ask, answers)}
+            />
           );
         }
 
@@ -172,6 +184,9 @@ function messageScrollKey(message: ChatMessage | undefined): string {
           block.tool.output_full?.length ?? 0,
           block.tool.logLines?.length ?? 0,
         ].join(":");
+      }
+      if (block.kind === "ask") {
+        return `ask:${block.ask.tool_id}:${block.ask.submitted}`;
       }
       return `${block.kind}:${block.text.length}`;
     })

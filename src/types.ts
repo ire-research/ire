@@ -28,10 +28,36 @@ export interface ToolCallState {
   logLines?: string[];
 }
 
+export interface AskQuestionOption {
+  label: string;
+  description?: string;
+}
+
+export interface AskQuestion {
+  header: string;
+  question: string;
+  multi_select: boolean;
+  options: AskQuestionOption[];
+}
+
+/** A single answer per question. For multi-select it's an array of labels; for
+ *  single-select it's a single label. "Other: <text>" denotes a custom value. */
+export type AskAnswer = string | string[];
+
+export interface AskBlockState {
+  tool_id: string;
+  questions: AskQuestion[];
+  /** Map question index → answer. Undefined entries mean unanswered. */
+  answers: (AskAnswer | undefined)[];
+  /** True once the user has submitted; the card locks. */
+  submitted: boolean;
+}
+
 export type AssistantContentBlock =
   | { id: string; kind: "text"; text: string }
   | { id: string; kind: "thinking"; text: string }
-  | { id: string; kind: "tool"; tool: ToolCallState };
+  | { id: string; kind: "tool"; tool: ToolCallState }
+  | { id: string; kind: "ask"; ask: AskBlockState };
 
 export interface AssistantMessage {
   id: string;
@@ -49,6 +75,7 @@ export type StreamEvent =
   | { kind: "ThinkingDelta"; text: string }
   | { kind: "ToolStart"; tool_id: string; tool_name: string; input_preview: string | null; input_full: string | null }
   | { kind: "ToolDone"; tool_id: string; output_preview: string | null; output_full: string | null }
+  | { kind: "AskUserQuestion"; tool_id: string; questions: AskQuestion[] }
   | { kind: "Result"; text: string | null; session_id: string }
   | { kind: "Error"; message: string }
   | { kind: "Done" };
