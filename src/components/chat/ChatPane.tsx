@@ -262,14 +262,14 @@ export function ChatPane() {
         <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTab} onClose={handleCloseTab} onNew={handleNewTab} onRename={renameTab} />
         <div className="flex-1 flex flex-col items-center justify-center gap-7 text-center px-10">
           <div className="flex flex-col items-center gap-3">
-            <h1 className="text-xl font-semibold text-on-surface tracking-tight">Integrated Research Environment (IRE)</h1>
+            <h1 className="text-xl font-semibold text-on-surface-variant tracking-tight">Integrated Research Environment (IRE)</h1>
             <p className="text-[13px] text-on-surface-variant max-w-sm leading-relaxed">
               Start a new chat to begin your research session, or open an experiment to review past runs.
             </p>
           </div>
           <button
             id="ire-new-chat-btn"
-            className="inline-flex items-center gap-2 bg-on-surface text-background text-[13px] font-medium px-4 py-2 rounded-lg hover:opacity-85 transition-opacity"
+            className="inline-flex items-center gap-2 bg-on-surface-variant text-background text-[13px] font-medium px-4 py-2 rounded-lg hover:opacity-85 transition-opacity"
             onClick={handleNewTab}
           >
             <Icon name="chat" className="w-[14px] h-[14px]" />
