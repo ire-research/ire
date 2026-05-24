@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Group, Panel, Separator } from "react-resizable-panels";
+import type { PanelImperativeHandle } from "react-resizable-panels";
 import { ipc, onWikiChanged } from "../ipc";
 import { useWorkspace } from "../state/workspace";
 import { useChatOptions } from "../state/chatOptions";
@@ -17,7 +18,10 @@ export function Layout() {
   const toPersisted = useWorkspace((s) => s.toPersisted);
   const panelLayout = useWorkspace((s) => s.panelLayout);
   const setGroupLayout = useWorkspace((s) => s.setGroupLayout);
+  const setPanelCollapsed = useWorkspace((s) => s.setPanelCollapsed);
   const effort = useChatOptions((s) => s.effort);
+  const leftPanelRef = useRef<PanelImperativeHandle>(null);
+  const rightPanelRef = useRef<PanelImperativeHandle>(null);
 
   const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
   const wsDropdownRef = useRef<HTMLDivElement>(null);
@@ -138,6 +142,61 @@ export function Layout() {
     Number.isFinite(storedBodyLayout.right)
       ? storedBodyLayout
       : undefined;
+  const leftCollapsed = panelLayout.collapsed?.left ?? false;
+  const rightCollapsed = panelLayout.collapsed?.right ?? false;
+
+  useEffect(() => {
+    const panel = leftPanelRef.current;
+    if (!panel) return;
+    if (leftCollapsed && !panel.isCollapsed()) {
+      panel.collapse();
+    } else if (!leftCollapsed && panel.isCollapsed()) {
+      panel.expand();
+    }
+  }, [leftCollapsed]);
+
+  useEffect(() => {
+    const panel = rightPanelRef.current;
+    if (!panel) return;
+    if (rightCollapsed && !panel.isCollapsed()) {
+      panel.collapse();
+    } else if (!rightCollapsed && panel.isCollapsed()) {
+      panel.expand();
+    }
+  }, [rightCollapsed]);
+
+  const toggleLeftRail = () => {
+    const panel = leftPanelRef.current;
+    if (!panel) return;
+    const nextCollapsed = !panel.isCollapsed();
+    if (nextCollapsed) {
+      panel.collapse();
+    } else {
+      panel.expand();
+    }
+    setPanelCollapsed("left", nextCollapsed);
+  };
+
+  const toggleRightRail = () => {
+    const panel = rightPanelRef.current;
+    if (!panel) return;
+    const nextCollapsed = !panel.isCollapsed();
+    if (nextCollapsed) {
+      panel.collapse();
+    } else {
+      panel.expand();
+    }
+    setPanelCollapsed("right", nextCollapsed);
+  };
+  const syncLeftCollapsed = () => {
+    const collapsed = leftPanelRef.current?.isCollapsed() ?? false;
+    if (collapsed !== leftCollapsed) setPanelCollapsed("left", collapsed);
+  };
+  const syncRightCollapsed = () => {
+    const collapsed = rightPanelRef.current?.isCollapsed() ?? false;
+    if (collapsed !== rightCollapsed) setPanelCollapsed("right", collapsed);
+  };
+  const toggleButtonClass = "text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center w-7 h-7 rounded border border-transparent hover:bg-surface-container-low hover:border-outline-variant";
 
   return (
     <div className="flex flex-col h-screen bg-background text-on-surface overflow-hidden">
@@ -178,6 +237,24 @@ export function Layout() {
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1">
+            <button
+              className={toggleButtonClass}
+              onClick={toggleLeftRail}
+              aria-label={leftCollapsed ? "Show left sidebar" : "Hide left sidebar"}
+              title={leftCollapsed ? "Show left sidebar" : "Hide left sidebar"}
+            >
+              <Icon name="sidebar_left" className="w-[18px] h-[18px]" />
+            </button>
+            <button
+              className={toggleButtonClass}
+              onClick={toggleRightRail}
+              aria-label={rightCollapsed ? "Show right sidebar" : "Hide right sidebar"}
+              title={rightCollapsed ? "Show right sidebar" : "Hide right sidebar"}
+            >
+              <Icon name="sidebar_right" className="w-[18px] h-[18px]" />
+            </button>
+          </div>
           <button
             className="text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center p-1"
             aria-label="Settings"
@@ -232,22 +309,30 @@ export function Layout() {
           id="left"
           className="h-full"
           defaultSize="280px"
+          collapsedSize="0px"
+          collapsible
           minSize="160px"
           groupResizeBehavior="preserve-pixel-size"
+          panelRef={leftPanelRef}
+          onResize={syncLeftCollapsed}
         >
           <LeftRail pulse={pulseObject} resources={railResources} />
         </Panel>
-        <Separator id="body-left-center" className="drag-handle-col" />
+        <Separator id="body-left-center" className={leftCollapsed ? "hidden" : "drag-handle-col"} disabled={leftCollapsed} />
         <Panel id="center" className="h-full min-w-0" minSize="320px">
           <ChatPane />
         </Panel>
-        <Separator id="body-center-right" className="drag-handle-col" />
+        <Separator id="body-center-right" className={rightCollapsed ? "hidden" : "drag-handle-col"} disabled={rightCollapsed} />
         <Panel
           id="right"
           className="h-full"
           defaultSize="320px"
+          collapsedSize="0px"
+          collapsible
           minSize="180px"
           groupResizeBehavior="preserve-pixel-size"
+          panelRef={rightPanelRef}
+          onResize={syncRightCollapsed}
         >
           <RightRail
             notes={notesContent}
