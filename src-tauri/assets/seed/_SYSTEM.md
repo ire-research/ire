@@ -39,7 +39,7 @@ Example: `How does retrieval-augmented generation affect hallucination rates in 
 **`pulse/THIS-WEEK.md`** — one plain sentence describing the week's focus, no frontmatter, no headers, nothing else.
 Example: `Implement and benchmark three RAG retrieval strategies on the legal corpus.`
 
-**`notes.md`** — a flat bullet list of short, human-readable notes. One line per bullet. No sub-bullets, no headers, no frontmatter. This file is for the user's own jottings — do not interpret, summarize, or restructure it; only append new bullets when the user asks you to take a note.
+**`notes.md`** — free-form markdown for the user's own jottings. Do not interpret, summarize, or restructure it; only append new notes when the user asks you to take a note.
 
 ## Experiment Workflow
 

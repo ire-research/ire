@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Icon } from "../Icon";
+import { MessageMarkdown } from "../chat/MessageMarkdown";
 
 interface Props {
   content: string;
@@ -48,9 +49,7 @@ export function NotesPane({ content, onSave }: Props) {
     handleSave();
   };
 
-  const lines = content
-    .split("\n")
-    .filter((line) => line.trim().length > 0);
+  const hasNotes = content.trim().length > 0;
 
   return (
     <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
@@ -79,14 +78,10 @@ export function NotesPane({ content, onSave }: Props) {
         />
       ) : (
         <>
-          {lines.length > 0 ? (
-            <ul className="text-[14px] text-on-surface space-y-2 list-disc pl-4 marker:text-outline-variant">
-              {lines.map((line, idx) => (
-                <li key={idx} className="pl-1">
-                  {line}
-                </li>
-              ))}
-            </ul>
+          {hasNotes ? (
+            <div className="text-on-surface">
+              <MessageMarkdown content={content} />
+            </div>
           ) : (
             <p className="text-[13px] text-on-surface-variant italic">
               No notes yet.
