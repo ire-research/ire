@@ -142,7 +142,7 @@ pub struct ResourceRow {
 }
 
 fn open(ire_dir: &Path) -> Result<Connection> {
-    let db_path = ire_dir.join("local.db");
+    let db_path = ire_dir.join("wiki/local.db");
     Connection::open(&db_path).with_context(|| format!("open {}", db_path.display()))
 }
 

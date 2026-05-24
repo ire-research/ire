@@ -131,24 +131,19 @@ pub fn chat_reset_session(session: State<'_, SessionManager>, tab_id: String) ->
 
 /// Compose the system prompt from wiki context files per §7.4.
 pub fn build_system_prompt(workspace_root: &Path) -> String {
+    let ire_root = workspace_root.join(".ire");
     let wiki_root = workspace_root.join(".ire/wiki");
 
     let mut parts: Vec<String> = Vec::new();
 
     // Static IRE framework context — always first.
-    if let Ok(content) = fs::read_to_string(wiki_root.join("_SYSTEM.md")) {
+    if let Ok(content) = fs::read_to_string(ire_root.join("_SYSTEM.md")) {
         if !content.trim().is_empty() {
             parts.push(content);
         }
     }
 
-    for rel in &[
-        "_schema.md",
-        "_index.md",
-        "status/pulse.md",
-        "status/long-term.md",
-        "status/failures.md",
-    ] {
+    for rel in &["_index.md", "pulse.json", "long-term.md"] {
         if let Ok(content) = fs::read_to_string(wiki_root.join(rel)) {
             if !content.trim().is_empty() {
                 parts.push(format!("### {rel}\n\n{content}"));
@@ -157,7 +152,7 @@ pub fn build_system_prompt(workspace_root: &Path) -> String {
     }
 
     // Inject the two most recent short-term day files.
-    if let Ok(entries) = fs::read_dir(wiki_root.join("status/short-term")) {
+    if let Ok(entries) = fs::read_dir(wiki_root.join("short-term")) {
         let mut names: Vec<String> = entries
             .flatten()
             .filter_map(|e| e.file_name().into_string().ok())
@@ -167,10 +162,10 @@ pub fn build_system_prompt(workspace_root: &Path) -> String {
         names.reverse();
         for name in names.iter().take(2) {
             if let Ok(content) =
-                fs::read_to_string(wiki_root.join("status/short-term").join(name))
+                fs::read_to_string(wiki_root.join("short-term").join(name))
             {
                 if !content.trim().is_empty() {
-                    parts.push(format!("### status/short-term/{name}\n\n{content}"));
+                    parts.push(format!("### short-term/{name}\n\n{content}"));
                 }
             }
         }

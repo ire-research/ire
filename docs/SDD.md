@@ -98,12 +98,12 @@ ML research workflows are fragmented across IDEs, reference managers, and AI int
 | State | Zustand (or React context) | Light, no Redux ceremony. Decision deferred to first frontend PR. |
 | Markdown | `react-markdown` + `remark-gfm` for preview; `<textarea>` for edit | Toggle-based, not split. |
 | Layout | `react-resizable-panels` | Resizable + collapsible splits. |
-| Persistence | SQLite via `rusqlite` | Single DB file at `.ire/local.db`. |
+| Persistence | SQLite via `rusqlite` | Single DB file at `.ire/wiki/local.db`. |
 | MCP server | Node + `@modelcontextprotocol/sdk` | Stdio transport. Bundled with the app. |
 | PDF extract | `pdf-extract` crate | Pure Rust, no system deps. |
 | HTML extract | `reqwest` + `scraper` + `readability` (custom or `readability-rs`) | Strip nav/ads; keep article text. |
 | Filesystem | `std::fs` + `tempfile` for atomic writes | No `notify` watcher in MVP — wiki changes are mediated through IRE. |
-| Logging | `tracing` + `tracing-subscriber` | File sink at `.ire/logs/ire.log`. |
+| Logging | `tracing` + `tracing-subscriber` | Console logging only; experiment stdout/stderr live beside each experiment plan. |
 
 CC is invoked as an external CLI binary; not a dependency in `Cargo.toml` or `package.json`. The Node MCP server's runtime (`node`) is also assumed installed (CC requires it anyway).
 
@@ -116,46 +116,38 @@ CC is invoked as an external CLI binary; not a dependency in `Cargo.toml` or `pa
 ```
 my_research_project/
 ├── .git/
-├── .gitignore                       # IRE adds: .ire/local.db, .ire/logs/, .ire/.lock, .ire/workspace.json, .ire/experiments/
+├── .gitignore                       # IRE adds: .ire/wiki/local.db, .ire/wiki/experiments/*/*.log, .ire/.lock, .ire/workspace.json, .ire/cache/
 ├── .ire/
 │   ├── .lock                        # PID of running IRE instance (gitignored)
-│   ├── local.db                     # SQLite (gitignored)
+│   ├── _SYSTEM.md                   # IRE framework context + wiki schema, injected first into every CC turn
 │   ├── workspace.json               # per-workspace UI layout (panel sizes); gitignored
-│   ├── logs/                        # ire.log + experiment logs (gitignored)
-│   │   ├── ire.log
-│   │   └── <experiment_uuid>/
-│   │       ├── stdout.log
-│   │       └── stderr.log
-│   ├── experiments/                 # CC-authored context files per experiment (gitignored)
-│   │   └── <experiment_uuid>/
-│   │       ├── plan.md
-│   │       └── result.md
+│   ├── cache/                       # raw extracted resource text (gitignored)
 │   └── wiki/                        # ALL TRACKED IN GIT
-│       ├── _SYSTEM.md               # IRE framework context — injected first into every CC turn
+│       ├── local.db                 # SQLite (gitignored)
 │       ├── _index.md                # Master index (path → one-line summary)
-│       ├── _schema.md               # Conventions for CC
 │       ├── notes.md                 # User notes
 │       ├── ideas.json               # User ideas (`{ id, text, trashed, order }`)
-│       ├── pulse/
-│       │   ├── RESEARCH-QUESTION.md # Current research question
-│       │   └── THIS-WEEK.md         # This week's focus
-│       ├── status/
-│       │   ├── long-term.md         # Agent-written architectural decisions
-│       │   ├── failures.md          # Structured "what didn't work"
-│       │   └── short-term/
-│       │       └── YYYY-MM-DD.md    # Daily agent notes
-│       └── resources/
-│           └── <slug>.md            # One file per ingested paper/article
+│       ├── pulse.json               # Current research question and weekly focus
+│       ├── long-term.md             # Agent-written architectural decisions and durable dead ends
+│       ├── short-term/
+│       │   └── YYYY-MM-DD.md        # Daily agent notes
+│       ├── resources/
+│       │   └── <slug>.md            # One file per ingested paper/article
+│       └── experiments/
+│           └── <experiment_uuid>/
+│               ├── plan.md
+│               ├── stdout.log       # gitignored
+│               └── stderr.log       # gitignored
 └── ... user source code ...
 ```
 
 **Gitignore additions** appended on workspace init:
 ```
 .ire/.lock
-.ire/local.db
-.ire/logs/
+.ire/wiki/local.db
 .ire/workspace.json
-.ire/experiments/
+.ire/wiki/experiments/*/*.log
+.ire/cache/
 ```
 
 `wiki/` is intentionally **not** gitignored — it is the durable knowledge artefact and benefits from version history.
@@ -178,7 +170,7 @@ my_research_project/
 }
 ```
 
-This file is managed exclusively by IRE. It is read once at app startup (before any workspace is opened) and written on theme change and whenever a workspace is opened. `recent_workspaces` is kept ordered newest-first and capped at 10 entries.
+This file is managed exclusively by IRE. It is read once at app startup (before any workspace is opened) and written on theme change and whenever a workspace is opened. `recent_workspaces` is kept ordered newest-first, capped at 10 entries, and pruned on read so missing directories are not shown in the setup screen.
 
 ### App source tree
 
@@ -197,6 +189,7 @@ See [§16](#16-source-tree-layout).
 │  Recent workspaces (up to 5)                         │
 │    • each entry shows project name + full path       │
 │    • click any entry to open without a file dialog   │
+│    • hover an entry to reveal a remove button        │
 │    • most-recently-opened is highlighted             │
 │                                                      │
 │  [Open folder…]       [New workspace…]               │
@@ -206,12 +199,12 @@ See [§16](#16-source-tree-layout).
 └──────────────────────────────────────────────────────┘
 ```
 
-On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel.  `read_user_config` hydrates `recentWorkspaces` in the Zustand store before the setup screen mounts so the list is immediately populated.  If the binary is missing, a `retry` link re-invokes `refreshSetup`; there is no step-by-step wizard — the binary status is a status-bar indicator, not a blocking step.
+On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel.  `read_user_config` removes recent workspace paths that no longer exist, persists the cleaned config, and hydrates `recentWorkspaces` in the Zustand store before the setup screen mounts so the list is immediately populated.  If the binary is missing, a `retry` link re-invokes `refreshSetup`; there is no step-by-step wizard — the binary status is a status-bar indicator, not a blocking step.
 
 ### 5.2 Open existing
 
 1. User picks directory via Tauri's file dialog.
-2. Backend validates: directory exists, is a git repo, contains `.ire/wiki/_schema.md` (the marker file).
+2. Backend validates: directory exists, is a git repo, and contains `.ire/_SYSTEM.md` plus `.ire/wiki/pulse.json` (the marker files).
 3. Acquire `.ire/.lock`:
    - If absent: write current PID, continue.
    - If present and PID alive: refuse, show "already open in another window".
@@ -227,7 +220,7 @@ On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel.  
 2. Backend:
    - `git init` if no `.git/`.
    - Scaffold `.ire/` per [§4](#4-directory-layout).
-   - Write seed files: empty `notes.md`, empty `ideas.json`, split `pulse/RESEARCH-QUESTION.md` / `pulse/THIS-WEEK.md` placeholders, `_schema.md` (canned), `_SYSTEM.md` (canned), `_index.md` (auto-built from the seed).
+   - Write seed files: `.ire/_SYSTEM.md` (canned framework context + schema), empty `notes.md`, empty `ideas.json`, `pulse.json`, `long-term.md`, `short-term/`, `resources/`, `experiments/`, and `_index.md` (auto-built from the seed).
    - Append IRE entries to `.gitignore` (create if missing).
    - Do not stage or commit; the user decides when to commit the initialized workspace.
 3. Continue from step 3 of [§5.2](#52-open-existing).
@@ -243,7 +236,7 @@ On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel.  
 
 ## 6. Wiki Layer
 
-### 6.1 Conventions (encoded in `_schema.md`)
+### 6.1 Conventions (encoded in `.ire/_SYSTEM.md`)
 
 - **Path = identity.** Every wiki page has a stable path; renames go through `wiki.rename`.
 - **Frontmatter is optional but preferred** for structured pages. Minimum:
@@ -256,6 +249,7 @@ On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel.  
   ---
   ```
 - **`_index.md` is canonical.** It is auto-regenerated on every wiki write. CC must consult it to navigate; it must not edit it directly.
+- **`pulse.json` is the focus file.** It contains exactly `research_question` and `this_week`.
 
 ### 6.2 Atomic write contract
 
@@ -276,8 +270,9 @@ No CAS, no advisory file lock, no WAL — single-instance is enforced by `.lock`
 `_index.md` is a flat markdown list:
 ```
 - [notes.md](./notes.md) — running user notes
-- [pulse/RESEARCH-QUESTION.md](./pulse/RESEARCH-QUESTION.md) — current research question
-- [pulse/THIS-WEEK.md](./pulse/THIS-WEEK.md) — this week's focus
+- [ideas](./ideas.json) — user ideas list
+- [pulse](./pulse.json) — current research question and weekly focus
+- [long-term](./long-term.md) — architectural decisions and durable insights
 - [resources/attention-is-all-you-need.md](./resources/attention-is-all-you-need.md) — Vaswani et al. (2017): self-attention transformer …
 ```
 
@@ -287,7 +282,7 @@ The one-line summary is sourced from frontmatter `summary:` if present, else the
 
 IRE never creates git commits automatically. The application may initialize a git repository for a new workspace, write `.gitignore`, and write files under `.ire/`, but deciding when to stage and commit remains entirely with the user.
 
-`WikiStore::write` and `WikiStore::rename` atomically update the target wiki path, regenerate `_index.md`, and emit `wiki-changed`. They do not run `git add` or `git commit`, regardless of path. This applies equally to `status/**`, `pulse/**`, `_schema.md`, `_index.md`, `notes.md`, `ideas.json`, and `resources/**`.
+`WikiStore::write` and `WikiStore::rename` atomically update the target wiki path, regenerate `_index.md`, and emit `wiki-changed`. They do not run `git add` or `git commit`, regardless of path. This applies equally to `pulse.json`, `long-term.md`, `short-term/**`, `_index.md`, `notes.md`, `ideas.json`, `resources/**`, and `experiments/**`.
 
 Resource approval follows the same rule: **Confirm** asks CC to write `resources/<slug>.md` via `wiki.write`; `index_resource` then records the DB row (`status=summarized`, `wiki_path`, `title`) and emits `wiki-changed`. The resulting wiki and index changes remain uncommitted until the user commits them.
 
@@ -295,7 +290,7 @@ Resource approval follows the same rule: **Confirm** asks CC to write `resources
 
 ## 7. Memory Layer
 
-Three files under `wiki/status/`. **All three are agent-written only**; the user does not edit them through the UI.
+Memory lives at the root of `wiki/`. These files are agent-written only; the user does not edit them through the UI.
 
 ### 7.1 `long-term.md`
 
@@ -310,31 +305,16 @@ CC is told in the system prompt:
 >
 > Use `memory.write_long_term` for overarching architectural decisions, pivots, abandonment of approaches, and durable insights.
 
-### 7.3 `failures.md`
-
-Structured "what didn't work" log. Written via the MCP `memory.record_failure(method, reason, context_ref?)` tool, which appends a section like:
-
-```
-## <method-name>
-- **why-it-failed**: <reason>
-- **context**: <ref>
-- **recorded**: 2026-05-03
-```
-
-Always injected into CC's context as a "do-not-propose" anchor. This directly addresses Vittorio's #1 grievance.
-
 ### 7.4 Context injection rules
 
 When IRE spawns a CC turn, the system prompt is composed of:
 
-1. `wiki/_SYSTEM.md` — static IRE framework context (what IRE is, wiki layout, behavioral rules). MCP tool descriptions are received automatically via `tools/list` and are not duplicated here. Seeded from `assets/seed/_SYSTEM.md` on workspace init; always injected first.
-2. All CC-facing prompt text — the resource summarizer role, the resource-confirm follow-up, and the experiment wake-up template — lives in `src-tauri/assets/prompts/`. Edit those files to change CC's behaviour; never hardcode prompts at call sites. The experiment workflow instructions are part of `wiki/_SYSTEM.md` (point 1 above).
-3. `wiki/_schema.md` (conventions).
-4. `wiki/_index.md` (catalog).
-5. `wiki/status/pulse.md` (focus + blocker).
-6. `wiki/status/long-term.md` (full).
-7. `wiki/status/failures.md` (full).
-8. The two most recent `short-term/YYYY-MM-DD.md` files.
+1. `.ire/_SYSTEM.md` — static IRE framework context, wiki layout, behavioral rules, and schema. MCP tool descriptions are received automatically via `tools/list` and are not duplicated here. Seeded from `assets/seed/_SYSTEM.md` on workspace init; always injected first.
+2. All CC-facing prompt text — the resource summarizer role, the resource-confirm follow-up, and the experiment wake-up template — lives in `src-tauri/assets/prompts/`. Edit those files to change CC's behaviour; never hardcode prompts at call sites. The experiment workflow instructions are part of `.ire/_SYSTEM.md` (point 1 above).
+3. `wiki/_index.md` (catalog).
+4. `wiki/pulse.json`.
+5. `wiki/long-term.md` (full).
+6. The two most recent `short-term/YYYY-MM-DD.md` files.
 
 This is added via `--append-system-prompt`. Wiki/notes/resources are read on-demand by CC through MCP tools; they are not pre-injected.
 
@@ -394,7 +374,7 @@ User queues one or more URLs/files → Ingest
 
 CC streams the summary into the resource tab. When the turn ends, **Confirm** and **Discard** buttons appear.
 
-**Confirm**: triggers a second CC turn in the same tab with the instruction to write the summary to `resources/<slug>.md` via the `wiki.write` MCP tool. Frontmatter follows `_schema.md`: `title`, `type: summary`, `sources: [<all original sources in order>]`, `updated: YYYY-MM-DD`. URL sources use the original URL; local file sources use `file:<sha256>:<filename>`. Body starts with a `#` heading matching the title, then the summary. The tab auto-closes when this second CC turn ends. The written file is indexed in SQLite by matching every stored source ref in `sources`, but no git commit is created by IRE.
+**Confirm**: triggers a second CC turn in the same tab with the instruction to write the summary to `resources/<slug>.md` via the `wiki.write` MCP tool. Frontmatter follows the schema in `.ire/_SYSTEM.md`: `title`, `type: summary`, `sources: [<all original sources in order>]`, `updated: YYYY-MM-DD`, and `summary`. URL sources use the original URL; local file sources use `file:<sha256>:<filename>`. Body starts with a `#` heading matching the title, then the summary. The tab auto-closes when this second CC turn ends. The written file is indexed in SQLite by matching every stored source ref in `sources`, but no git commit is created by IRE.
 
 **Discard**: deletes `.ire/cache/<sha256>.txt` or `.ire/cache/<batch_sha>/`, marks the DB row `status=rejected`, closes the tab immediately. No wiki file is written.
 
@@ -402,7 +382,7 @@ CC streams the summary into the resource tab. When the turn ends, **Confirm** an
 
 ## 9. Chat
 
-IRE uses a **single unified agent** in the central pane. The agent always has access to all MCP tools (`wiki.*`, `memory.*`, `pulse.*`, `experiment.*`) and all CC built-ins (`Bash`, `Edit`, `Write`, `Read`, `Grep`, `Glob`, `WebFetch`). The experiment workflow instructions are part of `wiki/_SYSTEM.md` (injected on every turn per §7.4).
+IRE uses a **single unified agent** in the central pane. The agent always has access to all MCP tools (`wiki.*`, `memory.*`, `pulse.*`, `experiment.*`) and all CC built-ins (`Bash`, `Edit`, `Write`, `Read`, `Grep`, `Glob`, `WebFetch`). The experiment workflow instructions are part of `.ire/_SYSTEM.md` (injected on every turn per §7.4).
 
 ### 9.1 Send message flow
 
@@ -436,13 +416,13 @@ T1  CC plans, gets agreement, then calls MCP tool experiment.start({
     })
 T2  MCP server forwards to IRE Rust backend over its private channel:
        - inserts experiment row (status=running, uuid, start_time, command, …)
-       - writes plan_md to .ire/experiments/<uuid>/plan.md
+       - writes plan_md to .ire/wiki/experiments/<uuid>/plan.md
        - spawns the command as a DETACHED process group:
            Command::new("sh").args(["-c", &command])
                  .current_dir(working_dir)
                  .stdin(Stdio::null())
-                 .stdout(file .ire/logs/<uuid>/stdout.log)
-                 .stderr(file .ire/logs/<uuid>/stderr.log)
+                 .stdout(file .ire/wiki/experiments/<uuid>/stdout.log)
+                 .stderr(file .ire/wiki/experiments/<uuid>/stderr.log)
                  .process_group(0)             // setsid
                  .env_remove("CLAUDECODE")
                  .spawn()
@@ -457,12 +437,13 @@ T5  Process exits. Backend:
        - reads tail of stdout/stderr (last N kB)
        - composes wake-up message:
            "<wake_prompt>\n\nExperiment uuid: <uuid>\nExit code: <n>\n
-            Plan: .ire/experiments/<uuid>/plan.md\n
+            Plan: .ire/wiki/experiments/<uuid>/plan.md\n
             stdout tail: <…>\nstderr tail: <…>"
        - spawns a CC turn with --resume <session_id> and that message
 T6  CC reads result files, calls wiki.write for any new findings,
-    memory.write_short_term for daily notes, memory.record_failure if
-    something failed, pulse.update if blocker resolved/changed.
+    memory.write_short_term for daily notes and transient dead ends,
+    memory.write_long_term for durable conclusions, and pulse.update if
+    the research question or weekly focus changed.
 ```
 
 **Subtleties.**
@@ -611,15 +592,14 @@ The MCP server is a **thin RPC bridge** to the Rust backend over a Unix domain s
 
 | Tool | Description |
 |---|---|
-| `wiki.read({ path })` | Read any wiki markdown file. Returns content + frontmatter. |
+| `wiki.read({ path })` | Read any wiki markdown or JSON file. Returns content + frontmatter for markdown. |
 | `wiki.write({ path, content, summary? })` | Atomic write; updates `_index.md`; emits `wiki-changed`. Does not commit. |
 | `wiki.append({ path, content })` | Append content to a wiki file. Same persistence semantics as `wiki.write`. |
 | `wiki.list({ glob? })` | List wiki paths; defaults to all. |
 | `wiki.rename({ from, to })` | Atomic rename + index update; emits `wiki-changed`. Does not commit. |
-| `memory.write_long_term({ section, content })` | Append to `status/long-term.md` under section. Does not commit. |
-| `memory.write_short_term({ content })` | Append to today's `status/short-term/YYYY-MM-DD.md`. Does not commit. |
-| `memory.record_failure({ method, reason, context_ref? })` | Append structured entry to `status/failures.md`. Does not commit. |
-| `pulse.update({ question?, blocker?, focus? })` | Patch pulse fields. Does not commit. |
+| `memory.write_long_term({ section, content })` | Append to `long-term.md` under section. Does not commit. |
+| `memory.write_short_term({ content })` | Append to today's `short-term/YYYY-MM-DD.md`. Does not commit. |
+| `pulse.update({ research_question?, this_week? })` | Patch `pulse.json`. Does not commit. |
 | `resource.fetch({ url })` | Fetch URL, extract text, return it (does not save to wiki). |
 | `experiment.start({ name, plan_md, command, working_dir?, wake_prompt })` | Spawn detached subprocess, return `{ uuid }`. |
 | `experiment.status({ uuid })` | Return `{ status, exit_code?, started_at, ended_at? }`. |
@@ -641,7 +621,7 @@ This is a private internal protocol; not part of any spec. It exists only becaus
 
 ## 12. SQLite Schema
 
-Single file at `.ire/local.db`. Migrations applied at workspace open (idempotent).
+Single file at `.ire/wiki/local.db`. Migrations applied at workspace open (idempotent).
 
 ```sql
 CREATE TABLE schema_migrations (
@@ -803,11 +783,11 @@ Stores preferences that apply across all workspaces. Path: `$XDG_CONFIG_HOME/ire
 }
 ```
 
-**Read.** Called once during app startup (`refreshSetup` in `App.tsx`) in parallel with `setup_status`. Result passed to `hydrateFromUserConfig` in the workspace Zustand store, which sets `theme` and `recentWorkspaces`. The directory is created if absent; missing file returns defaults (`theme: null`, `recent_workspaces: []`).
+**Read.** Called once during app startup (`refreshSetup` in `App.tsx`) in parallel with `setup_status`. Result passed to `hydrateFromUserConfig` in the workspace Zustand store, which sets `theme` and `recentWorkspaces`. Missing config returns defaults (`theme: null`, `recent_workspaces: []`); missing recent workspace directories are removed and the cleaned config is written back.
 
 **Written by two paths:**
 - `push_recent` (Rust, `user_config.rs`) — called at the end of every successful `open_workspace` / `init_workspace`. Reads the existing config, prepends the path, deduplicates, truncates to 10, writes back.
-- `save_user_config` (Tauri command) — reserved for future callers (e.g. a theme toggle if re-introduced). Must always send the full config object including `recent_workspaces` from the store to avoid clobbering entries written by `push_recent`.
+- `save_user_config` (Tauri command) — used by the setup-screen remove action and future callers (e.g. a theme toggle if re-introduced). Must always send the full config object including `recent_workspaces` from the store to avoid clobbering entries written by `push_recent`.
 
 **Frontend store fields.** `recentWorkspaces: string[]` in the workspace Zustand store mirrors the persisted list. `pushRecentWorkspace(path)` prepends and caps to 10 in-memory; the actual disk write is done by the Rust backend.
 
@@ -831,7 +811,7 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 | `read_ideas` | — | `IdeaItem[]` from `ideas.json` |
 | `save_ideas_json` | `{ ideas }` | `{}` (writes `ideas.json`) |
 | `read_pulse` | — | `{ research_question, this_week }` |
-| `save_pulse_field` | `{ field: "research_question" \| "this_week", content }` | `{}` (writes the matching split pulse file) |
+| `save_pulse_field` | `{ field: "research_question" \| "this_week", content }` | `{}` (updates `pulse.json`) |
 | `submit_resource` | `{ url }` | `resource_id: string` |
 | `submit_local_resource` | `{ path }` | `resource_id: string` |
 | `submit_resources` | `{ sources: ({ kind: "url", url } \| { kind: "local_file", path })[] }` | `resource_id: string` |
@@ -845,7 +825,7 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 | `experiment_list` | `{ limit? }` | `[ExperimentRow]` |
 | `experiment_logs` | `{ uuid, kb? }` | `{ stdout, stderr }` |
 | `experiment_cancel` | `{ uuid }` | `{}` |
-| `experiment_delete` | `{ uuid }` | `{}` (refuses running experiments; removes `.ire/logs/<uuid>/`, `.ire/experiments/<uuid>/`, and the DB row) |
+| `experiment_delete` | `{ uuid }` | `{}` (refuses running experiments; removes `.ire/wiki/experiments/<uuid>/` and the DB row) |
 | `experiment_rename` | `{ uuid, name }` | `{}` (updates `experiments.name`) |
 | `get_system_status` | — | `SystemStatus` (workspace path, git branch/diff, CPU/GPU/RAM metrics, CC connected flag) |
 | `read_workspace_state` | — | `PersistedWorkspace` (panel layout from `.ire/workspace.json`) |
@@ -1005,17 +985,17 @@ Each phase ends with a demoable milestone.
 
 **Phase 1 — Workspace lifecycle.** Implement setup screen, binary discovery, `init_workspace`, `open_workspace`, `.lock`, `close_workspace`. Scaffold `.ire/` with seed wiki. *Milestone:* user can pick or init a workspace; `.ire/` materialises; lock works across restarts. ✅
 
-**Phase 2 — Wiki store + memory tools (no CC yet).** `WikiStore` with atomic writes, `_index.md` regeneration, `log.md` append. SQLite migrations. Frontend reads split pulse files, `notes.md`, and `ideas.json`. *Milestone:* user can manually edit notes and see them persisted; `wiki-changed` events propagate. ✅
+**Phase 2 — Wiki store + memory tools (no CC yet).** `WikiStore` with atomic writes, `_index.md` regeneration, `log.md` append. SQLite migrations. Frontend reads `pulse.json`, `notes.md`, and `ideas.json`. *Milestone:* user can manually edit notes and see them persisted; `wiki-changed` events propagate. ✅
 
 **Phase 3 — CC subprocess layer.** Binary discovery + spawn + NDJSON parser + session management. A debug "Send" button next to the chat pane that sends a raw message and renders streaming text only (no tool cards yet). No MCP yet. *Milestone:* user can chat with CC inside the central pane, multi-turn via `--resume`. ✅
 
 **Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. CC config wired up via `--mcp-config`. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` handles atomic writes, index regeneration, `wiki-changed` events, and renames without creating git commits. System prompt composed from wiki context files on every CC turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and CC actually does it. ✅
 
-**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML/local-file extractors. `submit_resources` accepts an ordered list of URL and local-file sources, extracts all text all-or-nothing, writes one cache file for a single source or `.ire/cache/<batch_sha>/source-NNN.txt` for multiple sources, inserts one DB row, emits `tab-created`, and kicks one CC summarisation turn. The legacy `submit_resource` and `submit_local_resource` commands remain available for single-source callers. Confirm sends a second CC turn that writes `resources/<slug>.md` via `wiki.write`; when Done fires, `index_resource` scans `wiki/resources/` for the file whose frontmatter `sources:` array contains every stored source ref (`_schema.md`-aligned URL or `file:<sha256>:<filename>`), extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), and emits `wiki-changed` to refresh the pane. Discard calls `discard_resource` (deletes cache, marks `rejected`). Notes and ideas write directly to disk without committing. The resources list shows only `summarized` resources with their title and non-null `wiki_path`; no status label is shown. *Milestone:* ingest one or more supported sources → one resource summary appears in the right pane. ✅
+**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML/local-file extractors. `submit_resources` accepts an ordered list of URL and local-file sources, extracts all text all-or-nothing, writes one cache file for a single source or `.ire/cache/<batch_sha>/source-NNN.txt` for multiple sources, inserts one DB row, emits `tab-created`, and kicks one CC summarisation turn. The legacy `submit_resource` and `submit_local_resource` commands remain available for single-source callers. Confirm sends a second CC turn that writes `resources/<slug>.md` via `wiki.write`; when Done fires, `index_resource` scans `wiki/resources/` for the file whose frontmatter `sources:` array contains every stored source ref (schema-aligned URL or `file:<sha256>:<filename>`), extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), and emits `wiki-changed` to refresh the pane. Discard calls `discard_resource` (deletes cache, marks `rejected`). Notes and ideas write directly to disk without committing. The resources list shows only `summarized` resources with their title and non-null `wiki_path`; no status label is shown. *Milestone:* ingest one or more supported sources → one resource summary appears in the right pane. ✅
 
 **Phase 6 — Experiments.** `experiment.start`, detached subprocess, monitor, wake-up turn composition. Experiment cards in chat with live log tail. *Milestone:* CC can run a Python script ablation, tell the user "I'll be back", and resume with results when the script exits. ✅
 
-**Phase 7 — Polish.** `workspace.json` persistence (theme + per-group panel layouts via `read_workspace_state` / `save_workspace_state`, debounced 1 s, hydrated before the Layout mounts). Error toast stack (top-right) wired to a frontend `useToasts` zustand store; subscribes to the backend `error` event and replaces silent `console.error` calls in user-facing flows. Cancel button on `ExperimentCard` (visible while status is `starting` or `running`) calls `experiment_cancel`. Inline focus editor saves split fields through `save_pulse_field`. *Milestone:* layout, theme, and focus survive restart; user-visible failures surface as toasts; experiments can be cancelled from the chat.
+**Phase 7 — Polish.** `workspace.json` persistence (theme + per-group panel layouts via `read_workspace_state` / `save_workspace_state`, debounced 1 s, hydrated before the Layout mounts). Error toast stack (top-right) wired to a frontend `useToasts` zustand store; subscribes to the backend `error` event and replaces silent `console.error` calls in user-facing flows. Cancel button on `ExperimentCard` (visible while status is `starting` or `running`) calls `experiment_cancel`. Inline focus editor saves `pulse.json` fields through `save_pulse_field`. *Milestone:* layout, theme, and focus survive restart; user-visible failures surface as toasts; experiments can be cancelled from the chat.
 
 ---
 
