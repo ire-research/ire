@@ -26,6 +26,7 @@ export function ChatPane() {
     activeTabId,
     addTab,
     createTab,
+    renameTab,
     closeTab,
     setActiveTab,
     addUserMessage,
@@ -243,7 +244,7 @@ export function ChatPane() {
   if (activeTab.kind === "preview") {
     return (
       <section className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
-        <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTab} onClose={handleCloseTab} onNew={handleNewTab} />
+        <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTab} onClose={handleCloseTab} onNew={handleNewTab} onRename={renameTab} />
         <div className="flex-1 overflow-hidden relative">
           <ResourcePreviewPane title={activeTab.label} content={previewContent} />
         </div>
@@ -252,7 +253,7 @@ export function ChatPane() {
   } else if (activeTab.kind === "experiment") {
     return (
       <section className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
-        <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTab} onClose={handleCloseTab} onNew={handleNewTab} />
+        <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTab} onClose={handleCloseTab} onNew={handleNewTab} onRename={renameTab} />
         <div className="flex-1 overflow-hidden relative">
           <div className="absolute inset-0 overflow-y-auto px-4 py-4 pb-8">
             <ExperimentTabView uuid={activeTab.experimentUuid!} name={activeTab.label} />
@@ -264,7 +265,7 @@ export function ChatPane() {
 
   return (
     <section className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
-      <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTab} onClose={handleCloseTab} onNew={handleNewTab} />
+      <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTab} onClose={handleCloseTab} onNew={handleNewTab} onRename={renameTab} />
       <div className="flex items-center justify-end px-4 h-8 shrink-0 border-b border-outline-variant/30">
         {activeTab.isStreaming && (
           <button className="text-on-surface-variant hover:text-on-surface transition-colors text-xs" onClick={() => ipc.chatCancel(activeTabId)}>
