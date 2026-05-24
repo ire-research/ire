@@ -44,6 +44,11 @@ export interface UserConfig {
 export interface PanelLayouts {
   /** Map of panel-group id → react-resizable-panels Layout (panel id → percentage). */
   groups?: Record<string, Record<string, number>>;
+  /** Independent sidebar collapsed state, persisted alongside group sizes. */
+  collapsed?: {
+    left?: boolean;
+    right?: boolean;
+  };
 }
 
 export type ResourceSourceInput =
