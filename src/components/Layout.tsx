@@ -72,7 +72,7 @@ export function Layout() {
   // Wiki-changed listener
   useEffect(() => {
     const unlisten = onWikiChanged(({ path }) => {
-      if (path === "pulse/RESEARCH-QUESTION.md" || path === "pulse/THIS-WEEK.md") {
+      if (path === "pulse.json") {
         ipc.readPulse().then(setPulseObject).catch((e) => toastError("load pulse", e));
       } else if (path === "notes.md") {
         ipc.readWikiFile("notes.md").then((f) => setNotesContent(f.content)).catch(() => {});

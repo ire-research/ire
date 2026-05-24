@@ -58,7 +58,7 @@ pub fn save_wiki_file(
     store.write(&path, &content, &app).map_err(|e| e.to_string())
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub struct PulseContent {
     pub research_question: String,
     pub this_week: String,
@@ -75,13 +75,7 @@ pub struct IdeaItem {
 #[tauri::command]
 pub fn read_pulse(active: State<'_, ActiveWorkspace>) -> Result<PulseContent, String> {
     let store = wiki_store(&active)?;
-    let rq = store.read("pulse/RESEARCH-QUESTION.md")
-        .map(|(c, _)| c)
-        .unwrap_or_default();
-    let tw = store.read("pulse/THIS-WEEK.md")
-        .map(|(c, _)| c)
-        .unwrap_or_default();
-    Ok(PulseContent { research_question: rq, this_week: tw })
+    read_pulse_content(&store).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -91,13 +85,46 @@ pub fn save_pulse_field(
     active: State<'_, ActiveWorkspace>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    let path = match field.as_str() {
-        "research_question" => "pulse/RESEARCH-QUESTION.md",
-        "this_week" => "pulse/THIS-WEEK.md",
+    let store = wiki_store(&active)?;
+    let mut pulse = read_pulse_content(&store).map_err(|e| e.to_string())?;
+    match field.as_str() {
+        "research_question" => pulse.research_question = content,
+        "this_week" => pulse.this_week = content,
         _ => return Err(format!("unknown field: {field}")),
     };
-    let store = wiki_store(&active)?;
-    store.write(path, &content, &app).map_err(|e| e.to_string())
+    write_pulse_content(&store, &pulse, &app).map_err(|e| e.to_string())
+}
+
+pub(crate) fn read_pulse_content(store: &WikiStore) -> anyhow::Result<PulseContent> {
+    let path = store.wiki_root.join("pulse.json");
+    if !path.exists() {
+        return Ok(PulseContent { research_question: String::new(), this_week: String::new() });
+    }
+    let raw = std::fs::read_to_string(&path)?;
+    Ok(serde_json::from_str(&raw)?)
+}
+
+pub(crate) fn write_pulse_content(
+    store: &WikiStore,
+    pulse: &PulseContent,
+    app: &tauri::AppHandle,
+) -> anyhow::Result<()> {
+    let json = serde_json::to_string_pretty(pulse)?;
+    store.write("pulse.json", &format!("{json}\n"), app)
+}
+
+pub(crate) fn patch_pulse_content(
+    mut pulse: PulseContent,
+    research_question: Option<&str>,
+    this_week: Option<&str>,
+) -> PulseContent {
+    if let Some(research_question) = research_question {
+        pulse.research_question = research_question.to_string();
+    }
+    if let Some(this_week) = this_week {
+        pulse.this_week = this_week.to_string();
+    }
+    pulse
 }
 
 #[tauri::command]
@@ -109,6 +136,29 @@ pub fn read_ideas(active: State<'_, ActiveWorkspace>) -> Result<Vec<IdeaItem>, S
     }
     let raw = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
     serde_json::from_str(&raw).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn patch_pulse_content_preserves_unspecified_fields() {
+        let pulse = PulseContent {
+            research_question: "old question".to_string(),
+            this_week: "old week".to_string(),
+        };
+
+        let updated = patch_pulse_content(pulse, Some("new question"), None);
+
+        assert_eq!(
+            updated,
+            PulseContent {
+                research_question: "new question".to_string(),
+                this_week: "old week".to_string(),
+            }
+        );
+    }
 }
 
 #[tauri::command]

@@ -41,15 +41,13 @@ pub fn start_experiment(
 
     let uuid = Uuid::new_v4().to_string();
     let ire_dir = workspace_root.join(".ire");
-    let log_dir = ire_dir.join("logs").join(&uuid);
-    let exp_dir = ire_dir.join("experiments").join(&uuid);
+    let exp_dir = ire_dir.join("wiki/experiments").join(&uuid);
 
-    fs::create_dir_all(&log_dir).context("create log dir")?;
     fs::create_dir_all(&exp_dir).context("create experiments dir")?;
     fs::write(exp_dir.join("plan.md"), &plan_md).context("write plan.md")?;
 
-    let stdout_file = File::create(log_dir.join("stdout.log")).context("create stdout.log")?;
-    let stderr_file = File::create(log_dir.join("stderr.log")).context("create stderr.log")?;
+    let stdout_file = File::create(exp_dir.join("stdout.log")).context("create stdout.log")?;
+    let stderr_file = File::create(exp_dir.join("stderr.log")).context("create stderr.log")?;
 
     db::insert_experiment(
         &ire_dir,
@@ -149,20 +147,20 @@ fn monitor(mut child: Child, args: MonitorArgs) {
     } = args;
 
     let ire_dir = workspace_root.join(".ire");
-    let log_dir = ire_dir.join("logs").join(&uuid);
+    let exp_dir = ire_dir.join("wiki/experiments").join(&uuid);
     let mut stdout_pos = 0u64;
     let mut stderr_pos = 0u64;
 
     loop {
-        emit_new_lines(&app, &uuid, &log_dir.join("stdout.log"), &mut stdout_pos, "stdout");
-        emit_new_lines(&app, &uuid, &log_dir.join("stderr.log"), &mut stderr_pos, "stderr");
+        emit_new_lines(&app, &uuid, &exp_dir.join("stdout.log"), &mut stdout_pos, "stdout");
+        emit_new_lines(&app, &uuid, &exp_dir.join("stderr.log"), &mut stderr_pos, "stderr");
 
         match child.try_wait() {
             Ok(Some(status)) => {
                 let exit_code = status.code().unwrap_or(-1);
                 // Drain remaining log output.
-                emit_new_lines(&app, &uuid, &log_dir.join("stdout.log"), &mut stdout_pos, "stdout");
-                emit_new_lines(&app, &uuid, &log_dir.join("stderr.log"), &mut stderr_pos, "stderr");
+                emit_new_lines(&app, &uuid, &exp_dir.join("stdout.log"), &mut stdout_pos, "stdout");
+                emit_new_lines(&app, &uuid, &exp_dir.join("stderr.log"), &mut stderr_pos, "stderr");
 
                 let status_str = if exit_code == 0 { "completed" } else { "failed" };
                 db::update_experiment_completed(&ire_dir, &uuid, status_str, Some(exit_code)).ok();
