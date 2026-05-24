@@ -35,7 +35,7 @@ pub fn experiment_logs(
         let guard = active.0.lock().map_err(|e| e.to_string())?;
         guard.as_ref().ok_or("no workspace open")?.state.path.clone()
     };
-    let log_dir = workspace_path.join(".ire/logs").join(&uuid);
+    let log_dir = workspace_path.join(".ire/wiki/experiments").join(&uuid);
     let max_bytes = kb.unwrap_or(64) * 1024;
 
     Ok(LogsResult {
@@ -86,7 +86,7 @@ pub fn experiment_delete(
         return Err(format!("experiment {uuid} is still {}", row.status));
     }
 
-    for dir in [ire_dir.join("logs").join(&uuid), ire_dir.join("experiments").join(&uuid)] {
+    for dir in [ire_dir.join("wiki/experiments").join(&uuid)] {
         if dir.exists() {
             fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
         }

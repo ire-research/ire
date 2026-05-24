@@ -19,10 +19,14 @@ fn config_path() -> Option<PathBuf> {
 }
 
 pub fn read() -> UserConfig {
-    config_path()
+    let mut config = config_path()
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|s| serde_json::from_str(&s).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    if remove_missing_recent_workspaces(&mut config) {
+        let _ = write(&config);
+    }
+    config
 }
 
 pub fn write(config: &UserConfig) -> Result<()> {
@@ -42,4 +46,37 @@ pub fn push_recent(workspace_path: &Path) -> Result<()> {
     config.recent_workspaces.insert(0, s);
     config.recent_workspaces.truncate(10);
     write(&config)
+}
+
+fn remove_missing_recent_workspaces(config: &mut UserConfig) -> bool {
+    let before = config.recent_workspaces.len();
+    config.recent_workspaces.retain(|p| Path::new(p).is_dir());
+    before != config.recent_workspaces.len()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remove_missing_recent_workspaces_keeps_existing_directories_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let existing = tmp.path().join("workspace");
+        std::fs::create_dir(&existing).unwrap();
+        let missing = tmp.path().join("missing");
+        let file = tmp.path().join("file");
+        std::fs::write(&file, "").unwrap();
+
+        let mut config = UserConfig {
+            theme: None,
+            recent_workspaces: vec![
+                existing.to_string_lossy().to_string(),
+                missing.to_string_lossy().to_string(),
+                file.to_string_lossy().to_string(),
+            ],
+        };
+
+        assert!(remove_missing_recent_workspaces(&mut config));
+        assert_eq!(config.recent_workspaces, vec![existing.to_string_lossy().to_string()]);
+    }
 }

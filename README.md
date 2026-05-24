@@ -43,7 +43,7 @@ Fire off a long-running experiment and keep working. IRE monitors it. When it fi
 ### 🧠 **Claude-Code, Deeply Integrated**
 IRE wraps Claude-Code in a native desktop app with:
 - **5-pane research interface** — focus banner, resources, notes, ideas, and a live chat with Claude-Code
-- **MCP server bridge** — Claude-Code can read your wiki, write findings, record failures, update your research pulse
+- **MCP server bridge** — Claude-Code can read your wiki, write findings, record research memory, update your research pulse
 - **Two modes** — Brainstorm (explore) and Experiment (make changes, run code)
 - **Streaming chat** — watch Claude-Code think, debug, and plan in real-time
 
