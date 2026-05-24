@@ -10,6 +10,7 @@ interface ChatStore {
 
   addTab: (tab: Tab) => void;
   createTab: (label?: string) => string;
+  renameTab: (tabId: string, label: string) => void;
   openPreviewTab: (label: string, wikiPath: string) => void;
   openExperimentTab: (uuid: string, name: string) => void;
   closeTab: (tabId: string) => void;
@@ -125,6 +126,11 @@ export const useChat = create<ChatStore>((set) => ({
 
   addTab: (tab) =>
     set((s) => ({ tabs: [...s.tabs, tab] })),
+
+  renameTab: (tabId, label) =>
+    set((s) => ({
+      tabs: updateTab(s.tabs, tabId, (t) => ({ ...t, label })),
+    })),
 
   createTab: (label = "Chat") => {
     const id = crypto.randomUUID();
