@@ -3,7 +3,6 @@ import type { IdeaItem } from "../../types";
 import { useWorkspace } from "../../state/workspace";
 import { NotesPane } from "./NotesPane";
 import { IdeasPane } from "./IdeasPane";
-import { AddResourceSection } from "./AddResourceSection";
 
 interface Props {
   notes: string;
@@ -15,17 +14,10 @@ interface Props {
 export function RightRail({ notes, ideas, onSaveNotes, onSaveIdeas }: Props) {
   const groupLayout = useWorkspace((s) => s.panelLayout.groups?.right);
   const setGroupLayout = useWorkspace((s) => s.setGroupLayout);
-  const hasLegacyDefaultLayout =
-    groupLayout &&
-    Math.abs(groupLayout.notes - 33.33) < 0.01 &&
-    Math.abs(groupLayout.ideas - 33.33) < 0.01 &&
-    Math.abs(groupLayout["resource-input"] - 33.34) < 0.01;
   const defaultLayout =
     groupLayout &&
-    !hasLegacyDefaultLayout &&
     Number.isFinite(groupLayout.notes) &&
-    Number.isFinite(groupLayout.ideas) &&
-    Number.isFinite(groupLayout["resource-input"])
+    Number.isFinite(groupLayout.ideas)
       ? groupLayout
       : undefined;
 
@@ -38,16 +30,12 @@ export function RightRail({ notes, ideas, onSaveNotes, onSaveIdeas }: Props) {
         defaultLayout={defaultLayout}
         onLayoutChanged={(layout) => setGroupLayout("right", layout)}
       >
-        <Panel id="notes" className="flex flex-col overflow-hidden" defaultSize={27.5} minSize="80px">
+        <Panel id="notes" className="flex flex-col overflow-hidden" defaultSize={50} minSize="80px">
           <NotesPane content={notes} onSave={onSaveNotes} />
         </Panel>
         <Separator id="right-notes-ideas" className="drag-handle-row border-t border-outline-variant" />
-        <Panel id="ideas" className="flex flex-col overflow-hidden" defaultSize={27.5} minSize="80px">
+        <Panel id="ideas" className="flex flex-col overflow-hidden" defaultSize={50} minSize="80px">
           <IdeasPane ideas={ideas} onSave={onSaveIdeas} />
-        </Panel>
-        <Separator id="right-ideas-resource-input" className="drag-handle-row border-t border-outline-variant" />
-        <Panel id="resource-input" className="flex flex-col overflow-hidden" defaultSize={45} minSize="72px">
-          <AddResourceSection />
         </Panel>
       </Group>
     </aside>
