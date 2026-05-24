@@ -177,3 +177,63 @@
   resize: none;
   field-sizing: content;
 }
+
+/* AskUserQuestion card — custom radio / checkbox */
+.ask-opt input[type="radio"],
+.ask-opt input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 1px solid #474750;
+  background: #0e0e11;
+  flex-shrink: 0;
+  margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 120ms ease, background-color 120ms ease;
+  cursor: pointer;
+}
+.ask-opt input[type="radio"] { border-radius: 9999px; }
+.ask-opt input[type="checkbox"] { border-radius: 3px; }
+.ask-opt:hover input { border-color: #75757e; }
+.ask-opt input[type="radio"]:checked { border-color: #e6e4ef; }
+.ask-opt input[type="radio"]:checked::after {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: #e6e4ef;
+}
+.ask-opt input[type="checkbox"]:checked {
+  background: #e6e4ef;
+  border-color: #e6e4ef;
+}
+.ask-opt input[type="checkbox"]:checked::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%230A0A0A' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+.ask-opt:has(input:checked) {
+  border-color: #75757e;
+  background: #19191e;
+}
+
+/* Progress dot */
+.ask-pdot {
+  width: 5px;
+  height: 5px;
+  border-radius: 9999px;
+  background: #474750;
+  transition: background 200ms ease, width 200ms ease;
+}
+.ask-pdot.done { background: #abaab4; }
+.ask-pdot.current {
+  background: #e6e4ef;
+  width: 16px;
+  border-radius: 3px;
+}
