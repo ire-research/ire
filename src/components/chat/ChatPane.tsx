@@ -188,7 +188,7 @@ export function ChatPane() {
   }, []);
 
   const handleSend = async (text: string) => {
-    if (activeTab.isStreaming) return;
+    if (!activeTab || activeTab.isStreaming) return;
 
     addUserMessage(activeTabId, text);
     const aid = beginAssistantMessage(activeTabId);
@@ -254,7 +254,31 @@ export function ChatPane() {
   };
 
   const showResourceBar =
-    activeTab.kind === "resource" && activeTab.resourceStatus === "ready";
+    activeTab?.kind === "resource" && activeTab.resourceStatus === "ready";
+
+  if (tabs.length === 0) {
+    return (
+      <section className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
+        <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTab} onClose={handleCloseTab} onNew={handleNewTab} onRename={renameTab} />
+        <div className="flex-1 flex flex-col items-center justify-center gap-7 text-center px-10">
+          <div className="flex flex-col items-center gap-3">
+            <h1 className="text-xl font-semibold text-on-surface tracking-tight">Integrated Research Environment (IRE)</h1>
+            <p className="text-[13px] text-on-surface-variant max-w-sm leading-relaxed">
+              Start a new chat to begin your research session, or open an experiment to review past runs.
+            </p>
+          </div>
+          <button
+            id="ire-new-chat-btn"
+            className="inline-flex items-center gap-2 bg-on-surface text-background text-[13px] font-medium px-4 py-2 rounded-lg hover:opacity-85 transition-opacity"
+            onClick={handleNewTab}
+          >
+            <Icon name="chat" className="w-[14px] h-[14px]" />
+            New chat
+          </button>
+        </div>
+      </section>
+    );
+  }
 
   if (activeTab.kind === "preview") {
     return (
