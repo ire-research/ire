@@ -35,11 +35,11 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
     } = args;
 
     let ire_dir = workspace_root.join(".ire");
-    let log_dir = ire_dir.join("logs").join(uuid);
-    let plan_path = format!(".ire/experiments/{uuid}/plan.md");
+    let exp_dir = ire_dir.join("wiki/experiments").join(uuid);
+    let plan_path = format!(".ire/wiki/experiments/{uuid}/plan.md");
 
-    let stdout_tail = tail_file(&log_dir.join("stdout.log"), 8192);
-    let stderr_tail = tail_file(&log_dir.join("stderr.log"), 8192);
+    let stdout_tail = tail_file(&exp_dir.join("stdout.log"), 8192);
+    let stderr_tail = tail_file(&exp_dir.join("stderr.log"), 8192);
 
     let message = prompts::experiment_wakeup(WakeupArgs {
         wake_prompt,

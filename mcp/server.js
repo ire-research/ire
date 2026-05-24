@@ -63,14 +63,14 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        path: { type: 'string', description: 'Path relative to wiki root (e.g. "notes.md", "status/pulse.md")' },
+        path: { type: 'string', description: 'Path relative to wiki root (e.g. "notes.md", "pulse.json")' },
       },
       required: ['path'],
     },
   },
   {
     name: 'wiki.write',
-    description: 'Atomically write a wiki file. Updates _index.md. Auto-committed for status/** paths; uncommitted for notes.md, ideas.md, resources/**.',
+    description: 'Atomically write a wiki file and update _index.md.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -115,7 +115,7 @@ const TOOLS = [
   },
   {
     name: 'memory.write_long_term',
-    description: 'Append an entry to long-term memory (status/long-term.md) under a named section. Auto-committed. Use for architectural decisions, pivots, and durable insights.',
+    description: 'Append an entry to long-term memory (long-term.md) under a named section. Use for architectural decisions, pivots, durable insights, and dead ends worth preserving.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -127,7 +127,7 @@ const TOOLS = [
   },
   {
     name: 'memory.write_short_term',
-    description: "Append to today's short-term memory (status/short-term/YYYY-MM-DD.md). Auto-committed. Use for daily operational notes, debugging steps, experiment details.",
+    description: "Append to today's short-term memory (short-term/YYYY-MM-DD.md). Use for daily operational notes, debugging steps, experiment details, and transient dead ends.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -137,27 +137,13 @@ const TOOLS = [
     },
   },
   {
-    name: 'memory.record_failure',
-    description: 'Record a structured failure entry in status/failures.md. Auto-committed. Always use this when an approach is abandoned or proven wrong.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        method: { type: 'string', description: 'Name of the method or approach that failed' },
-        reason: { type: 'string', description: 'Why it failed' },
-        context_ref: { type: 'string', description: 'Optional reference (wiki path, experiment id)' },
-      },
-      required: ['method', 'reason'],
-    },
-  },
-  {
     name: 'pulse.update',
-    description: 'Update the research pulse (status/pulse.md). Auto-committed. Patch any combination of question, blocker, and focus.',
+    description: 'Update the research pulse (pulse.json). Patch either or both fields.',
     inputSchema: {
       type: 'object',
       properties: {
-        question: { type: 'string', description: 'Current research question' },
-        blocker: { type: 'string', description: 'Current blocker or "none"' },
-        focus: { type: 'string', description: 'One-line focus banner' },
+        research_question: { type: 'string', description: 'Current research question' },
+        this_week: { type: 'string', description: 'Current weekly focus' },
       },
     },
   },

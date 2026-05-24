@@ -591,7 +591,7 @@ pub fn index_resource(
 }
 
 /// Scan `wiki/resources/` for a `.md` file whose frontmatter `sources:` array
-/// contains every expected source. `_schema.md` makes `sources` the canonical field.
+/// contains every expected source. The system prompt makes `sources` the canonical field.
 fn find_resource_wiki_path(
     wiki_root: &std::path::Path,
     expected_sources: &[String],
@@ -705,10 +705,11 @@ pub fn list_resources(active: State<'_, ActiveWorkspace>) -> Result<Vec<Resource
 }
 
 fn build_resource_system_prompt(workspace_root: &Path) -> String {
+    let ire_root = workspace_root.join(".ire");
     let wiki_root = workspace_root.join(".ire/wiki");
     let mut parts: Vec<String> = Vec::new();
 
-    if let Ok(content) = fs::read_to_string(wiki_root.join("_SYSTEM.md")) {
+    if let Ok(content) = fs::read_to_string(ire_root.join("_SYSTEM.md")) {
         if !content.trim().is_empty() {
             parts.push(content);
         }
@@ -716,7 +717,7 @@ fn build_resource_system_prompt(workspace_root: &Path) -> String {
 
     parts.push(prompts::resource_summarizer().to_string());
 
-    for rel in &["status/pulse.md", "_index.md"] {
+    for rel in &["pulse.json", "_index.md"] {
         if let Ok(content) = fs::read_to_string(wiki_root.join(rel)) {
             if !content.trim().is_empty() {
                 parts.push(format!("### {rel}\n\n{content}"));

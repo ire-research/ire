@@ -52,11 +52,9 @@ UPDATE resources SET source_label = url WHERE source_label IS NULL;
 ";
 
 pub fn run(ire_dir: &Path) -> Result<()> {
-    let db_path = ire_dir.join("local.db");
-    let conn =
-        Connection::open(&db_path).with_context(|| format!("open {}", db_path.display()))?;
-    conn.execute_batch(MIGRATION_1)
-        .context("run migration 1")?;
+    let db_path = ire_dir.join("wiki/local.db");
+    let conn = Connection::open(&db_path).with_context(|| format!("open {}", db_path.display()))?;
+    conn.execute_batch(MIGRATION_1).context("run migration 1")?;
 
     // Ensure schema_migrations tracking is seeded before migration 2 check.
     let _ = conn.execute(

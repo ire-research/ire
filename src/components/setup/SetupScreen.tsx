@@ -15,6 +15,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
   const hydrateFromPersisted = useWorkspace((s) => s.hydrateFromPersisted);
   const pushRecentWorkspace = useWorkspace((s) => s.pushRecentWorkspace);
   const recentWorkspaces = useWorkspace((s) => s.recentWorkspaces);
+  const setRecentWorkspaces = useWorkspace((s) => s.setRecentWorkspaces);
   const setEffort = useChatOptions((s) => s.setEffort);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,6 +24,20 @@ export function SetupScreen({ status, onRefresh }: Props) {
     hydrateFromPersisted(persisted);
     if (persisted.effort && EFFORT_LEVELS.some((e) => e.value === persisted.effort)) {
       setEffort(persisted.effort as EffortLevel);
+    }
+  };
+
+  const removeRecentWorkspace = async (path: string) => {
+    setError(null);
+    const previous = recentWorkspaces;
+    const updated = recentWorkspaces.filter((p) => p !== path);
+    setRecentWorkspaces(updated);
+    try {
+      const config = await ipc.readUserConfig().catch(() => ({ recent_workspaces: previous }));
+      await ipc.saveUserConfig({ ...config, recent_workspaces: updated });
+    } catch (e) {
+      setRecentWorkspaces(previous);
+      setError(String(e));
     }
   };
 
@@ -98,17 +113,19 @@ export function SetupScreen({ status, onRefresh }: Props) {
                 const isActive = index === 0;
                 const isLast = index === Math.min(recentWorkspaces.length, 5) - 1;
                 return (
-                  <button
+                  <div
                     key={path}
-                    onClick={() => openWorkspace(path)}
-                    disabled={busy}
                     className={`flex items-center justify-between w-full px-4 py-3 text-left transition-colors group ${
                       isActive
                         ? "bg-surface-container-low border-l-2 border-l-primary hover:bg-surface-container-highest"
                         : "border-l-2 border-l-transparent hover:bg-surface-container-low"
                     } ${!isLast ? "border-b border-b-outline-variant" : ""}`}
                   >
-                    <div className="flex flex-col gap-0.5 min-w-0">
+                    <button
+                      onClick={() => openWorkspace(path)}
+                      disabled={busy}
+                      className="flex flex-col gap-0.5 min-w-0 flex-1 text-left disabled:cursor-not-allowed disabled:opacity-50"
+                    >
                       <span
                         className={`text-[14px] text-on-surface truncate ${
                           isActive ? "font-semibold" : "font-medium"
@@ -119,9 +136,18 @@ export function SetupScreen({ status, onRefresh }: Props) {
                       <span className="font-mono text-[11px] text-on-surface-variant group-hover:text-on-surface transition-colors truncate">
                         {path}
                       </span>
-                    </div>
-                    <Icon name="chevron_right" className="w-[16px] h-[16px] text-outline-variant group-hover:text-on-surface transition-colors shrink-0 ml-3" />
-                  </button>
+                    </button>
+                    <button
+                      onClick={() => removeRecentWorkspace(path)}
+                      disabled={busy}
+                      title="Remove from recent"
+                      aria-label={`Remove ${name} from recent workspaces`}
+                      className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-outline-variant hover:text-error disabled:cursor-not-allowed disabled:opacity-40 shrink-0 ml-3 p-1"
+                    >
+                      <Icon name="delete" className="w-[15px] h-[15px]" />
+                    </button>
+                    <Icon name="chevron_right" className="w-[16px] h-[16px] text-outline-variant group-hover:text-on-surface transition-colors shrink-0 ml-1" />
+                  </div>
                 );
               })
             )}
