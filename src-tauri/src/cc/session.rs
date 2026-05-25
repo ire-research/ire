@@ -61,4 +61,15 @@ impl SessionManager {
                 s.session_id.as_ref().map(|sid| (tab_id.clone(), sid.clone()))
             })
     }
+
+    /// Drop all per-tab state and return the PIDs that were running. Used on
+    /// workspace close to terminate stragglers; their late chat-stream events
+    /// would otherwise leak into the next workspace because the frontend
+    /// listener is global.
+    pub fn drain(&self) -> Vec<u32> {
+        let mut map = self.0.lock().unwrap();
+        let pids = map.values().filter_map(|s| s.running_pid).collect();
+        map.clear();
+        pids
+    }
 }

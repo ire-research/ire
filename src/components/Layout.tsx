@@ -3,6 +3,7 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { ipc, onWikiChanged } from "../ipc";
 import { useWorkspace } from "../state/workspace";
+import { useChat } from "../state/chat";
 import { useChatOptions } from "../state/chatOptions";
 import { toastError } from "../state/toasts";
 import type { IdeaItem, PulseContent, ResourceItem } from "../types";
@@ -111,6 +112,7 @@ export function Layout() {
 
   const handleClose = async () => {
     await ipc.closeWorkspace();
+    useChat.getState().reset();
     const status = await ipc.setupStatus();
     setPhase({ kind: "setup", status });
   };
