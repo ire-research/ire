@@ -96,10 +96,18 @@ pub fn init_workspace(
 pub fn close_workspace(
     active: State<'_, ActiveWorkspace>,
     mcp: State<'_, McpState>,
+    session: State<'_, SessionManager>,
 ) -> Result<(), String> {
     tracing::info!("close_workspace");
     // Stop MCP server first (Drop impl aborts task + removes socket file).
     mcp.0.lock().map_err(|e| e.to_string())?.take();
+
+    // Terminate any in-flight CC subprocesses so their late chat-stream events
+    // don't leak into the next workspace (the frontend listener is global).
+    for pid in session.drain() {
+        tracing::info!(pid = pid, "terminating stale CC subprocess on workspace close");
+        crate::commands::chat::kill_process(pid);
+    }
 
     let mut guard = active.0.lock().map_err(|e| e.to_string())?;
     let prev = guard.take();
