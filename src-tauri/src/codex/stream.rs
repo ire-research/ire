@@ -72,16 +72,22 @@ pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, em
                     if id.is_empty() {
                         return;
                     }
-                    let output = item["output"]
-                        .as_str()
-                        .or_else(|| item["aggregated_output"].as_str())
-                        .map(|s| s.to_string());
+                    let output = if t == "mcp_tool_call" {
+                        extract_mcp_result_text(item)
+                    } else {
+                        item["output"]
+                            .as_str()
+                            .or_else(|| item["aggregated_output"].as_str())
+                            .map(|s| s.to_string())
+                    };
                     let output_preview = output
                         .as_deref()
                         .and_then(|s| s.lines().next())
                         .map(|s| trunc_chars(s.trim(), 80));
                     let output_full = output.map(|s| trunc_chars(&s, 10_000));
-                    let status = if item["exit_code"].as_i64().is_some_and(|code| code != 0) {
+                    let status = if (t == "mcp_tool_call" && item["error"].is_string())
+                        || item["exit_code"].as_i64().is_some_and(|code| code != 0)
+                    {
                         ToolStatus::Failed
                     } else {
                         ToolStatus::Completed
@@ -124,6 +130,7 @@ fn is_tool_item_type(t: &str) -> bool {
             | "fileChange"
             | "dynamic_tool_call"
             | "dynamicToolCall"
+            | "mcp_tool_call"
     )
 }
 
@@ -141,6 +148,16 @@ fn codex_tool_name(item: &Value, item_type: &str) -> String {
                     return s.to_string();
                 }
             }
+        }
+    }
+    if item_type == "mcp_tool_call" {
+        let server = item["server"].as_str().unwrap_or("");
+        let tool = item["tool"].as_str().unwrap_or("");
+        if !server.is_empty() && !tool.is_empty() {
+            return format!("{}__{}", server, tool);
+        }
+        if !tool.is_empty() {
+            return tool.to_string();
         }
     }
     item_type.to_string()
@@ -163,26 +180,29 @@ fn extract_input_preview(item: &Value) -> Option<String> {
         }
     }
 
-    if let Some(input) = item.get("input") {
-        for key in &[
-            "path",
-            "file_path",
-            "filename",
-            "url",
-            "query",
-            "from",
-            "glob",
-            "pattern",
-            "command",
-        ] {
-            if let Some(s) = input.get(*key).and_then(|v| v.as_str()) {
-                if !s.is_empty() {
-                    return Some(trunc_chars(s, 80));
+    // mcp_tool_call uses "arguments" instead of "input"
+    for args_key in &["arguments", "input"] {
+        if let Some(args) = item.get(*args_key) {
+            for key in &[
+                "path",
+                "file_path",
+                "filename",
+                "url",
+                "query",
+                "from",
+                "glob",
+                "pattern",
+                "command",
+            ] {
+                if let Some(s) = args.get(*key).and_then(|v| v.as_str()) {
+                    if !s.is_empty() {
+                        return Some(trunc_chars(s, 80));
+                    }
                 }
             }
-        }
-        if let Some(preview) = first_string(input).map(|s| trunc_chars(s, 80)) {
-            return Some(preview);
+            if let Some(preview) = first_string(args).map(|s| trunc_chars(s, 80)) {
+                return Some(preview);
+            }
         }
     }
 
@@ -205,6 +225,7 @@ fn extract_input_full(item: &Value) -> Option<String> {
         if matches!(
             key.as_str(),
             "id" | "type" | "status" | "exit_code" | "output" | "aggregated_output"
+                | "result" | "error"
         ) || is_empty_value(value)
         {
             continue;
@@ -219,6 +240,20 @@ fn extract_input_full(item: &Value) -> Option<String> {
     serde_json::to_string_pretty(&Value::Object(out))
         .ok()
         .map(|s| trunc_chars(&s, 10_000))
+}
+
+/// Extracts the text payload from an `mcp_tool_call` item's `result.content` array.
+fn extract_mcp_result_text(item: &Value) -> Option<String> {
+    let content = item["result"]["content"].as_array()?;
+    let parts: Vec<&str> = content
+        .iter()
+        .filter_map(|c| c["text"].as_str())
+        .collect();
+    if parts.is_empty() {
+        None
+    } else {
+        Some(parts.join("\n"))
+    }
 }
 
 fn first_string(value: &Value) -> Option<&str> {
@@ -461,5 +496,96 @@ mod tests {
         assert_eq!(tool.raw_name, "custom.lookup");
         assert_eq!(tool.input.preview.as_deref(), Some("needle"));
         assert_eq!(tool.input.full.as_deref(), Some("{\n  \"input\": {\n    \"query\": \"needle\"\n  },\n  \"name\": \"custom.lookup\"\n}"));
+    }
+
+    #[test]
+    fn emits_mcp_tool_call_start_and_done() {
+        let mut state = StreamState::default();
+
+        let started = collect(
+            json!({
+                "type": "item.started",
+                "item": {
+                    "id": "item_0",
+                    "type": "mcp_tool_call",
+                    "server": "ire",
+                    "tool": "wiki.list",
+                    "arguments": {},
+                    "result": null,
+                    "error": null,
+                    "status": "in_progress"
+                }
+            }),
+            &mut state,
+        );
+
+        let StreamEvent::ToolStart { tool } = &started[0] else {
+            panic!("expected ToolStart");
+        };
+        assert_eq!(tool.provider, ToolProvider::Codex);
+        assert_eq!(tool.raw_name, "ire__wiki.list");
+        assert_eq!(tool.kind, ToolKind::WikiRead);
+        assert_eq!(tool.title, "Read wiki");
+        assert_eq!(tool.status, ToolStatus::Running);
+
+        let completed = collect(
+            json!({
+                "type": "item.completed",
+                "item": {
+                    "id": "item_0",
+                    "type": "mcp_tool_call",
+                    "server": "ire",
+                    "tool": "wiki.list",
+                    "arguments": {},
+                    "result": {
+                        "content": [{ "type": "text", "text": "README.md\nNOTES.md" }],
+                        "structured_content": null
+                    },
+                    "error": null,
+                    "status": "completed"
+                }
+            }),
+            &mut state,
+        );
+
+        assert_eq!(
+            completed,
+            vec![StreamEvent::ToolDone {
+                tool_id: "item_0".into(),
+                output: Some(ToolIo {
+                    preview: Some("README.md".into()),
+                    full: Some("README.md\nNOTES.md".into()),
+                    format: ToolFormat::Text,
+                }),
+                status: ToolStatus::Completed,
+                meta: json!({}),
+            }]
+        );
+    }
+
+    #[test]
+    fn mcp_tool_call_error_field_sets_failed_status() {
+        let mut state = StreamState::default();
+        let events = collect(
+            json!({
+                "type": "item.completed",
+                "item": {
+                    "id": "item_1",
+                    "type": "mcp_tool_call",
+                    "server": "ire",
+                    "tool": "wiki.read",
+                    "arguments": { "path": "missing.md" },
+                    "result": null,
+                    "error": "file not found",
+                    "status": "completed"
+                }
+            }),
+            &mut state,
+        );
+
+        let StreamEvent::ToolDone { status, .. } = &events[0] else {
+            panic!("expected ToolDone");
+        };
+        assert_eq!(*status, ToolStatus::Failed);
     }
 }

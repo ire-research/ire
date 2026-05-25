@@ -23,7 +23,9 @@ export function ToolCard({ tool }: Props) {
         onKeyDown={(e) => e.key === "Enter" && canExpand && setExpanded((v) => !v)}
       >
         <Icon name={iconForKind(tool.kind)} className="w-[16px] h-[16px] text-on-surface-variant shrink-0" />
-        <span className={statusDotClass(tool.status)} />
+        {tool.kind === "experiment_start" && (
+          <span className={statusDotClass(tool.status)} />
+        )}
         <span className="font-mono text-on-surface-variant shrink-0">{tool.title}</span>
         {preview && (
           <span className="font-mono text-on-surface-variant/70 min-w-0 flex-1 truncate">

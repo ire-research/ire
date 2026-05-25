@@ -129,7 +129,7 @@ pub fn tool_kind(normalized_name: &str) -> ToolKind {
         "edit" | "multiedit" | "file_change" | "filechange" => ToolKind::FileEdit,
         "grep" | "glob" | "ls" => ToolKind::FileSearch,
         "webfetch" => ToolKind::WebFetch,
-        "wiki.read" => ToolKind::WikiRead,
+        "wiki.read" | "wiki.list" => ToolKind::WikiRead,
         "wiki.write" => ToolKind::WikiWrite,
         "wiki.append" => ToolKind::WikiAppend,
         "wiki.rename" => ToolKind::WikiRename,
@@ -168,8 +168,10 @@ pub fn tool_title(kind: &ToolKind) -> &'static str {
 
 pub fn extract_meta(kind: &ToolKind, input: &Value) -> Value {
     let mut meta = Map::new();
+    // mcp_tool_call uses "arguments"; dynamic_tool_call uses "input"
     let detail = input
-        .get("input")
+        .get("arguments")
+        .or_else(|| input.get("input"))
         .filter(|v| v.is_object())
         .unwrap_or(input);
     if let Some(command) = input
