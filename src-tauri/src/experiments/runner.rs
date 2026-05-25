@@ -24,10 +24,6 @@ pub fn start_experiment(
         .as_str()
         .ok_or_else(|| anyhow!("missing name"))?
         .to_string();
-    let plan_md = params["plan_md"]
-        .as_str()
-        .ok_or_else(|| anyhow!("missing plan_md"))?
-        .to_string();
     let command = params["command"]
         .as_str()
         .ok_or_else(|| anyhow!("missing command"))?
@@ -46,7 +42,6 @@ pub fn start_experiment(
     let exp_dir = ire_dir.join("wiki/experiments").join(&uuid);
 
     fs::create_dir_all(&exp_dir).context("create experiments dir")?;
-    fs::write(exp_dir.join("plan.md"), &plan_md).context("write plan.md")?;
 
     let stdout_file = File::create(exp_dir.join("stdout.log")).context("create stdout.log")?;
     let stderr_file = File::create(exp_dir.join("stderr.log")).context("create stderr.log")?;

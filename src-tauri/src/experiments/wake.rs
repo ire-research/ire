@@ -41,7 +41,6 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
 
     let ire_dir = workspace_root.join(".ire");
     let exp_dir = ire_dir.join("wiki/experiments").join(uuid);
-    let plan_path = format!(".ire/wiki/experiments/{uuid}/plan.md");
 
     let stdout_tail = tail_file(&exp_dir.join("stdout.log"), 8192);
     let stderr_tail = tail_file(&exp_dir.join("stderr.log"), 8192);
@@ -50,7 +49,6 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         wake_prompt,
         uuid,
         exit_code,
-        plan_path: &plan_path,
         stdout_tail: &stdout_tail,
         stderr_tail: &stderr_tail,
     });

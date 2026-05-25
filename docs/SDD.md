@@ -135,7 +135,6 @@ my_research_project/
 │       │   └── <slug>.md            # One file per ingested paper/article
 │       └── experiments/
 │           └── <experiment_uuid>/
-│               ├── plan.md
 │               ├── stdout.log       # gitignored
 │               └── stderr.log       # gitignored
 └── ... user source code ...
@@ -418,7 +417,6 @@ This is the core of [Q1's answer](./SCOPE.md#mvp): CC must not hang on the exper
 T0  User asks: "Run an ablation over learning rates [1e-3, 1e-4, 1e-5]."
 T1  CC plans, gets agreement, then calls MCP tool experiment.start({
        name: "lr-ablation",
-       plan_md: "<full plan as markdown>",
        command: "python scripts/ablate_lr.py --output runs/lr_ablation",
        working_dir: "<project root>",
        wake_prompt: "Experiment lr-ablation finished. Read its result.md and
@@ -426,13 +424,12 @@ T1  CC plans, gets agreement, then calls MCP tool experiment.start({
     })
 T2  MCP server forwards to IRE Rust backend over its private channel:
        - inserts experiment row (status=running, uuid, start_time, command, …)
-       - writes plan_md to .ire/wiki/experiments/<uuid>/plan.md
        - spawns the command as a DETACHED process group:
            Command::new("sh").args(["-c", &command])
                  .current_dir(working_dir)
                  .stdin(Stdio::null())
-                 .stdout(file .ire/wiki/experiments/<uuid>/stdout.log)
-                 .stderr(file .ire/wiki/experiments/<uuid>/stderr.log)
+    2. Backend spawns the process detached
+       - writes stdout/stderr to `.ire/wiki/experiments/<uuid>/{stdout,stderr}.log`)
                  .process_group(0)             // setsid
                  .env_remove("CLAUDECODE")
                  .spawn()
@@ -446,8 +443,8 @@ T5  Process exits. Backend:
        - updates DB row (status, exit_code, end_time)
        - reads tail of stdout/stderr (last N kB)
        - composes wake-up message:
-           "<wake_prompt>\n\nExperiment uuid: <uuid>\nExit code: <n>\n
-            Plan: .ire/wiki/experiments/<uuid>/plan.md\n
+           "<wake_prompt>\n\nExperiment uuid:            Exit code: 0
+
             stdout tail: <…>\nstderr tail: <…>"
        - spawns the same provider with its resume id and that message
 T6  The agent reads result files, calls wiki.write for any new findings,
@@ -629,7 +626,7 @@ The MCP server is a **thin RPC bridge** to the Rust backend over a Unix domain s
 | `memory.write_short_term({ content })` | Append to today's `short-term/YYYY-MM-DD.md`. Does not commit. |
 | `pulse.update({ research_question?, this_week? })` | Patch `pulse.json`. Does not commit. |
 | `resource.fetch({ url })` | Fetch URL, extract text, return it (does not save to wiki). |
-| `experiment.start({ name, plan_md, command, working_dir?, wake_prompt })` | Spawn detached subprocess, return `{ uuid }`. |
+| `experiment.start({ name, command, working_dir?, wake_prompt })` | Spawn detached subprocess, return `{ uuid }`. |
 | `experiment.status({ uuid })` | Return `{ status, exit_code?, started_at, ended_at? }`. |
 | `experiment.list({ limit? })` | Recent experiments. |
 | `experiment.tail_logs({ uuid, kb? })` | Tail of stdout/stderr. |

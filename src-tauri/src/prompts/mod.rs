@@ -18,7 +18,6 @@ pub struct WakeupArgs<'a> {
     pub wake_prompt: &'a str,
     pub uuid: &'a str,
     pub exit_code: i32,
-    pub plan_path: &'a str,
     pub stdout_tail: &'a str,
     pub stderr_tail: &'a str,
 }
@@ -28,7 +27,6 @@ pub fn experiment_wakeup(args: WakeupArgs<'_>) -> String {
         .replace("{wake_prompt}", args.wake_prompt)
         .replace("{uuid}", args.uuid)
         .replace("{exit_code}", &args.exit_code.to_string())
-        .replace("{plan_path}", args.plan_path)
         .replace("{stdout_tail}", args.stdout_tail)
         .replace("{stderr_tail}", args.stderr_tail)
 }
