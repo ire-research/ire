@@ -62,6 +62,9 @@ export default {
         "accent": "#E4E4E7",
         "accent-fg": "#0A0A0A",
       },
+      borderWidth: {
+        DEFAULT: "1px",
+      },
       borderRadius: {
         DEFAULT: "0.125rem",
         lg: "0.25rem",
