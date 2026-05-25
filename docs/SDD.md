@@ -234,10 +234,10 @@ On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel.  
 
 ### 5.4 Close
 
-- Stop the CC subprocess (kill on SIGTERM, escalate to SIGKILL after grace).
-- Stop the MCP server subprocess.
-- Persist `workspace.json` (current layout + session id).
-- Release `.ire/.lock`.
+- Stop the MCP server (drops `McpHandle`, which aborts the task and removes the socket file).
+- SIGTERM every in-flight CC subprocess tracked by `SessionManager` and clear all per-tab session state. The frontend `chat-stream` listener is global, so leaving stragglers running would leak late `TextDelta`/`Done` events into whichever workspace opens next.
+- Frontend resets the `useChat` Zustand store (`tabs = [MAIN_TAB with empty messages]`, `activeTabId = "main"`) so the next workspace starts with a clean chat pane.
+- Release `.ire/.lock` (drops `WorkspaceHandle`, which releases the lock).
 
 ---
 

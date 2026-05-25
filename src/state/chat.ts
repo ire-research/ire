@@ -15,6 +15,9 @@ interface ChatStore {
   openExperimentTab: (uuid: string, name: string) => void;
   closeTab: (tabId: string) => void;
   setActiveTab: (tabId: string) => void;
+  /** Clear all tabs and messages — call on workspace close to prevent state from
+   *  the previous workspace leaking into the next one. */
+  reset: () => void;
 
   addUserMessage: (tabId: string, text: string) => string;
   beginAssistantMessage: (tabId: string) => string;
@@ -187,6 +190,13 @@ export const useChat = create<ChatStore>((set) => ({
 
   setActiveTab: (tabId) =>
     set((s) => ({ previousTabId: s.activeTabId, activeTabId: tabId })),
+
+  reset: () =>
+    set({
+      tabs: [{ ...MAIN_TAB, messages: [] }],
+      activeTabId: MAIN_TAB_ID,
+      previousTabId: null,
+    }),
 
   addUserMessage: (tabId, text) => {
     const id = String(seq++);

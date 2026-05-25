@@ -180,12 +180,12 @@ pub fn build_system_prompt(workspace_root: &Path) -> String {
 }
 
 #[cfg(unix)]
-fn kill_process(pid: u32) {
+pub(crate) fn kill_process(pid: u32) {
     unsafe { libc::kill(pid as libc::pid_t, libc::SIGTERM) };
 }
 
 #[cfg(windows)]
-fn kill_process(pid: u32) {
+pub(crate) fn kill_process(pid: u32) {
     let _ = std::process::Command::new("taskkill")
         .args(["/F", "/PID", &pid.to_string()])
         .output();
@@ -193,4 +193,4 @@ fn kill_process(pid: u32) {
 
 // Suppress dead-code lint for platforms where neither cfg applies.
 #[cfg(not(any(unix, windows)))]
-fn kill_process(_pid: u32) {}
+pub(crate) fn kill_process(_pid: u32) {}
