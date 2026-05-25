@@ -21,6 +21,7 @@ export type BinaryStatus =
 
 export interface SetupStatus {
   binary: BinaryStatus;
+  codex_binary: BinaryStatus;
 }
 
 export interface WorkspaceState {
@@ -31,6 +32,8 @@ export interface WorkspaceState {
 export interface PersistedWorkspace {
   version: number;
   panel_layout?: PanelLayouts | null;
+  model?: string | null;
+  provider?: "claude" | "codex" | null;
   last_opened?: string | null;
   effort?: string | null;
 }

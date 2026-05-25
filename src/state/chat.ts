@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AskAnswer, AskQuestion, AssistantContentBlock, AssistantMessage, ExperimentStatus, ResourceStatus, Tab, ToolCallState } from "../types";
+import type { AskAnswer, AskQuestion, AssistantContentBlock, AssistantMessage, ExperimentStatus, ResourceStatus, Tab, ToolCallState, ToolIo, ToolMeta, ToolStatus } from "../types";
 
 const MAIN_TAB_ID = "main";
 
@@ -36,7 +36,7 @@ interface ChatStore {
 
   // Tool call management
   addTool: (tabId: string, msgId: string, tool: ToolCallState) => void;
-  markToolDone: (tabId: string, toolId: string, outputPreview?: string | null, outputFull?: string | null) => void;
+  markToolDone: (tabId: string, toolId: string, output: ToolIo | null, status: ToolStatus, meta?: ToolMeta | null) => void;
   /** Link the pending experiment card in tabId to its assigned UUID and PID. */
   linkExperimentUuid: (tabId: string, uuid: string, pid?: number) => void;
   /** Update experiment status across all tabs by UUID. */
@@ -95,14 +95,6 @@ function messageHasTool(msg: AssistantMessage, predicate: (t: ToolCallState) => 
   return msg.blocks.some((block) => block.kind === "tool" && predicate(block.tool));
 }
 
-// CC prefixes MCP tool names with the server name (e.g. "ire__experiment.start").
-// Mirror the normalization in MessageList.tsx so look-ups match what was stored.
-function isExperimentToolName(name: string): boolean {
-  const parts = name.split("__");
-  const bare = parts[parts.length - 1].replace(/_/g, ".");
-  return bare === "experiment.start";
-}
-
 /** Find the last assistant message in a tab that has a pending experiment card (no UUID yet). */
 function findPendingExperimentMsgId(tabs: Tab[], tabId: string): string | null {
   const tab = tabs.find((t) => t.id === tabId);
@@ -111,7 +103,7 @@ function findPendingExperimentMsgId(tabs: Tab[], tabId: string): string | null {
     const m = tab.messages[i];
     if (m.role === "assistant") {
       const am = m as AssistantMessage;
-      const pending = messageHasTool(am, (t) => isExperimentToolName(t.tool_name) && !t.experimentUuid);
+      const pending = messageHasTool(am, (t) => t.kind === "experiment_start" && !t.meta.experiment_uuid);
       if (pending) return am.id;
     }
   }
@@ -341,7 +333,7 @@ export const useChat = create<ChatStore>((set) => ({
       })),
     })),
 
-  markToolDone: (tabId, toolId, outputPreview?, outputFull?) =>
+  markToolDone: (tabId, toolId, output, status, meta?) =>
     set((s) => {
       const tab = s.tabs.find((t) => t.id === tabId);
       if (!tab) return s;
@@ -353,9 +345,9 @@ export const useChat = create<ChatStore>((set) => ({
             tabs: updateMessage(s.tabs, tabId, am.id, (m) =>
               updateToolInMessage(m, (t) => t.tool_id === toolId, (t) => ({
                 ...t,
-                isDone: true,
-                output_preview: outputPreview ?? null,
-                output_full: outputFull ?? null,
+                output,
+                status,
+                meta: { ...t.meta, ...(meta ?? {}) },
               }))
             ),
           };
@@ -372,12 +364,15 @@ export const useChat = create<ChatStore>((set) => ({
         tabs: updateMessage(s.tabs, tabId, msgId, (m) =>
           updateToolInMessage(
             m,
-            (t) => isExperimentToolName(t.tool_name) && !t.experimentUuid,
+            (t) => t.kind === "experiment_start" && !t.meta.experiment_uuid,
             (t) => ({
               ...t,
-              experimentUuid: uuid,
-              experimentStatus: "running" as ExperimentStatus,
-              ...(pid !== undefined ? { experimentPid: pid } : {}),
+              meta: {
+                ...t.meta,
+                experiment_uuid: uuid,
+                experiment_status: "running" as ExperimentStatus,
+                ...(pid !== undefined ? { experiment_pid: pid } : {}),
+              },
             })
           )
         ),
@@ -390,13 +385,20 @@ export const useChat = create<ChatStore>((set) => ({
         for (const msg of tab.messages) {
           if (msg.role !== "assistant") continue;
           const am = msg as AssistantMessage;
-          if (messageHasTool(am, (t) => t.experimentUuid === uuid)) {
+          if (messageHasTool(am, (t) => t.meta.experiment_uuid === uuid)) {
             return {
               tabs: updateMessage(s.tabs, tab.id, am.id, (m) =>
                 updateToolInMessage(
                   m,
-                  (t) => t.experimentUuid === uuid,
-                  (t) => ({ ...t, experimentStatus: status, ...(exitCode !== undefined ? { experimentExitCode: exitCode } : {}) })
+                  (t) => t.meta.experiment_uuid === uuid,
+                  (t) => ({
+                    ...t,
+                    meta: {
+                      ...t.meta,
+                      experiment_status: status,
+                      ...(exitCode !== undefined ? { experiment_exit_code: exitCode } : {}),
+                    },
+                  })
                 )
               ),
             };
@@ -412,12 +414,12 @@ export const useChat = create<ChatStore>((set) => ({
         for (const msg of tab.messages) {
           if (msg.role !== "assistant") continue;
           const am = msg as AssistantMessage;
-          if (messageHasTool(am, (t) => t.experimentUuid === uuid)) {
+          if (messageHasTool(am, (t) => t.meta.experiment_uuid === uuid)) {
             return {
               tabs: updateMessage(s.tabs, tab.id, am.id, (m) =>
                 updateToolInMessage(
                   m,
-                  (t) => t.experimentUuid === uuid,
+                  (t) => t.meta.experiment_uuid === uuid,
                   (t) => {
                     const lines = t.logLines ?? [];
                     // Keep last 50 lines to avoid unbounded growth.
@@ -449,5 +451,4 @@ export const useChat = create<ChatStore>((set) => ({
       })),
     })),
 }));
-
 

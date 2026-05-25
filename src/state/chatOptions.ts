@@ -1,13 +1,26 @@
 import { create } from "zustand";
 import type { EffortLevel } from "../types";
 
-export const MODELS = [
-  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5" },
-  { id: "claude-sonnet-4-6",         label: "Sonnet 4.6" },
-  { id: "claude-opus-4-7",           label: "Opus 4.7"   },
+export type Provider = "claude" | "codex";
+
+export interface ModelEntry {
+  id: string;
+  label: string;
+  provider: Provider;
+}
+
+export const MODELS: ModelEntry[] = [
+  { id: "claude-opus-4-7",           label: "Opus 4.7",      provider: "claude" },
+  { id: "claude-sonnet-4-6",         label: "Sonnet 4.6",    provider: "claude" },
+  { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5",     provider: "claude" },
+  { id: "gpt-5.5",                   label: "GPT-5.5",       provider: "codex" },
+  { id: "gpt-5.4",                   label: "GPT-5.4",       provider: "codex" },
+  { id: "gpt-5.4-mini",              label: "GPT-5.4-Mini",  provider: "codex" },
+  { id: "gpt-5.3-codex",             label: "GPT-5.3-Codex", provider: "codex" },
+  { id: "gpt-5.2",                   label: "GPT-5.2",       provider: "codex" },
 ];
 
-export const EFFORT_LEVELS: { value: EffortLevel; label: string }[] = [
+export const CLAUDE_EFFORT_LEVELS: { value: EffortLevel; label: string }[] = [
   { value: "low",    label: "Low"   },
   { value: "medium", label: "Med"   },
   { value: "high",   label: "High"  },
@@ -15,16 +28,47 @@ export const EFFORT_LEVELS: { value: EffortLevel; label: string }[] = [
   { value: "max",    label: "Max"   },
 ];
 
+export const CODEX_EFFORT_LEVELS: { value: EffortLevel; label: string }[] = [
+  { value: "low",    label: "Low"   },
+  { value: "medium", label: "Med"   },
+  { value: "high",   label: "High"  },
+  { value: "xhigh",  label: "XHigh" },
+];
+
+export const EFFORT_LEVELS = CLAUDE_EFFORT_LEVELS;
+
+export const DEFAULT_CHAT_OPTIONS = {
+  model: "claude-sonnet-4-6",
+  provider: "claude" as Provider,
+  effort: "low" as EffortLevel,
+};
+
+export function effortLevelsForProvider(provider: Provider) {
+  return provider === "codex" ? CODEX_EFFORT_LEVELS : CLAUDE_EFFORT_LEVELS;
+}
+
+export function isValidChatOptions(model: string | null | undefined, provider: string | null | undefined, effort: string | null | undefined): model is string {
+  if (provider !== "claude" && provider !== "codex") return false;
+  if (!MODELS.some((entry) => entry.id === model && entry.provider === provider)) return false;
+  return effortLevelsForProvider(provider).some((entry) => entry.value === effort);
+}
+
 interface ChatOptionsState {
   model: string;
+  provider: Provider;
   effort: EffortLevel;
-  setModel(m: string): void;
+  setModel(model: string, provider: Provider): void;
   setEffort(e: EffortLevel): void;
+  setOptions(options: { model: string; provider: Provider; effort: EffortLevel }): void;
 }
 
 export const useChatOptions = create<ChatOptionsState>((set) => ({
-  model: "claude-haiku-4-5-20251001",
-  effort: "low",
-  setModel: (model) => set({ model }),
+  ...DEFAULT_CHAT_OPTIONS,
+  setModel: (model, provider) => set((state) => ({
+    model,
+    provider,
+    effort: state.provider === provider ? state.effort : "low",
+  })),
   setEffort: (effort) => set({ effort }),
+  setOptions: (options) => set(options),
 }));

@@ -566,4 +566,3 @@ fn build_resource_system_prompt(workspace_root: &Path) -> String {
 pub fn get_resource_confirm_prompt() -> &'static str {
     prompts::resource_confirm()
 }
-

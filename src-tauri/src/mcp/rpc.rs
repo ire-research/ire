@@ -155,16 +155,28 @@ fn wiki_read(params: &serde_json::Value, wiki: &WikiStore) -> Result<serde_json:
     Ok(serde_json::json!({ "content": content, "frontmatter": frontmatter }))
 }
 
-fn wiki_write(params: &serde_json::Value, wiki: &WikiStore, app: &AppHandle) -> Result<serde_json::Value> {
+fn wiki_write(
+    params: &serde_json::Value,
+    wiki: &WikiStore,
+    app: &AppHandle,
+) -> Result<serde_json::Value> {
     let path = params["path"].as_str().ok_or(anyhow!("missing path"))?;
-    let content = params["content"].as_str().ok_or(anyhow!("missing content"))?;
+    let content = params["content"]
+        .as_str()
+        .ok_or(anyhow!("missing content"))?;
     wiki.write(path, content, app)?;
     Ok(serde_json::json!({ "written": path }))
 }
 
-fn wiki_append(params: &serde_json::Value, wiki: &WikiStore, app: &AppHandle) -> Result<serde_json::Value> {
+fn wiki_append(
+    params: &serde_json::Value,
+    wiki: &WikiStore,
+    app: &AppHandle,
+) -> Result<serde_json::Value> {
     let path = params["path"].as_str().ok_or(anyhow!("missing path"))?;
-    let content = params["content"].as_str().ok_or(anyhow!("missing content"))?;
+    let content = params["content"]
+        .as_str()
+        .ok_or(anyhow!("missing content"))?;
     let existing = fs::read_to_string(wiki.wiki_root.join(path)).unwrap_or_default();
     wiki.write(path, &(existing + content), app)?;
     Ok(serde_json::json!({ "appended": path }))
@@ -190,24 +202,42 @@ fn collect_paths(wiki_root: &Path, dir: &Path, out: &mut Vec<String>) -> Result<
         }
         if path.is_dir() {
             collect_paths(wiki_root, &path, out)?;
-        } else if matches!(path.extension().and_then(|e| e.to_str()), Some("md" | "json")) {
-            let rel = path.strip_prefix(wiki_root)?.to_string_lossy().replace('\\', "/");
+        } else if matches!(
+            path.extension().and_then(|e| e.to_str()),
+            Some("md" | "json")
+        ) {
+            let rel = path
+                .strip_prefix(wiki_root)?
+                .to_string_lossy()
+                .replace('\\', "/");
             out.push(rel);
         }
     }
     Ok(())
 }
 
-fn wiki_rename(params: &serde_json::Value, wiki: &WikiStore, app: &AppHandle) -> Result<serde_json::Value> {
+fn wiki_rename(
+    params: &serde_json::Value,
+    wiki: &WikiStore,
+    app: &AppHandle,
+) -> Result<serde_json::Value> {
     let from = params["from"].as_str().ok_or(anyhow!("missing from"))?;
     let to = params["to"].as_str().ok_or(anyhow!("missing to"))?;
     wiki.rename(from, to, app)?;
     Ok(serde_json::json!({ "renamed": { "from": from, "to": to } }))
 }
 
-fn memory_write_long_term(params: &serde_json::Value, wiki: &WikiStore, app: &AppHandle) -> Result<serde_json::Value> {
-    let section = params["section"].as_str().ok_or(anyhow!("missing section"))?;
-    let content = params["content"].as_str().ok_or(anyhow!("missing content"))?;
+fn memory_write_long_term(
+    params: &serde_json::Value,
+    wiki: &WikiStore,
+    app: &AppHandle,
+) -> Result<serde_json::Value> {
+    let section = params["section"]
+        .as_str()
+        .ok_or(anyhow!("missing section"))?;
+    let content = params["content"]
+        .as_str()
+        .ok_or(anyhow!("missing content"))?;
 
     let path = "long-term.md";
     let existing = fs::read_to_string(wiki.wiki_root.join(path)).unwrap_or_default();
@@ -216,8 +246,14 @@ fn memory_write_long_term(params: &serde_json::Value, wiki: &WikiStore, app: &Ap
     Ok(serde_json::json!({ "written": path }))
 }
 
-fn memory_write_short_term(params: &serde_json::Value, wiki: &WikiStore, app: &AppHandle) -> Result<serde_json::Value> {
-    let content = params["content"].as_str().ok_or(anyhow!("missing content"))?;
+fn memory_write_short_term(
+    params: &serde_json::Value,
+    wiki: &WikiStore,
+    app: &AppHandle,
+) -> Result<serde_json::Value> {
+    let content = params["content"]
+        .as_str()
+        .ok_or(anyhow!("missing content"))?;
 
     let today = Local::now().format("%Y-%m-%d").to_string();
     let path = format!("short-term/{today}.md");
@@ -227,7 +263,11 @@ fn memory_write_short_term(params: &serde_json::Value, wiki: &WikiStore, app: &A
     Ok(serde_json::json!({ "written": path }))
 }
 
-fn pulse_update(params: &serde_json::Value, wiki: &WikiStore, app: &AppHandle) -> Result<serde_json::Value> {
+fn pulse_update(
+    params: &serde_json::Value,
+    wiki: &WikiStore,
+    app: &AppHandle,
+) -> Result<serde_json::Value> {
     let research_question = params["research_question"].as_str();
     let this_week = params["this_week"].as_str();
 
@@ -254,15 +294,16 @@ fn experiment_start(
     session_manager: &SessionManager,
     app: &AppHandle,
 ) -> Result<serde_json::Value> {
-    let (tab_id, session_id) = session_manager
+    let active = session_manager
         .get_active_session()
-        .ok_or_else(|| anyhow!("no active CC session — cannot start experiment"))?;
+        .ok_or_else(|| anyhow!("no active agent session — cannot start experiment"))?;
 
     crate::experiments::runner::start_experiment(
         params,
         workspace_root,
-        tab_id,
-        session_id,
+        active.tab_id,
+        active.session_id,
+        active.provider,
         session_manager.clone(),
         app.clone(),
     )
@@ -272,7 +313,9 @@ fn experiment_status(
     params: &serde_json::Value,
     workspace_root: &Path,
 ) -> Result<serde_json::Value> {
-    let uuid = params["uuid"].as_str().ok_or_else(|| anyhow!("missing uuid"))?;
+    let uuid = params["uuid"]
+        .as_str()
+        .ok_or_else(|| anyhow!("missing uuid"))?;
     let ire_dir = workspace_root.join(".ire");
     let row = db::get_experiment(&ire_dir, uuid)?
         .ok_or_else(|| anyhow!("experiment {uuid} not found"))?;
@@ -285,10 +328,7 @@ fn experiment_status(
     }))
 }
 
-fn experiment_list(
-    params: &serde_json::Value,
-    workspace_root: &Path,
-) -> Result<serde_json::Value> {
+fn experiment_list(params: &serde_json::Value, workspace_root: &Path) -> Result<serde_json::Value> {
     let limit = params["limit"].as_u64().unwrap_or(20) as usize;
     let ire_dir = workspace_root.join(".ire");
     let rows = db::list_experiments(&ire_dir, limit)?;
@@ -299,7 +339,9 @@ fn experiment_tail_logs(
     params: &serde_json::Value,
     workspace_root: &Path,
 ) -> Result<serde_json::Value> {
-    let uuid = params["uuid"].as_str().ok_or_else(|| anyhow!("missing uuid"))?;
+    let uuid = params["uuid"]
+        .as_str()
+        .ok_or_else(|| anyhow!("missing uuid"))?;
     let kb = params["kb"].as_u64().unwrap_or(64);
     let log_dir = workspace_root.join(".ire/wiki/experiments").join(uuid);
     let max_bytes = kb * 1024;
@@ -310,8 +352,14 @@ fn experiment_tail_logs(
 }
 
 fn tail_log(path: &Path, max_bytes: u64) -> String {
-    let Ok(content) = fs::read(path) else { return String::new() };
+    let Ok(content) = fs::read(path) else {
+        return String::new();
+    };
     let len = content.len() as u64;
-    let start = if len > max_bytes { (len - max_bytes) as usize } else { 0 };
+    let start = if len > max_bytes {
+        (len - max_bytes) as usize
+    } else {
+        0
+    };
     String::from_utf8_lossy(&content[start..]).into_owned()
 }

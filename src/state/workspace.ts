@@ -6,6 +6,7 @@ import type {
   UserConfig,
   WorkspaceState as WorkspaceInfo,
 } from "../ipc";
+import { useChatOptions } from "./chatOptions";
 
 type Phase =
   | { kind: "loading" }
@@ -71,10 +72,14 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => ({
   },
   toPersisted: () => {
     const { panelLayout } = get();
+    const { model, provider, effort } = useChatOptions.getState();
     return {
       version: 1,
       panel_layout: panelLayout,
+      model,
+      provider,
       last_opened: new Date().toISOString(),
+      effort,
     };
   },
 }));

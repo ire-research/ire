@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { ipc, pickDirectory, type SetupStatus } from "../../ipc";
 import { useWorkspace } from "../../state/workspace";
-import { useChatOptions, EFFORT_LEVELS } from "../../state/chatOptions";
+import { isValidChatOptions, useChatOptions, type Provider } from "../../state/chatOptions";
 import type { EffortLevel } from "../../types";
 import { Icon } from "../Icon";
 
@@ -16,14 +16,18 @@ export function SetupScreen({ status, onRefresh }: Props) {
   const pushRecentWorkspace = useWorkspace((s) => s.pushRecentWorkspace);
   const recentWorkspaces = useWorkspace((s) => s.recentWorkspaces);
   const setRecentWorkspaces = useWorkspace((s) => s.setRecentWorkspaces);
-  const setEffort = useChatOptions((s) => s.setEffort);
+  const setOptions = useChatOptions((s) => s.setOptions);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const applyPersisted = (persisted: Parameters<typeof hydrateFromPersisted>[0]) => {
     hydrateFromPersisted(persisted);
-    if (persisted.effort && EFFORT_LEVELS.some((e) => e.value === persisted.effort)) {
-      setEffort(persisted.effort as EffortLevel);
+    if (isValidChatOptions(persisted.model, persisted.provider, persisted.effort)) {
+      setOptions({
+        model: persisted.model,
+        provider: persisted.provider as Provider,
+        effort: persisted.effort as EffortLevel,
+      });
     }
   };
 
@@ -42,6 +46,14 @@ export function SetupScreen({ status, onRefresh }: Props) {
   };
 
   const binaryFound = status.binary.kind === "found";
+  const codexFound = status.codex_binary.kind === "found";
+  const canOpenWorkspace = binaryFound || codexFound;
+  const providerBanner =
+    binaryFound && !codexFound
+      ? "claude code only"
+      : codexFound && !binaryFound
+        ? "codex only"
+        : null;
 
   const openWorkspace = async (path: string) => {
     setError(null);
@@ -119,11 +131,13 @@ export function SetupScreen({ status, onRefresh }: Props) {
                       isActive
                         ? "bg-surface-container-low border-l-2 border-l-primary hover:bg-surface-container-highest"
                         : "border-l-2 border-l-transparent hover:bg-surface-container-low"
-                    } ${!isLast ? "border-b border-b-outline-variant" : ""}`}
+                    } ${!isLast ? "border-b border-b-outline-variant" : ""} ${
+                      busy || !canOpenWorkspace ? "opacity-50 cursor-not-allowed" : ""
+                    }`}
                   >
                     <button
                       onClick={() => openWorkspace(path)}
-                      disabled={busy}
+                      disabled={busy || !canOpenWorkspace}
                       className="flex flex-col gap-0.5 min-w-0 flex-1 text-left disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <span
@@ -158,9 +172,9 @@ export function SetupScreen({ status, onRefresh }: Props) {
         <div className="flex gap-3">
           <button
             onClick={() => handlePick("open")}
-            disabled={busy}
+            disabled={busy || !canOpenWorkspace}
             className={`flex-1 h-9 border border-outline-variant rounded text-[14px] font-medium text-on-surface hover:bg-surface-container-low hover:border-outline transition-colors flex items-center justify-center gap-2 ${
-              busy ? "opacity-50 cursor-not-allowed" : ""
+              busy || !canOpenWorkspace ? "opacity-50 cursor-not-allowed" : ""
             }`}
           >
             <Icon name="folder_open" className="w-[16px] h-[16px] text-on-surface-variant" />
@@ -168,9 +182,9 @@ export function SetupScreen({ status, onRefresh }: Props) {
           </button>
           <button
             onClick={() => handlePick("init")}
-            disabled={busy}
+            disabled={busy || !canOpenWorkspace}
             className={`flex-1 h-9 border border-outline-variant rounded text-[14px] font-medium text-on-surface hover:bg-surface-container-low hover:border-outline transition-colors flex items-center justify-center gap-2 ${
-              busy ? "opacity-50 cursor-not-allowed" : ""
+              busy || !canOpenWorkspace ? "opacity-50 cursor-not-allowed" : ""
             }`}
           >
             <Icon name="add" className="w-[16px] h-[16px] text-on-surface-variant" />
@@ -181,31 +195,20 @@ export function SetupScreen({ status, onRefresh }: Props) {
         {/* Divider */}
         <div className="w-full h-px bg-outline-variant"></div>
 
-        {/* Status row */}
-        <div className="flex items-center">
-          <div className="flex items-center gap-2">
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                binaryFound ? "bg-ok" : "bg-error"
-              }`}
-            ></span>
-            <span className="font-mono text-[11px] text-on-surface-variant">
-              {binaryFound ? (
-                <>claude-code · authenticated</>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <span>claude-code · not found</span>
-                  <button
-                    onClick={onRefresh}
-                    disabled={busy}
-                    className="text-on-surface-variant hover:text-on-surface transition-colors underline"
-                  >
-                    retry
-                  </button>
-                </div>
-              )}
-            </span>
-          </div>
+        {/* Status rows */}
+        <div className="flex flex-col gap-2">
+          <BinaryRow label="claude-code" found={binaryFound} busy={busy} onRefresh={onRefresh} />
+          <BinaryRow label="codex" found={codexFound} busy={busy} onRefresh={onRefresh} />
+          {providerBanner && (
+            <div className="font-mono text-[11px] text-on-surface-variant/70">
+              {providerBanner}
+            </div>
+          )}
+          {!canOpenWorkspace && (
+            <div className="font-mono text-[11px] text-error">
+              install claude-code or codex to continue
+            </div>
+          )}
         </div>
 
         {/* Error display */}
@@ -216,5 +219,39 @@ export function SetupScreen({ status, onRefresh }: Props) {
         )}
       </div>
     </main>
+  );
+}
+
+function BinaryRow({
+  label,
+  found,
+  busy,
+  onRefresh,
+}: {
+  label: string;
+  found: boolean;
+  busy: boolean;
+  onRefresh: () => Promise<void>;
+}) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className={`w-1.5 h-1.5 rounded-full ${found ? "bg-ok" : "bg-error"}`} />
+      <span className="font-mono text-[11px] text-on-surface-variant">
+        {found ? (
+          <>{label} · found</>
+        ) : (
+          <div className="flex items-center gap-2">
+            <span>{label} · not found</span>
+            <button
+              onClick={onRefresh}
+              disabled={busy}
+              className="text-on-surface-variant hover:text-on-surface transition-colors underline"
+            >
+              retry
+            </button>
+          </div>
+        )}
+      </span>
+    </div>
   );
 }

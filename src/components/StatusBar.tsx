@@ -65,14 +65,13 @@ export function StatusBar() {
           </span>
         </div>
 
-        {/* Claude-code item (ml-auto = pushed to right) */}
+        {/* Agent status */}
         <div className="flex items-center gap-1.5 px-2 shrink-0 h-6 ml-auto">
-          <span>claude-code</span>
+          <span className={status.cc_connected ? "text-ok" : "text-error"}>claude-code</span>
+          <span className={`w-1.5 h-1.5 rounded-full ${status.cc_connected ? "bg-ok" : "bg-error"}`} />
           <span className="text-outline-variant">·</span>
-          <span className={status.cc_connected ? "text-ok" : "text-error"}>
-            {status.cc_connected ? "connected" : "disconnected"}
-          </span>
-          <span className={`w-1.5 h-1.5 rounded-full ${status.cc_connected ? "bg-ok" : "bg-error"} ml-0.5`}></span>
+          <span className={status.codex_connected ? "text-ok" : "text-on-surface-variant/40"}>codex</span>
+          <span className={`w-1.5 h-1.5 rounded-full ${status.codex_connected ? "bg-ok" : "bg-surface-container-high"}`} />
         </div>
       </div>
     </footer>

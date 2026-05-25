@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "../../state/chat";
 import { useChatOptions } from "../../state/chatOptions";
+import { useWorkspace } from "../../state/workspace";
 import { toastError } from "../../state/toasts";
 import {
   ipc,
@@ -19,7 +20,7 @@ import { Icon } from "../Icon";
 import type { AskAnswer, AskBlockState, Tab } from "../../types";
 
 export function ChatPane() {
-  const { model, effort } = useChatOptions();
+  const { model, provider, effort } = useChatOptions();
 
   const {
     tabs,
@@ -101,20 +102,12 @@ export function ChatPane() {
 
         case "ToolStart":
           if (msgId) {
-            addTool(tab_id, msgId, {
-              tool_id: event.tool_id,
-              tool_name: event.tool_name,
-              input_preview: event.input_preview,
-              input_full: event.input_full,
-              output_preview: null,
-              output_full: null,
-              isDone: false,
-            });
+            addTool(tab_id, msgId, event.tool);
           }
           break;
 
         case "ToolDone":
-          markToolDone(tab_id, event.tool_id, event.output_preview, event.output_full);
+          markToolDone(tab_id, event.tool_id, event.output, event.status, event.meta);
           break;
 
         case "AskUserQuestion":
@@ -194,7 +187,10 @@ export function ChatPane() {
     setStreaming(activeTabId, true);
 
     try {
-      await ipc.chatSend(activeTabId, text, { model, effort });
+      await ipc
+        .saveWorkspaceState(useWorkspace.getState().toPersisted())
+        .catch((e) => toastError("save chat options", e));
+      await ipc.chatSend(activeTabId, text, { model, provider, effort });
     } catch (err) {
       const currentMsgId = assistantIdByTab.current.get(activeTabId);
       if (currentMsgId) setMessageError(activeTabId, currentMsgId, String(err));
@@ -236,7 +232,10 @@ export function ChatPane() {
     setStreaming(activeTabId, true);
     try {
       const prompt = await ipc.getResourceConfirmPrompt();
-      await ipc.chatSend(activeTabId, prompt, { model, effort });
+      await ipc
+        .saveWorkspaceState(useWorkspace.getState().toPersisted())
+        .catch((e) => toastError("save chat options", e));
+      await ipc.chatSend(activeTabId, prompt, { model, provider, effort });
     } catch (err) {
       const msgId = assistantIdByTab.current.get(activeTabId);
       if (msgId) setMessageError(activeTabId, msgId, String(err));

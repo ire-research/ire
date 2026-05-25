@@ -26,10 +26,13 @@ impl WikiStore {
         }
     }
 
-    pub fn read(&self, rel_path: &str) -> Result<(String, Option<std::collections::HashMap<String, String>>)> {
+    pub fn read(
+        &self,
+        rel_path: &str,
+    ) -> Result<(String, Option<std::collections::HashMap<String, String>>)> {
         let path = self.wiki_root.join(rel_path);
-        let content = fs::read_to_string(&path)
-            .with_context(|| format!("read {}", path.display()))?;
+        let content =
+            fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
         let (fm, _) = frontmatter::parse(&content);
         Ok((content, fm))
     }
@@ -56,8 +59,7 @@ impl WikiStore {
             fs::create_dir_all(parent)
                 .with_context(|| format!("create dir {}", parent.display()))?;
         }
-        fs::rename(&src, &dst)
-            .with_context(|| format!("rename {from} -> {to}"))?;
+        fs::rename(&src, &dst).with_context(|| format!("rename {from} -> {to}"))?;
 
         let index_content = index::build(&self.wiki_root)?;
         atomic_write(&self.wiki_root.join("_index.md"), &index_content)?;
@@ -73,8 +75,14 @@ impl WikiStore {
             "pulse.json" => {
                 let parsed: serde_json::Value =
                     serde_json::from_str(content).unwrap_or_else(|_| json!({}));
-                let rq = parsed.get("research_question").and_then(|v| v.as_str()).unwrap_or("");
-                let tw = parsed.get("this_week").and_then(|v| v.as_str()).unwrap_or("");
+                let rq = parsed
+                    .get("research_question")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let tw = parsed
+                    .get("this_week")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
                 events::emit_pulse_changed(app, events::EventSource::Mutation, rq, tw);
             }
             "notes.md" => {
@@ -130,7 +138,9 @@ impl WikiStore {
             if stored.is_empty() || !stored.iter().all(|s| file_sources.contains(&s.as_str())) {
                 continue;
             }
-            if let Err(e) = models::update_resource_indexed(&self.ire_dir, &row.url_sha256, rel_path, &title) {
+            if let Err(e) =
+                models::update_resource_indexed(&self.ire_dir, &row.url_sha256, rel_path, &title)
+            {
                 tracing::warn!(resource_id = %row.url_sha256, error = %e, "index_resource: update_resource_indexed failed");
                 continue;
             }
@@ -198,17 +208,14 @@ fn extract_title_from(content: &str, rel_path: &str) -> String {
 
 pub(crate) fn atomic_write(path: &Path, content: &str) -> Result<()> {
     let parent = path.parent().unwrap_or(path);
-    fs::create_dir_all(parent)
-        .with_context(|| format!("create dir {}", parent.display()))?;
+    fs::create_dir_all(parent).with_context(|| format!("create dir {}", parent.display()))?;
 
     let tmp = parent.join(format!("{}.tmp", Uuid::new_v4()));
-    let mut f = fs::File::create(&tmp)
-        .with_context(|| format!("create tmp {}", tmp.display()))?;
+    let mut f = fs::File::create(&tmp).with_context(|| format!("create tmp {}", tmp.display()))?;
     f.write_all(content.as_bytes())?;
     f.sync_all()?;
     drop(f);
-    fs::rename(&tmp, path)
-        .with_context(|| format!("rename to {}", path.display()))?;
+    fs::rename(&tmp, path).with_context(|| format!("rename to {}", path.display()))?;
     Ok(())
 }
 

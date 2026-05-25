@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { useChatOptions, MODELS, EFFORT_LEVELS } from "../../state/chatOptions";
+import {
+  CLAUDE_EFFORT_LEVELS,
+  CODEX_EFFORT_LEVELS,
+  MODELS,
+  type ModelEntry,
+  type Provider,
+  useChatOptions,
+} from "../../state/chatOptions";
 import { Icon } from "../Icon";
 
 interface ComposerProps {
@@ -34,9 +41,12 @@ export function Composer({ onSend, disabled }: ComposerProps) {
   const effortRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { model, effort, setModel, setEffort } = useChatOptions();
+  const { model, provider, effort, setModel, setEffort } = useChatOptions();
   const modelLabel = MODELS.find((m) => m.id === model)?.label ?? model;
-  const effortLabel = EFFORT_LEVELS.find((l) => l.value === effort)?.label ?? effort;
+  const effortLevels = provider === "codex" ? CODEX_EFFORT_LEVELS : CLAUDE_EFFORT_LEVELS;
+  const effortLabel = effortLevels.find((l) => l.value === effort)?.label ?? effort;
+  const claudeModels = MODELS.filter((m) => m.provider === "claude");
+  const codexModels = MODELS.filter((m) => m.provider === "codex");
 
   useEffect(() => {
     if (!modelOpen) return;
@@ -82,6 +92,50 @@ export function Composer({ onSend, disabled }: ComposerProps) {
     }
   };
 
+  const handleModelSelect = (entry: ModelEntry) => {
+    setModel(entry.id, entry.provider);
+    setModelOpen(false);
+  };
+
+  const toggleModelOpen = () => {
+    setModelOpen((open) => !open);
+    setEffortOpen(false);
+  };
+
+  const toggleEffortOpen = () => {
+    setEffortOpen((open) => !open);
+    setModelOpen(false);
+  };
+
+  const ProviderSection = ({
+    label,
+    provider: sectionProvider,
+    models,
+  }: {
+    label: string;
+    provider: Provider;
+    models: ModelEntry[];
+  }) => (
+    <div className="py-2 first:pt-2 last:pb-2 border-t border-outline-variant/50 first:border-t-0">
+      <div className="px-3 pb-1.5 text-[10px] font-medium uppercase tracking-normal text-on-surface-variant/60">
+        {label}
+      </div>
+      {models.map((entry) => (
+        <button
+          key={entry.id}
+          className={`w-full grid grid-cols-[18px_1fr_14px] items-center gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-surface-container-highest transition-colors ${
+            entry.id === model ? "font-medium text-on-surface" : "text-on-surface-variant"
+          }`}
+          onClick={() => handleModelSelect(entry)}
+        >
+          <i className={`fa-brands ${sectionProvider === "claude" ? "fa-claude" : "fa-openai"} text-[12px] text-on-surface-variant/80 text-center`} />
+          <span>{entry.label}</span>
+          <span className="text-[11px] text-primary">{entry.id === model ? "✓" : ""}</span>
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div className="bg-surface-container border border-outline-variant rounded-lg shadow-lg shadow-black/30 flex flex-col overflow-visible">
       <textarea
@@ -101,42 +155,41 @@ export function Composer({ onSend, disabled }: ComposerProps) {
           <div className="relative" ref={modelRef}>
             <button
               className="flex items-center gap-1 px-2 py-1 text-on-surface-variant hover:bg-surface-container-high rounded hover:text-on-surface transition-colors text-[11px] border border-outline-variant/50"
-              onClick={() => setModelOpen((o) => !o)}
+              onClick={toggleModelOpen}
             >
               <span className="text-[10px] text-on-surface-variant/60 mr-0.5">model</span>
               {modelLabel}
               <Icon name="expand_more" className="w-[12px] h-[12px]" />
             </button>
-            <div className={`${modelOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 py-1 min-w-[140px] z-50`}>
-              {MODELS.map((m) => (
-                <button
-                  key={m.id}
-                  className={`w-full text-left px-3 py-1.5 text-[12px] hover:bg-surface-container-highest transition-colors ${m.id === model ? "font-medium text-on-surface" : "text-on-surface-variant"}`}
-                  onClick={() => { setModel(m.id); setModelOpen(false); }}
-                >
-                  {m.label}
-                </button>
-              ))}
+            <div className={`${modelOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 min-w-[230px] overflow-hidden z-50`}>
+              <ProviderSection label="Claude Code" provider="claude" models={claudeModels} />
+              <ProviderSection label="Codex" provider="codex" models={codexModels} />
             </div>
           </div>
           {/* Effort picker */}
           <div className="relative" ref={effortRef}>
             <button
               className="flex items-center gap-1 px-2 py-1 text-on-surface-variant hover:bg-surface-container-high rounded hover:text-on-surface transition-colors text-[11px] border border-outline-variant/50"
-              onClick={() => setEffortOpen((o) => !o)}
+              onClick={toggleEffortOpen}
             >
-              <span className="text-[10px] text-on-surface-variant/60 mr-0.5">effort</span>
+              <span className="text-[10px] text-on-surface-variant/60 mr-0.5">
+                {provider === "codex" ? "reasoning" : "effort"}
+              </span>
               {effortLabel}
               <Icon name="expand_more" className="w-[12px] h-[12px]" />
             </button>
-            <div className={`${effortOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 py-1 min-w-[140px] z-50`}>
-              {EFFORT_LEVELS.map((lvl) => (
+            <div className={`${effortOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 min-w-[140px] overflow-hidden z-50`}>
+              <div className="px-3 pt-2 pb-1.5 text-[10px] font-medium uppercase tracking-normal text-on-surface-variant/60">
+                {provider === "codex" ? "Reasoning" : "Effort"}
+              </div>
+              {effortLevels.map((lvl) => (
                 <button
                   key={lvl.value}
-                  className={`w-full text-left px-3 py-1.5 text-[12px] hover:bg-surface-container-highest transition-colors ${lvl.value === effort ? "font-medium text-on-surface" : "text-on-surface-variant"}`}
+                  className={`w-full grid grid-cols-[1fr_14px] items-center gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-surface-container-highest transition-colors ${lvl.value === effort ? "font-medium text-on-surface" : "text-on-surface-variant"}`}
                   onClick={() => { setEffort(lvl.value); setEffortOpen(false); }}
                 >
-                  {lvl.label}
+                  <span>{lvl.label}</span>
+                  <span className="text-[11px] text-primary">{lvl.value === effort ? "✓" : ""}</span>
                 </button>
               ))}
             </div>

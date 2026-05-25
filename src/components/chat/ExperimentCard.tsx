@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
 import type { ToolCallState } from "../../types";
+import { ToolIoField } from "./ToolCard";
 
 interface Props {
   tool: ToolCallState;
@@ -26,16 +27,16 @@ function statusColorClass(status: string): string {
 export function ExperimentCard({ tool }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const status = tool.experimentStatus ?? "starting";
+  const status = tool.meta.experiment_status ?? "starting";
   const lines = tool.logLines ?? [];
   const isLive = status === "starting" || status === "running";
 
   const handleCancel = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!tool.experimentUuid) return;
+    if (!tool.meta.experiment_uuid) return;
     setCancelling(true);
     try {
-      await ipc.experimentCancel(tool.experimentUuid);
+      await ipc.experimentCancel(tool.meta.experiment_uuid);
     } catch (err) {
       toastError("cancel experiment", err);
     } finally {
@@ -54,17 +55,17 @@ export function ExperimentCard({ tool }: Props) {
       >
         <span className={dotClass(status)} />
         <span className="font-mono text-on-surface-variant flex-1">
-          ⚗ {tool.tool_name || "Experiment"}
+          {tool.title}
         </span>
         <span className={statusColorClass(status)}>{statusLabel(status)}</span>
-        {tool.experimentPid !== undefined && (
-          <span className="text-[10px] text-on-surface-variant/60">PID {tool.experimentPid}</span>
+        {tool.meta.experiment_pid !== undefined && (
+          <span className="text-[10px] text-on-surface-variant/60">PID {tool.meta.experiment_pid}</span>
         )}
-        {tool.experimentExitCode !== undefined && status === "failed" && (
-          <span className="text-[10px] text-on-surface-variant/60">exit {tool.experimentExitCode}</span>
+        {tool.meta.experiment_exit_code !== undefined && status === "failed" && (
+          <span className="text-[10px] text-on-surface-variant/60">exit {tool.meta.experiment_exit_code}</span>
         )}
         <span className="text-on-surface-variant">{expanded ? "▾" : "▸"}</span>
-        {isLive && tool.experimentUuid && (
+        {isLive && tool.meta.experiment_uuid && (
           <button
             className="text-[11px] text-on-surface-variant border border-outline-variant px-1.5 py-0.5 rounded hover:border-error hover:text-error transition-colors"
             disabled={cancelling}
@@ -77,12 +78,7 @@ export function ExperimentCard({ tool }: Props) {
 
       {expanded && (
         <div className="bg-surface-container-lowest border-t border-outline-variant font-mono text-[11px] leading-relaxed">
-          {tool.input_full && (
-            <div className="grid grid-cols-[42px_minmax(0,1fr)] border-b border-outline-variant">
-              <div className="px-3 py-2 text-on-surface-variant/60 uppercase">IN</div>
-              <pre className="px-3 py-2 text-on-surface-variant whitespace-pre-wrap break-words overflow-x-auto">{tool.input_full}</pre>
-            </div>
-          )}
+          {tool.input.full && <ToolIoField label="IN" content={tool.input.full} />}
           {lines.length > 0 ? (
             <div className="grid grid-cols-[42px_minmax(0,1fr)]">
               <div className="px-3 py-2 text-on-surface-variant/60 uppercase">OUT</div>
@@ -92,11 +88,8 @@ export function ExperimentCard({ tool }: Props) {
                 ))}
               </div>
             </div>
-          ) : tool.output_full ? (
-            <div className="grid grid-cols-[42px_minmax(0,1fr)]">
-              <div className="px-3 py-2 text-on-surface-variant/60 uppercase">OUT</div>
-              <pre className="px-3 py-2 text-on-surface-variant whitespace-pre-wrap break-words overflow-x-auto">{tool.output_full}</pre>
-            </div>
+          ) : tool.output?.full ? (
+            <ToolIoField label="OUT" content={tool.output.full} />
           ) : (
             <div className="grid grid-cols-[42px_minmax(0,1fr)]">
               <div className="px-3 py-2 text-on-surface-variant/60 uppercase">OUT</div>

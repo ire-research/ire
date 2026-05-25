@@ -16,6 +16,7 @@ pub fn start_experiment(
     workspace_root: &Path,
     tab_id: String,
     session_id: String,
+    provider: String,
     session_manager: SessionManager,
     app: AppHandle,
 ) -> Result<serde_json::Value> {
@@ -85,6 +86,7 @@ pub fn start_experiment(
         workspace_root: workspace_root.to_path_buf(),
         tab_id,
         session_id,
+        provider,
         wake_prompt,
         app: app.clone(),
         session_manager,
@@ -109,17 +111,13 @@ struct MonitorArgs {
     workspace_root: PathBuf,
     tab_id: String,
     session_id: String,
+    provider: String,
     wake_prompt: String,
     app: AppHandle,
     session_manager: SessionManager,
 }
 
-fn spawn_detached(
-    command: &str,
-    working_dir: &Path,
-    stdout: File,
-    stderr: File,
-) -> Result<Child> {
+fn spawn_detached(command: &str, working_dir: &Path, stdout: File, stderr: File) -> Result<Child> {
     use std::process::Command;
 
     let mut cmd = Command::new("sh");
@@ -145,6 +143,7 @@ fn monitor(mut child: Child, args: MonitorArgs) {
         workspace_root,
         tab_id,
         session_id,
+        provider,
         wake_prompt,
         app,
         session_manager,
@@ -156,17 +155,45 @@ fn monitor(mut child: Child, args: MonitorArgs) {
     let mut stderr_pos = 0u64;
 
     loop {
-        emit_new_lines(&app, &uuid, &exp_dir.join("stdout.log"), &mut stdout_pos, "stdout");
-        emit_new_lines(&app, &uuid, &exp_dir.join("stderr.log"), &mut stderr_pos, "stderr");
+        emit_new_lines(
+            &app,
+            &uuid,
+            &exp_dir.join("stdout.log"),
+            &mut stdout_pos,
+            "stdout",
+        );
+        emit_new_lines(
+            &app,
+            &uuid,
+            &exp_dir.join("stderr.log"),
+            &mut stderr_pos,
+            "stderr",
+        );
 
         match child.try_wait() {
             Ok(Some(status)) => {
                 let exit_code = status.code().unwrap_or(-1);
                 // Drain remaining log output.
-                emit_new_lines(&app, &uuid, &exp_dir.join("stdout.log"), &mut stdout_pos, "stdout");
-                emit_new_lines(&app, &uuid, &exp_dir.join("stderr.log"), &mut stderr_pos, "stderr");
+                emit_new_lines(
+                    &app,
+                    &uuid,
+                    &exp_dir.join("stdout.log"),
+                    &mut stdout_pos,
+                    "stdout",
+                );
+                emit_new_lines(
+                    &app,
+                    &uuid,
+                    &exp_dir.join("stderr.log"),
+                    &mut stderr_pos,
+                    "stderr",
+                );
 
-                let status_str = if exit_code == 0 { "completed" } else { "failed" };
+                let status_str = if exit_code == 0 {
+                    "completed"
+                } else {
+                    "failed"
+                };
                 db::update_experiment_completed(&ire_dir, &uuid, status_str, Some(exit_code)).ok();
 
                 let _ = app.emit(
@@ -188,6 +215,7 @@ fn monitor(mut child: Child, args: MonitorArgs) {
                     exit_code,
                     tab_id: &tab_id,
                     session_id: &session_id,
+                    provider: &provider,
                     wake_prompt: &wake_prompt,
                     app: &app,
                     session_manager: &session_manager,
@@ -214,10 +242,16 @@ fn monitor(mut child: Child, args: MonitorArgs) {
 }
 
 fn emit_new_lines(app: &AppHandle, uuid: &str, path: &Path, pos: &mut u64, stream: &str) {
-    let Ok(mut file) = File::open(path) else { return };
-    let Ok(_) = file.seek(SeekFrom::Start(*pos)) else { return };
+    let Ok(mut file) = File::open(path) else {
+        return;
+    };
+    let Ok(_) = file.seek(SeekFrom::Start(*pos)) else {
+        return;
+    };
     let mut buf = String::new();
-    let Ok(n) = file.read_to_string(&mut buf) else { return };
+    let Ok(n) = file.read_to_string(&mut buf) else {
+        return;
+    };
     if n == 0 {
         return;
     }

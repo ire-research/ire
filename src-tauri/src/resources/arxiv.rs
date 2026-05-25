@@ -27,7 +27,9 @@ pub fn parse_arxiv_id(url: &str) -> Option<String> {
         .or_else(|| after_host.strip_prefix("pdf/"))?;
     // Strip trailing `.pdf` and any query/fragment.
     let id = rest
-        .split(['?', '#']).next().unwrap_or(rest)
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(rest)
         .trim_end_matches(".pdf")
         .trim_end_matches('/');
     if id.is_empty() {
@@ -103,7 +105,9 @@ fn read_tar_tex(bytes: &[u8]) -> Result<String> {
     for entry in archive.entries()? {
         let mut entry = entry?;
         let path = entry.path()?.to_path_buf();
-        let Some(ext) = path.extension().and_then(|e| e.to_str()) else { continue };
+        let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+            continue;
+        };
         if !ext.eq_ignore_ascii_case("tex") {
             continue;
         }

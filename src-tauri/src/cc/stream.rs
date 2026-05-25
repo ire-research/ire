@@ -1,6 +1,8 @@
 use serde::Serialize;
 use serde_json::Value;
 
+use crate::tool_cards::{build_tool_call, text_output, ToolCall, ToolIo, ToolProvider, ToolStatus};
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct AskQuestionOption {
     pub label: String,
@@ -19,14 +21,35 @@ pub struct AskQuestion {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "kind")]
 pub enum StreamEvent {
-    Init { session_id: String },
-    TextDelta { text: String },
-    ThinkingDelta { text: String },
-    ToolStart { tool_id: String, tool_name: String, input_preview: Option<String>, input_full: Option<String> },
-    ToolDone { tool_id: String, output_preview: Option<String>, output_full: Option<String> },
-    AskUserQuestion { tool_id: String, questions: Vec<AskQuestion> },
-    Result { text: Option<String>, session_id: String },
-    Error { message: String },
+    Init {
+        session_id: String,
+    },
+    TextDelta {
+        text: String,
+    },
+    ThinkingDelta {
+        text: String,
+    },
+    ToolStart {
+        tool: ToolCall,
+    },
+    ToolDone {
+        tool_id: String,
+        output: Option<ToolIo>,
+        status: ToolStatus,
+        meta: Value,
+    },
+    AskUserQuestion {
+        tool_id: String,
+        questions: Vec<AskQuestion>,
+    },
+    Result {
+        text: Option<String>,
+        session_id: String,
+    },
+    Error {
+        message: String,
+    },
     Done,
 }
 
@@ -51,8 +74,13 @@ pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, em
         "tool_result" => {
             let id = json["tool_use_id"].as_str().unwrap_or("").to_string();
             if !id.is_empty() && !state.ask_tool_ids.contains(&id) {
-                let (output_preview, output_full) = extract_tool_output(json);
-                emit(StreamEvent::ToolDone { tool_id: id, output_preview, output_full });
+                let (output_preview, output_full, status) = extract_tool_output(json);
+                emit(StreamEvent::ToolDone {
+                    tool_id: id,
+                    output: text_output(output_preview, output_full),
+                    status,
+                    meta: Value::Object(Default::default()),
+                });
             }
         }
         "result" => {
@@ -79,12 +107,10 @@ pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, em
 // CC's stream-json format emits `{"type":"assistant","message":{...}}` snapshots.
 // Each snapshot contains the full content array accumulated so far, so we track
 // cursors to emit only the new portion as deltas.
-fn dispatch_assistant<F: FnMut(StreamEvent)>(
-    json: &Value,
-    state: &mut StreamState,
-    emit: &mut F,
-) {
-    let Some(arr) = json["message"]["content"].as_array() else { return };
+fn dispatch_assistant<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, emit: &mut F) {
+    let Some(arr) = json["message"]["content"].as_array() else {
+        return;
+    };
     for (index, block) in arr.iter().enumerate() {
         match block["type"].as_str() {
             Some("text") => {
@@ -115,14 +141,25 @@ fn dispatch_assistant<F: FnMut(StreamEvent)>(
                     if is_ask_user_question(&name) {
                         if let Some(questions) = parse_ask_questions(&block["input"]) {
                             state.ask_tool_ids.push(id.clone());
-                            emit(StreamEvent::AskUserQuestion { tool_id: id, questions });
+                            emit(StreamEvent::AskUserQuestion {
+                                tool_id: id,
+                                questions,
+                            });
                             continue;
                         }
                     }
 
                     let input_preview = extract_input_preview(&block["input"]);
                     let input_full = extract_input_full(&block["input"]);
-                    emit(StreamEvent::ToolStart { tool_id: id, tool_name: name, input_preview, input_full });
+                    let tool = build_tool_call(
+                        ToolProvider::Claude,
+                        id,
+                        name,
+                        &block["input"],
+                        input_preview,
+                        input_full,
+                    );
+                    emit(StreamEvent::ToolStart { tool });
                 }
             }
             _ => {}
@@ -150,33 +187,54 @@ fn extract_result_text(json: &Value, state: &StreamState) -> Option<String> {
 }
 
 fn extract_input_full(input: &Value) -> Option<String> {
-    if input.is_null() { return None; }
+    if input.is_null() {
+        return None;
+    }
     let s = serde_json::to_string_pretty(input).unwrap_or_default();
-    if s.is_empty() || s == "null" || s == "{}" { return None; }
+    if s.is_empty() || s == "null" || s == "{}" {
+        return None;
+    }
     Some(trunc_chars(&s, 10_000))
 }
 
 fn extract_input_preview(input: &Value) -> Option<String> {
-    if input.is_null() { return None; }
+    if input.is_null() {
+        return None;
+    }
     if let Some(obj) = input.as_object() {
-        if obj.is_empty() { return None; }
+        if obj.is_empty() {
+            return None;
+        }
         // Extract the most descriptive single-line value from known keys
-        for key in &["path", "file_path", "url", "query", "from", "glob", "pattern", "command"] {
+        for key in &[
+            "path",
+            "file_path",
+            "url",
+            "query",
+            "from",
+            "glob",
+            "pattern",
+            "command",
+        ] {
             if let Some(s) = obj.get(*key).and_then(|v| v.as_str()) {
-                if !s.is_empty() { return Some(trunc_chars(s, 80)); }
+                if !s.is_empty() {
+                    return Some(trunc_chars(s, 80));
+                }
             }
         }
         // Fall back to first non-empty string value
         for v in obj.values() {
             if let Some(s) = v.as_str() {
-                if !s.is_empty() { return Some(trunc_chars(s, 80)); }
+                if !s.is_empty() {
+                    return Some(trunc_chars(s, 80));
+                }
             }
         }
     }
     None
 }
 
-fn extract_tool_output(json: &Value) -> (Option<String>, Option<String>) {
+fn extract_tool_output(json: &Value) -> (Option<String>, Option<String>, ToolStatus) {
     let content = if let Some(arr) = json["content"].as_array() {
         arr.iter()
             .filter_map(|item| item["text"].as_str())
@@ -186,13 +244,21 @@ fn extract_tool_output(json: &Value) -> (Option<String>, Option<String>) {
         json["content"].as_str().unwrap_or("").to_string()
     };
 
-    if content.is_empty() { return (None, None); }
+    let status = if json["is_error"].as_bool().unwrap_or(false) {
+        ToolStatus::Failed
+    } else {
+        ToolStatus::Completed
+    };
+
+    if content.is_empty() {
+        return (None, None, status);
+    }
 
     let output_full = trunc_chars(&content, 10_000);
     let first_line = content.lines().next().unwrap_or(&content).trim();
     let output_preview = trunc_chars(first_line, 80);
 
-    (Some(output_preview), Some(output_full))
+    (Some(output_preview), Some(output_full), status)
 }
 
 fn is_ask_user_question(name: &str) -> bool {
@@ -206,21 +272,38 @@ fn parse_ask_questions(input: &Value) -> Option<Vec<AskQuestion>> {
     for q in arr {
         let header = q.get("header")?.as_str()?.to_string();
         let question = q.get("question")?.as_str()?.to_string();
-        let multi_select = q.get("multiSelect").and_then(|v| v.as_bool()).unwrap_or(false);
-        let options = q.get("options")?.as_array()?
+        let multi_select = q
+            .get("multiSelect")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let options = q
+            .get("options")?
+            .as_array()?
             .iter()
             .filter_map(|o| {
                 let label = o.get("label")?.as_str()?.to_string();
-                let description = o.get("description").and_then(|v| v.as_str()).map(|s| s.to_string());
+                let description = o
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string());
                 Some(AskQuestionOption { label, description })
             })
             .collect::<Vec<_>>();
         if options.is_empty() {
             continue;
         }
-        out.push(AskQuestion { header, question, multi_select, options });
+        out.push(AskQuestion {
+            header,
+            question,
+            multi_select,
+            options,
+        });
     }
-    if out.is_empty() { None } else { Some(out) }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
 }
 
 fn trunc_chars(s: &str, max: usize) -> String {
@@ -235,6 +318,7 @@ fn trunc_chars(s: &str, max: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tool_cards::{ToolFormat, ToolKind, ToolProvider};
     use serde_json::json;
 
     fn collect_assistant_events(content: Value, state: &mut StreamState) -> Vec<StreamEvent> {
@@ -269,10 +353,24 @@ mod tests {
         assert_eq!(
             second,
             vec![StreamEvent::ToolStart {
-                tool_id: "tool-1".into(),
-                tool_name: "Read".into(),
-                input_preview: Some("src/App.tsx".into()),
-                input_full: Some("{\n  \"path\": \"src/App.tsx\"\n}".into()),
+                tool: crate::tool_cards::ToolCall {
+                    tool_id: "tool-1".into(),
+                    provider: ToolProvider::Claude,
+                    kind: ToolKind::FileRead,
+                    raw_name: "Read".into(),
+                    title: "Read file".into(),
+                    input: crate::tool_cards::ToolIo {
+                        preview: Some("src/App.tsx".into()),
+                        full: Some("{\n  \"path\": \"src/App.tsx\"\n}".into()),
+                        format: ToolFormat::Json,
+                    },
+                    output: None,
+                    status: ToolStatus::Running,
+                    meta: json!({
+                        "path": "src/App.tsx",
+                        "paths": ["src/App.tsx"],
+                    }),
+                },
             }]
         );
 
@@ -323,8 +421,14 @@ mod tests {
                     question: "Which date library?".into(),
                     multi_select: false,
                     options: vec![
-                        AskQuestionOption { label: "date-fns".into(), description: Some("Tree-shakable".into()) },
-                        AskQuestionOption { label: "Day.js".into(), description: None },
+                        AskQuestionOption {
+                            label: "date-fns".into(),
+                            description: Some("Tree-shakable".into())
+                        },
+                        AskQuestionOption {
+                            label: "Day.js".into(),
+                            description: None
+                        },
                     ],
                 }],
             }]
@@ -369,15 +473,130 @@ mod tests {
                 },
                 StreamEvent::TextDelta { text: "A".into() },
                 StreamEvent::ToolStart {
-                    tool_id: "tool-1".into(),
-                    tool_name: "Search".into(),
-                    input_preview: Some("rust".into()),
-                    input_full: Some("{\n  \"query\": \"rust\"\n}".into()),
+                    tool: crate::tool_cards::ToolCall {
+                        tool_id: "tool-1".into(),
+                        provider: ToolProvider::Claude,
+                        kind: ToolKind::Other,
+                        raw_name: "Search".into(),
+                        title: "Tool".into(),
+                        input: crate::tool_cards::ToolIo {
+                            preview: Some("rust".into()),
+                            full: Some("{\n  \"query\": \"rust\"\n}".into()),
+                            format: ToolFormat::Json,
+                        },
+                        output: None,
+                        status: ToolStatus::Running,
+                        meta: json!({}),
+                    },
                 },
                 StreamEvent::ThinkingDelta {
                     text: "done".into()
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn maps_claude_builtin_tools_to_canonical_kinds() {
+        let cases = [
+            (
+                "Bash",
+                json!({ "command": "npm test" }),
+                ToolKind::Command,
+                "Command",
+                Some("npm test"),
+            ),
+            (
+                "Read",
+                json!({ "path": "src/App.tsx" }),
+                ToolKind::FileRead,
+                "Read file",
+                Some("src/App.tsx"),
+            ),
+            (
+                "Edit",
+                json!({ "file_path": "src/App.tsx", "old_string": "a", "new_string": "b" }),
+                ToolKind::FileEdit,
+                "Edit file",
+                Some("src/App.tsx"),
+            ),
+            (
+                "mcp__ire__experiment__start",
+                json!({ "name": "smoke" }),
+                ToolKind::ExperimentStart,
+                "Start experiment",
+                Some("smoke"),
+            ),
+        ];
+
+        for (name, input, kind, title, preview) in cases {
+            let mut state = StreamState::default();
+            let events = collect_assistant_events(
+                json!([
+                    { "type": "tool_use", "id": format!("tool-{name}"), "name": name, "input": input },
+                ]),
+                &mut state,
+            );
+
+            let StreamEvent::ToolStart { tool } = &events[0] else {
+                panic!("expected ToolStart");
+            };
+            assert_eq!(tool.provider, ToolProvider::Claude);
+            assert_eq!(tool.kind, kind);
+            assert_eq!(tool.raw_name, name);
+            assert_eq!(tool.title, title);
+            assert_eq!(tool.input.preview.as_deref(), preview);
+            assert_eq!(tool.input.format, ToolFormat::Json);
+            assert_eq!(tool.status, ToolStatus::Running);
+        }
+    }
+
+    #[test]
+    fn maps_unknown_claude_tools_to_other_with_raw_details() {
+        let mut state = StreamState::default();
+        let events = collect_assistant_events(
+            json!([
+                { "type": "tool_use", "id": "tool-unknown", "name": "Mystery", "input": { "value": "raw" } },
+            ]),
+            &mut state,
+        );
+
+        let StreamEvent::ToolStart { tool } = &events[0] else {
+            panic!("expected ToolStart");
+        };
+        assert_eq!(tool.kind, ToolKind::Other);
+        assert_eq!(tool.raw_name, "Mystery");
+        assert_eq!(tool.input.preview.as_deref(), Some("raw"));
+        assert_eq!(
+            tool.input.full.as_deref(),
+            Some("{\n  \"value\": \"raw\"\n}")
+        );
+    }
+
+    #[test]
+    fn emits_tool_done_with_canonical_output_and_status() {
+        let mut state = StreamState::default();
+        let mut events = Vec::new();
+        let json = json!({
+            "type": "tool_result",
+            "tool_use_id": "tool-1",
+            "content": "first line\nsecond line",
+        });
+
+        dispatch(&json, &mut state, &mut |event| events.push(event));
+
+        assert_eq!(
+            events,
+            vec![StreamEvent::ToolDone {
+                tool_id: "tool-1".into(),
+                output: Some(crate::tool_cards::ToolIo {
+                    preview: Some("first line".into()),
+                    full: Some("first line\nsecond line".into()),
+                    format: ToolFormat::Text,
+                }),
+                status: ToolStatus::Completed,
+                meta: json!({}),
+            }]
         );
     }
 }

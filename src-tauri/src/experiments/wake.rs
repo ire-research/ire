@@ -7,7 +7,10 @@ use tauri::{AppHandle, Emitter};
 use crate::cc::discovery::find_claude_binary;
 use crate::cc::session::SessionManager;
 use crate::cc::spawn::{build_command, SpawnArgs};
-use crate::cc::stream::{dispatch, StreamEvent, StreamState};
+use crate::cc::stream::{self as cc_stream, StreamEvent, StreamState};
+use crate::codex::discovery::find_codex_binary;
+use crate::codex::spawn::{build_codex_command, CodexSpawnArgs};
+use crate::codex::stream as codex_stream;
 use crate::commands::chat::build_system_prompt;
 use crate::prompts::{self, WakeupArgs};
 
@@ -17,6 +20,7 @@ pub struct FireWakeupArgs<'a> {
     pub exit_code: i32,
     pub tab_id: &'a str,
     pub session_id: &'a str,
+    pub provider: &'a str,
     pub wake_prompt: &'a str,
     pub app: &'a AppHandle,
     pub session_manager: &'a SessionManager,
@@ -29,6 +33,7 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         exit_code,
         tab_id,
         session_id,
+        provider,
         wake_prompt,
         app,
         session_manager,
@@ -50,43 +55,73 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         stderr_tail: &stderr_tail,
     });
 
-    tracing::info!(uuid = %uuid, tab_id = %tab_id, "firing experiment wake-up");
-
-    let bin = match find_claude_binary() {
-        Ok(b) => b.path,
-        Err(e) => {
-            tracing::error!(error = %e, "wake-up: claude binary not found");
-            return;
-        }
-    };
-
     let mcp_config = workspace_root.join(".ire/mcp.json");
-    let mcp_config = if mcp_config.exists() { Some(mcp_config) } else { None };
+    let mcp_config = if mcp_config.exists() {
+        Some(mcp_config)
+    } else {
+        None
+    };
     let system_prompt = build_system_prompt(workspace_root);
 
+    tracing::info!(uuid = %uuid, tab_id = %tab_id, provider = %provider, "firing experiment wake-up");
+
+    let provider = if provider == "codex" {
+        "codex"
+    } else {
+        "claude"
+    };
+    let bin = match provider {
+        "codex" => match find_codex_binary() {
+            Ok(b) => b.path,
+            Err(e) => {
+                tracing::error!(error = %e, "wake-up: codex binary not found");
+                return;
+            }
+        },
+        _ => match find_claude_binary() {
+            Ok(b) => b.path,
+            Err(e) => {
+                tracing::error!(error = %e, "wake-up: claude binary not found");
+                return;
+            }
+        },
+    };
+
     let resume_id = Some(session_id.to_string());
-    let mut cmd = build_command(&SpawnArgs {
-        bin: &bin,
-        workspace: workspace_root,
-        message: &message,
-        resume_id: resume_id.as_deref(),
-        mcp_config: mcp_config.as_deref(),
-        system_prompt: Some(&system_prompt),
-        model: "claude-haiku-4-5-20251001",
-        effort: "high",
-    });
+    let mut cmd = match provider {
+        "codex" => build_codex_command(&CodexSpawnArgs {
+            bin: &bin,
+            workspace: workspace_root,
+            message: &message,
+            model: "gpt-5.3-codex",
+            reasoning_effort: "high",
+            system_prompt: Some(&system_prompt),
+            mcp_config: mcp_config.as_deref(),
+            resume_id: resume_id.as_deref(),
+        }),
+        _ => build_command(&SpawnArgs {
+            bin: &bin,
+            workspace: workspace_root,
+            message: &message,
+            resume_id: resume_id.as_deref(),
+            mcp_config: mcp_config.as_deref(),
+            system_prompt: Some(&system_prompt),
+            model: "claude-haiku-4-5-20251001",
+            effort: "high",
+        }),
+    };
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            tracing::error!(error = %e, "wake-up: failed to spawn claude");
+            tracing::error!(error = %e, provider = %provider, "wake-up: failed to spawn agent");
             return;
         }
     };
 
     let pid = child.id();
     session_manager.set_pid(tab_id, pid);
-    tracing::debug!(pid = pid, tab_id = %tab_id, "wake-up claude spawned");
+    tracing::debug!(pid = pid, tab_id = %tab_id, provider = %provider, "wake-up agent spawned");
 
     let stdout = match child.stdout.take() {
         Some(s) => s,
@@ -98,19 +133,31 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
 
     let mut state = StreamState::default();
     let tab_id_owned = tab_id.to_string();
+    let provider_owned = provider.to_string();
 
     for line in BufReader::new(stdout).lines() {
         let Ok(line) = line else { continue };
-        let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) else { continue };
-        dispatch(&json, &mut state, &mut |event| {
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) else {
+            continue;
+        };
+        let mut emit_event = |event: StreamEvent| {
             if let StreamEvent::Init { ref session_id } = event {
-                session_manager.set_session_id(&tab_id_owned, session_id.clone());
+                session_manager.set_session_id_for_provider(
+                    &tab_id_owned,
+                    &provider_owned,
+                    session_id.clone(),
+                );
             }
             let _ = app.emit(
                 "chat-stream",
                 serde_json::json!({ "tab_id": &tab_id_owned, "event": &event }),
             );
-        });
+        };
+        if provider_owned == "codex" {
+            codex_stream::dispatch(&json, &mut state, &mut emit_event);
+        } else {
+            cc_stream::dispatch(&json, &mut state, &mut emit_event);
+        }
     }
 
     let _ = child.wait();
@@ -123,8 +170,14 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
 }
 
 fn tail_file(path: &Path, max_bytes: u64) -> String {
-    let Ok(content) = fs::read(path) else { return String::new() };
+    let Ok(content) = fs::read(path) else {
+        return String::new();
+    };
     let len = content.len() as u64;
-    let start = if len > max_bytes { (len - max_bytes) as usize } else { 0 };
+    let start = if len > max_bytes {
+        (len - max_bytes) as usize
+    } else {
+        0
+    };
     String::from_utf8_lossy(&content[start..]).into_owned()
 }

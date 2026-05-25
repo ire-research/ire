@@ -20,6 +20,8 @@ export function Layout() {
   const panelLayout = useWorkspace((s) => s.panelLayout);
   const setGroupLayout = useWorkspace((s) => s.setGroupLayout);
   const setPanelCollapsed = useWorkspace((s) => s.setPanelCollapsed);
+  const model = useChatOptions((s) => s.model);
+  const provider = useChatOptions((s) => s.provider);
   const effort = useChatOptions((s) => s.effort);
   const leftPanelRef = useRef<PanelImperativeHandle>(null);
   const rightPanelRef = useRef<PanelImperativeHandle>(null);
@@ -58,17 +60,7 @@ export function Layout() {
       ipc.saveWorkspaceState(toPersisted()).catch((e) => toastError("save state", e));
     }, 1000);
     return () => clearTimeout(handle);
-  }, [panelLayout, toPersisted]);
-
-  // Debounced effort persistence
-  const skipInitialEffortSave = useRef(true);
-  useEffect(() => {
-    if (skipInitialEffortSave.current) { skipInitialEffortSave.current = false; return; }
-    const handle = setTimeout(() => {
-      ipc.saveWorkspaceState({ ...toPersisted(), effort }).catch((e) => toastError("save effort", e));
-    }, 1000);
-    return () => clearTimeout(handle);
-  }, [effort, toPersisted]);
+  }, [panelLayout, model, provider, effort, toPersisted]);
 
   const handleClose = async () => {
     await ipc.closeWorkspace();
