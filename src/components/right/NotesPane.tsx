@@ -2,11 +2,15 @@ import { useState, useRef, useEffect } from "react";
 import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
 import { useWorkspaceData } from "../../state/workspaceData";
+import { usePaneSignals } from "../../state/paneSignals";
+import { useTransientClass } from "../../hooks/useTransientClass";
 import { Icon } from "../Icon";
 import { MessageMarkdown } from "../chat/MessageMarkdown";
 
 export function NotesPane() {
   const content = useWorkspaceData((s) => s.notes);
+  const signalPulse = usePaneSignals((s) => s.pulse.notes);
+  const paneRef = useTransientClass<HTMLDivElement>(signalPulse, "pane-signal-active", 1200);
   const [isEditing, setIsEditing] = useState(false);
   const [draft, setDraft] = useState(content);
   const [isSaving, setIsSaving] = useState(false);
@@ -51,12 +55,15 @@ export function NotesPane() {
   const hasNotes = content.trim().length > 0;
 
   return (
-    <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
+    <div ref={paneRef} data-side="right" className="pane-signal px-4 pt-4 pb-3 overflow-y-auto flex-1">
       <div className="flex items-center gap-2 py-1 mb-2">
-        <Icon name="edit_note" className="w-[16px] h-[16px] shrink-0 text-on-surface-variant" />
+        <span className="pane-signal-icon shrink-0">
+          <Icon name="edit_note" className="w-[16px] h-[16px] text-on-surface-variant" />
+        </span>
         <span className="text-[14px] text-on-surface-variant flex-1">
           Notes
         </span>
+        <span className="pane-signal-dot" aria-hidden />
         <button
           className="cursor-pointer hover:text-on-surface text-on-surface-variant"
           onClick={handleEditClick}

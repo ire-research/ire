@@ -2,10 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
 import { useWorkspaceData } from "../../state/workspaceData";
+import { usePaneSignals } from "../../state/paneSignals";
+import { useTransientClass } from "../../hooks/useTransientClass";
 import { Icon } from "../Icon";
 
 export function FocusPane() {
   const pulse = useWorkspaceData((s) => s.pulse);
+  const signalPulse = usePaneSignals((s) => s.pulse.focus);
+  const paneRef = useTransientClass<HTMLDivElement>(signalPulse, "pane-signal-active", 1200);
   const [editingField, setEditingField] = useState<"research_question" | "this_week" | null>(null);
   const [draftRq, setDraftRq] = useState(pulse.research_question);
   const [draftTw, setDraftTw] = useState(pulse.this_week);
@@ -58,11 +62,14 @@ export function FocusPane() {
   };
 
   return (
-    <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
+    <div ref={paneRef} data-side="left" className="pane-signal px-4 pt-4 pb-3 overflow-y-auto flex-1">
       {/* Header */}
       <div className="flex items-center gap-2 px-0 py-1 mb-2">
-        <Icon name="target" className="w-[16px] h-[16px] shrink-0 text-on-surface-variant" />
-        <span className="text-[14px] text-on-surface-variant">Focus</span>
+        <span className="pane-signal-icon shrink-0">
+          <Icon name="target" className="w-[16px] h-[16px] text-on-surface-variant" />
+        </span>
+        <span className="text-[14px] text-on-surface-variant flex-1">Focus</span>
+        <span className="pane-signal-dot" aria-hidden />
       </div>
 
       {/* Research Question */}

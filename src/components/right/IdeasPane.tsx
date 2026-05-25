@@ -2,11 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
 import { useWorkspaceData } from "../../state/workspaceData";
+import { usePaneSignals } from "../../state/paneSignals";
+import { useTransientClass } from "../../hooks/useTransientClass";
 import type { IdeaItem } from "../../types";
 import { Icon } from "../Icon";
 
 export function IdeasPane() {
   const ideas = useWorkspaceData((s) => s.ideas);
+  const signalPulse = usePaneSignals((s) => s.pulse.ideas);
+  const newTicks = usePaneSignals((s) => s.newTicks);
+  const paneRef = useTransientClass<HTMLDivElement>(signalPulse, "pane-signal-active", 1200);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const draftRef = useRef<HTMLInputElement>(null);
@@ -93,12 +98,15 @@ export function IdeasPane() {
   };
 
   return (
-    <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
+    <div ref={paneRef} data-side="right" className="pane-signal px-4 pt-4 pb-3 overflow-y-auto flex-1">
       <div className="flex items-center gap-2 py-1 mb-2">
-        <Icon name="lightbulb" className="w-[16px] h-[16px] shrink-0 text-on-surface-variant" />
+        <span className="pane-signal-icon shrink-0">
+          <Icon name="lightbulb" className="w-[16px] h-[16px] text-on-surface-variant" />
+        </span>
         <span className="text-[14px] text-on-surface-variant flex-1">
           Ideas
         </span>
+        <span className="pane-signal-dot" aria-hidden />
         <button
           className="cursor-pointer hover:text-on-surface text-on-surface-variant"
           onClick={handleAddClick}
@@ -122,25 +130,29 @@ export function IdeasPane() {
               />
             </div>
           )}
-          {activeIdeas.map((idea) => (
-            <div
-              key={idea.id}
-              draggable
-              onDragStart={() => handleDragStart(idea.id)}
-              onDragOver={handleDragOver}
-              onDrop={() => handleDrop(idea.id)}
-              className="group idea-entry bg-surface-container border border-outline-variant p-2 rounded text-[14px] text-on-surface cursor-pointer hover:border-outline transition-colors flex items-start justify-between gap-2"
-            >
-              <span className="flex-1">{idea.text}</span>
-              <button
-                className="p-0.5 text-on-surface-variant hover:text-error transition-colors shrink-0 mt-0.5 opacity-0 group-hover:opacity-100"
-                title="Remove idea"
-                onClick={() => handleTrash(idea.id)}
+          {activeIdeas.map((idea) => {
+            const newTick = newTicks[idea.id] ?? 0;
+            return (
+              <div
+                key={idea.id}
+                draggable
+                onDragStart={() => handleDragStart(idea.id)}
+                onDragOver={handleDragOver}
+                onDrop={() => handleDrop(idea.id)}
+                className={`group idea-entry relative overflow-hidden bg-surface-container border border-outline-variant p-2 rounded text-[14px] text-on-surface cursor-pointer hover:border-outline transition-colors flex items-start justify-between gap-2${newTick > 0 ? " row-enter" : ""}`}
               >
-                <Icon name="delete" className="w-[14px] h-[14px]" />
-              </button>
-            </div>
-          ))}
+                <span className="flex-1">{idea.text}</span>
+                <button
+                  className="p-0.5 text-on-surface-variant hover:text-error transition-colors shrink-0 mt-0.5 opacity-0 group-hover:opacity-100"
+                  title="Remove idea"
+                  onClick={() => handleTrash(idea.id)}
+                >
+                  <Icon name="delete" className="w-[14px] h-[14px]" />
+                </button>
+                {newTick > 0 && <span key={`n-${newTick}`} className="row-flash row-flash-new" aria-hidden />}
+              </div>
+            );
+          })}
         </div>
       ) : (
         <p className="text-[13px] text-on-surface-variant italic">

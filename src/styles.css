@@ -237,3 +237,129 @@
   width: 16px;
   border-radius: 3px;
 }
+
+/* ============================================================
+   Side-panel update signals
+   Fired when the workspace event bus delivers a `mutation`
+   event. Classes are toggled by usePaneSignals / hooks.
+   ============================================================ */
+@keyframes pane-wash {
+  0%, 100% { opacity: 0; }
+  20%      { opacity: 1; }
+}
+@keyframes ico-halo {
+  0%   { opacity: 0;    transform: scale(0.6); }
+  25%  { opacity: 0.18; transform: scale(1.0); }
+  100% { opacity: 0;    transform: scale(1.8); }
+}
+@keyframes edge-trace {
+  0%   { opacity: 0; background-position: 0 -55%; }
+  15%  { opacity: 1; }
+  85%  { opacity: 1; }
+  100% { opacity: 0; background-position: 0 105%; }
+}
+@keyframes item-enter {
+  from { transform: translateY(-6px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+@keyframes item-wash {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes item-rule {
+  0%   { transform: scaleY(0); transform-origin: top; opacity: 1; }
+  35%  { transform: scaleY(1); opacity: 1; }
+  100% { transform: scaleY(1); opacity: 0; }
+}
+@keyframes item-change {
+  0%   { background-color: transparent; }
+  20%  { background-color: rgba(228,228,231,.08); }
+  100% { background-color: transparent; }
+}
+
+/* Pane root — `data-side` controls wash origin so it blooms from the
+   chat-facing edge. Class is force-reflowed by the hook so back-to-back
+   pulses always restart the animation. */
+.pane-signal { position: relative; }
+.pane-signal[data-side="left"]  { --wash-origin: 100% 50%; }
+.pane-signal[data-side="right"] { --wash-origin: 0%   50%; }
+.pane-signal.pane-signal-active::after {
+  content: "";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 80% at var(--wash-origin, 100% 50%),
+              rgba(228,228,231,.08) 0%, transparent 60%);
+  animation: pane-wash 900ms cubic-bezier(.4,0,.2,1) forwards;
+}
+
+/* Header icon halo — child of pane-signal, sibling of the actual icon. */
+.pane-signal-icon { position: relative; display: inline-flex; }
+.pane-signal.pane-signal-active .pane-signal-icon::after {
+  content: "";
+  position: absolute; inset: -6px;
+  border-radius: 9999px;
+  background: #E4E4E7;
+  pointer-events: none;
+  animation: ico-halo 900ms cubic-bezier(.4,0,.2,1);
+}
+
+/* Per-pane signal dot in the section header. Visible only while pane is
+   signaling — gives the user a localized "this section just updated" mark. */
+.pane-signal-dot {
+  width: 6px; height: 6px; border-radius: 9999px;
+  background: #E4E4E7;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity 200ms ease, transform 200ms ease;
+  box-shadow: 0 0 8px rgba(228,228,231,.55);
+}
+.pane-signal.pane-signal-active .pane-signal-dot { opacity: 1; transform: scale(1); }
+
+/* Rail edge trace — a thin signal line drawn along the rail edge that
+   faces the chat. Peripheral-vision cue. */
+.rail-signal { position: relative; }
+.rail-signal::before {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0; width: 1px;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(to bottom,
+              transparent 0%, #E4E4E7 50%, transparent 100%);
+  background-size: 100% 50%;
+  background-repeat: no-repeat;
+  background-position: 0 -50%;
+  z-index: 20;
+}
+.rail-signal[data-side="left"]::before  { right: -1px; }
+.rail-signal[data-side="right"]::before { left:  -1px; }
+.rail-signal.rail-signal-active::before {
+  animation: edge-trace 1100ms cubic-bezier(.4,0,.2,1) forwards;
+}
+
+/* Per-row signals — mounted as keyed overlay children so the animation
+   restarts cleanly on every new pulse for that row id. */
+.row-flash {
+  position: absolute; inset: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+.row-flash-new {
+  background: rgba(228,228,231,.08);
+  animation: item-wash 1400ms ease-out forwards;
+}
+.row-flash-new::after {
+  content: "";
+  position: absolute;
+  top: 4px; bottom: 4px; left: 0;
+  width: 2px;
+  background: #E4E4E7;
+  box-shadow: 0 0 6px rgba(228,228,231,.55);
+  animation: item-rule 1600ms ease-out forwards;
+}
+.row-flash-change {
+  animation: item-change 1100ms cubic-bezier(.4,0,.2,1);
+}
+.row-enter {
+  animation: item-enter 360ms cubic-bezier(.4,0,.2,1);
+}

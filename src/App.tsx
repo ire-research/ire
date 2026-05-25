@@ -4,6 +4,7 @@ import { SetupScreen } from "./components/setup/SetupScreen";
 import { ToastStack } from "./components/ToastStack";
 import { useWorkspace } from "./state/workspace";
 import { useWorkspaceData } from "./state/workspaceData";
+import { usePaneSignals } from "./state/paneSignals";
 import { ipc, onBackendError, onWorkspaceEvent } from "./ipc";
 import { useToasts } from "./state/toasts";
 
@@ -33,9 +34,15 @@ export default function App() {
 
   // Single subscriber for workspace-event — dispatches every variant into the slice.
   // The cancelled flag handles Strict Mode unmount before listen() resolves.
+  // paneSignals.handle reads the PRIOR snapshot to diff (new vs changed), so it
+  // must run before workspaceData.apply mutates the slice.
   useEffect(() => {
     let cancelled = false;
-    const p = onWorkspaceEvent((event) => useWorkspaceData.getState().apply(event));
+    const p = onWorkspaceEvent((event) => {
+      const { resources, experiments, ideas } = useWorkspaceData.getState();
+      usePaneSignals.getState().handle(event, { resources, experiments, ideas });
+      useWorkspaceData.getState().apply(event);
+    });
     let unlisten: (() => void) | null = null;
     p.then((fn) => { if (cancelled) fn(); else unlisten = fn; });
     return () => {

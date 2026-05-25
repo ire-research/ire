@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
+import { usePaneSignals } from "../../state/paneSignals";
+import { useTransientClass } from "../../hooks/useTransientClass";
 import type { ExperimentRow } from "../../types";
 import { Icon } from "../Icon";
 
@@ -25,6 +27,10 @@ function getStatusPill(status: string): { text: string; textColor: string; borde
 }
 
 export function ExperimentsSection({ experiments, onOpen }: Props) {
+  const signalPulse = usePaneSignals((s) => s.pulse.experiments);
+  const newTicks = usePaneSignals((s) => s.newTicks);
+  const changeTicks = usePaneSignals((s) => s.changeTicks);
+  const paneRef = useTransientClass<HTMLDivElement>(signalPulse, "pane-signal-active", 1200);
   const [deletingUuid, setDeletingUuid] = useState<string | null>(null);
   const [renamingUuid, setRenamingUuid] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -73,20 +79,25 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
   };
 
   return (
-    <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
+    <div ref={paneRef} data-side="left" className="pane-signal px-4 pt-4 pb-3 overflow-y-auto flex-1">
       <div className="flex items-center gap-2 py-1 mb-2 text-on-surface-variant text-[14px]">
-        <Icon name="science" className="w-[16px] h-[16px] shrink-0" />
-        Experiments
+        <span className="pane-signal-icon shrink-0">
+          <Icon name="science" className="w-[16px] h-[16px]" />
+        </span>
+        <span className="flex-1">Experiments</span>
+        <span className="pane-signal-dot" aria-hidden />
       </div>
       <div className="space-y-0.5">
         {experiments.length > 0 ? (
           experiments.map((exp) => {
             const pill = getStatusPill(exp.status);
             const isRenaming = renamingUuid === exp.uuid;
+            const newTick = newTicks[exp.uuid] ?? 0;
+            const changeTick = changeTicks[exp.uuid] ?? 0;
             return (
               <div
                 key={exp.uuid}
-                className="group w-full flex items-center px-2 py-1.5 rounded hover:bg-surface-container-high transition-colors"
+                className={`group relative overflow-hidden w-full flex items-center px-2 py-1.5 rounded hover:bg-surface-container-high transition-colors${newTick > 0 ? " row-enter" : ""}`}
               >
                 {isRenaming ? (
                   <input
@@ -127,6 +138,8 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
                     </button>
                   </>
                 )}
+                {newTick > 0 && <span key={`n-${newTick}`} className="row-flash row-flash-new" aria-hidden />}
+                {changeTick > 0 && <span key={`c-${changeTick}`} className="row-flash row-flash-change" aria-hidden />}
               </div>
             );
           })

@@ -2,6 +2,8 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { useChat } from "../../state/chat";
 import { useWorkspace } from "../../state/workspace";
 import { useWorkspaceData } from "../../state/workspaceData";
+import { usePaneSignals, selectLeftRailPulse } from "../../state/paneSignals";
+import { useTransientClass } from "../../hooks/useTransientClass";
 import { FocusPane } from "./FocusPane";
 import { ResourcesSection } from "./ResourcesSection";
 import { ExperimentsSection } from "./ExperimentsSection";
@@ -12,6 +14,8 @@ export function LeftRail() {
   const openExperimentTab = useChat((s) => s.openExperimentTab);
   const groupLayout = useWorkspace((s) => s.panelLayout.groups?.left);
   const setGroupLayout = useWorkspace((s) => s.setGroupLayout);
+  const railPulse = usePaneSignals(selectLeftRailPulse);
+  const railRef = useTransientClass<HTMLElement>(railPulse, "rail-signal-active", 1100);
   const defaultLayout =
     groupLayout &&
     Number.isFinite(groupLayout.pulse) &&
@@ -21,7 +25,11 @@ export function LeftRail() {
       : undefined;
 
   return (
-    <nav className="h-full bg-surface-container-low border-r border-outline-variant flex flex-col overflow-hidden">
+    <nav
+      ref={railRef}
+      data-side="left"
+      className="rail-signal h-full bg-surface-container-low border-r border-outline-variant flex flex-col overflow-hidden"
+    >
       <Group
         id="left"
         orientation="vertical"
