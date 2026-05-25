@@ -47,7 +47,7 @@ export default {
         "on-tertiary-fixed": "#484a4d",
         "on-tertiary-fixed-variant": "#65666a",
         "outline": "#75757e",
-        "outline-variant": "#474750",
+        "outline-variant": "#2a2a30",
         "inverse-surface": "#fbf8fc",
         "inverse-on-surface": "#555458",
         "inverse-primary": "#5e5f62",
