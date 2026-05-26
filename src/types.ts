@@ -144,6 +144,8 @@ export interface Tab {
 /** Payload for the "chat-stream" Tauri event. */
 export interface TabStreamPayload {
   tab_id: string;
+  stream_id?: string;
+  event_id?: number;
   event: StreamEvent;
 }
 

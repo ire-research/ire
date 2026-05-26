@@ -132,6 +132,8 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
     let mut state = StreamState::default();
     let tab_id_owned = tab_id.to_string();
     let provider_owned = provider.to_string();
+    let stream_id = format!("{tab_id}:{pid}");
+    let mut event_id = 0_u64;
 
     for line in BufReader::new(stdout).lines() {
         let Ok(line) = line else { continue };
@@ -146,9 +148,15 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
                     session_id.clone(),
                 );
             }
+            event_id += 1;
             let _ = app.emit(
                 "chat-stream",
-                serde_json::json!({ "tab_id": &tab_id_owned, "event": &event }),
+                serde_json::json!({
+                    "tab_id": &tab_id_owned,
+                    "stream_id": &stream_id,
+                    "event_id": event_id,
+                    "event": &event,
+                }),
             );
         };
         if provider_owned == "codex" {
@@ -161,10 +169,18 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
     let _ = child.wait();
     session_manager.clear_pid(tab_id);
 
-    let _ = app.emit(
-        "chat-stream",
-        serde_json::json!({ "tab_id": tab_id, "event": &StreamEvent::Done }),
-    );
+    if !state.emitted_done {
+        event_id += 1;
+        let _ = app.emit(
+            "chat-stream",
+            serde_json::json!({
+                "tab_id": tab_id,
+                "stream_id": &stream_id,
+                "event_id": event_id,
+                "event": &StreamEvent::Done,
+            }),
+        );
+    }
 }
 
 fn tail_file(path: &Path, max_bytes: u64) -> String {

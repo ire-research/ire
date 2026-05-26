@@ -480,7 +480,7 @@ IRE supports multiple independent chat tabs in the central pane.
 
 **Session isolation.** Each tab carries its own `tab_id` (UUID for dynamically created tabs; `"main"` for the pinned tab). The backend `SessionManager` maintains a `HashMap<tab_id, PerTabSession>` where `PerTabSession` holds `{ session_id: Option<String>, session_provider: Option<String>, running_pid: Option<u32> }`. This replaces the old single `ChatSession` global and prevents cross-provider resume.
 
-**Event routing.** `chat-stream` events are wrapped as `{ tab_id, event }` before being emitted to the frontend. The frontend maintains a single global listener that routes each event to the correct tab's message list using the `tab_id` field. A `tab-created` event (payload: `{ tab_id, label, kind, resource_id? }`) is emitted by the backend whenever a new tab is opened programmatically (e.g. during resource ingestion). Preview tabs are created client-side only (no `tab-created` event) — the store's `openPreviewTab` action handles deduplication and activation.
+**Event routing.** `chat-stream` events are wrapped as `{ tab_id, stream_id, event_id, event }` before being emitted to the frontend. `stream_id` is stable for one spawned agent process (`{tab_id}:{pid}`) and `event_id` increments within that process; the frontend maintains a single global listener, routes each event to the correct tab's message list using `tab_id`, and ignores any already-seen `{tab_id, stream_id, event_id}` delivery. A `tab-created` event (payload: `{ tab_id, label, kind, resource_id? }`) is emitted by the backend whenever a new tab is opened programmatically (e.g. during resource ingestion). Preview tabs are created client-side only (no `tab-created` event) — the store's `openPreviewTab` action handles deduplication and activation.
 
 **History persistence.** Chat tabs carry optional `historySessionUuid` and `historyStartedAt` fields. The frontend creates them on first send, persists them in `.ire/workspace.json`, and passes the UUID to `chat_history_save` so every completed turn upserts the same `chat_sessions` row. The History menu filters out any row whose UUID is currently open as a chat tab, so autosaved active chats are not shown as archived history after a send or workspace reopen. Closing the tab removes that UUID from the active-tab filter, making the saved row visible. Restoring a row from the history menu opens a chat tab with the same UUID/start time and deletes the archived row; the next completed turn or close re-saves it under the same UUID. Workspace close is best-effort only — completed turns are already durable before close/restart.
 
@@ -491,7 +491,7 @@ User types → handleSend(tabId)
   → beginAssistantMessage(tabId)
   → ipc.chatSend(tabId, text)
   → Rust: resume CC for tabId with --resume <session_id>
-  → events emitted as { tab_id, event }
+  → events emitted as { tab_id, stream_id, event_id, event }
   → frontend routes to tabId's messages
   → Done → finishMessage(tabId)
 ```
@@ -514,7 +514,7 @@ submit_resource() kicks CC with a new tab_id
 | `chat_send` | `{ mode, message }` | `{ tab_id, message }` |
 | `chat_cancel` | `{}` | `{ tab_id }` |
 | `chat_reset_session` | `{}` | `{ tab_id }` |
-| `chat-stream` event | `StreamEvent` | `{ tab_id, event: StreamEvent }` |
+| `chat-stream` event | `StreamEvent` | `{ tab_id, stream_id, event_id, event: StreamEvent }` |
 | `tab-created` event | — | `{ tab_id, label, kind, resource_id? }` |
 
 ---
@@ -547,7 +547,7 @@ Codex spawn uses `codex exec`, `codex exec resume <thread_id>`, `--json`, `-m <m
 
 ### 10.3 JSONL parsers (`cc::stream`, `codex::stream`)
 
-Reads stdout line-by-line on a `spawn_blocking` thread; deserialises each line into `serde_json::Value`; dispatches provider-specific JSONL into typed `StreamEvent`s emitted to the frontend on the `chat-stream` channel:
+Reads stdout line-by-line on a `spawn_blocking` thread; deserialises each line into `serde_json::Value`; dispatches provider-specific JSONL into typed `StreamEvent`s emitted to the frontend on the `chat-stream` channel. Each emitted payload includes `stream_id = "{tab_id}:{pid}"` and a per-process monotonic `event_id`; the frontend uses those fields to make event delivery idempotent. When a provider stream already emits `Done`, the subprocess wrapper does not emit an additional synthetic `Done` after `wait()`:
 
 ```rust
 #[serde(tag = "kind")]
@@ -566,7 +566,7 @@ enum StreamEvent {
 
 `ToolCall` is the provider-neutral tool-card contract defined in `tool_cards.rs`: `{ tool_id, provider, kind, raw_name, title, input, output, status, meta }`. `kind` is one of `command`, `file_read`, `file_write`, `file_edit`, `file_search`, `web_fetch`, `wiki_read`, `wiki_write`, `wiki_append`, `wiki_rename`, `memory_write`, `pulse_update`, `experiment_start`, `experiment_status`, `experiment_tail_logs`, or `other`; `input`/`output` carry `{ preview, full, format }`; `meta` carries structured fields such as `path`, `paths`, `command`, `experiment_uuid`, `experiment_status`, `exit_code`, and `pid` when known. `ToolDone` updates an existing card by `tool_id` without replacing the canonical metadata already stored by the frontend.
 
-Claude deduplicates `Result.text` against streamed `TextDelta`s using an `emitted_text: bool` flag (blueprint §3). Claude and Codex both normalize native tool records into `ToolCall` before emitting `ToolStart`. Claude maps built-ins such as `Bash`, `Read`, `Write`, `Edit`/`MultiEdit`, `Grep`/`Glob`/`LS`, and `WebFetch`; MCP names such as `ire__wiki.read` and `mcp__ire__wiki__read` normalize through the same `wiki.*`, `memory.*`, `pulse.update`, and `experiment.*` mapping. Codex maps `thread.started` to `Init`, `item.agentMessage.delta` and completed `agent_message` items to `TextDelta`, `item.reasoning.textDelta` to `ThinkingDelta`, supported tool item start/completion events (`command_execution` / `commandExecution`, `file_change` / `fileChange`, `dynamic_tool_call` / `dynamicToolCall`, `mcp_tool_call`) to canonical `ToolStart`/`ToolDone`, preserving command/path/input metadata as tool `IN` details when the CLI emits those fields, and `turn.completed` to `Result` + `Done`. Unknown provider tools map to `kind: "other"` with the raw name and raw JSON details preserved. For `mcp_tool_call` items the raw name is `{server}__{tool}` (e.g. `ire__wiki.list`), input args come from the `arguments` field, and output is extracted from `result.content[].text`; a non-null string `error` field marks the call as failed.
+Claude deduplicates `Result.text` against streamed `TextDelta`s using an `emitted_text: bool` flag (blueprint §3). Both provider parsers set `emitted_done` when they emit terminal `Done`, so wrappers can suppress duplicate process-exit `Done` events. Claude and Codex both normalize native tool records into `ToolCall` before emitting `ToolStart`. Claude maps built-ins such as `Bash`, `Read`, `Write`, `Edit`/`MultiEdit`, `Grep`/`Glob`/`LS`, and `WebFetch`; MCP names such as `ire__wiki.read` and `mcp__ire__wiki__read` normalize through the same `wiki.*`, `memory.*`, `pulse.update`, and `experiment.*` mapping. Codex maps `thread.started` to `Init`, `item.agentMessage.delta` and completed `agent_message` items to `TextDelta`, `item.reasoning.textDelta` to `ThinkingDelta`, supported tool item start/completion events (`command_execution` / `commandExecution`, `file_change` / `fileChange`, `dynamic_tool_call` / `dynamicToolCall`, `mcp_tool_call`) to canonical `ToolStart`/`ToolDone`, preserving command/path/input metadata as tool `IN` details when the CLI emits those fields, and `turn.completed` to `Result` + `Done`. Unknown provider tools map to `kind: "other"` with the raw name and raw JSON details preserved. For `mcp_tool_call` items the raw name is `{server}__{tool}` (e.g. `ire__wiki.list`), input args come from the `arguments` field, and output is extracted from `result.content[].text`; a non-null string `error` field marks the call as failed.
 
 `AskUserQuestion` is emitted when CC's built-in `AskUserQuestion` tool fires. The parser
 intercepts that `tool_use` block, parses its `questions[]` payload
@@ -889,7 +889,7 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 
 | Event | Payload |
 |---|---|
-| `chat-stream` | `{ tab_id: string, event: StreamEvent }` (see [§10.3](#103-ndjson-parser-ccstream) and [§9.4](#94-multi-tab-chat)) |
+| `chat-stream` | `{ tab_id: string, stream_id: string, event_id: number, event: StreamEvent }` (see [§10.3](#103-ndjson-parser-ccstream) and [§9.4](#94-multi-tab-chat)) |
 | `tab-created` | `{ tab_id: string, label: string, kind: "chat"\|"resource", resource_id?: string }` (preview tabs are created client-side only) |
 | `chat-cancelled` | `{ tab_id: string }` |
 | `experiment-starting` | `{ tab_id: string, uuid: string, pid?: number }` (fired when the detached process has been spawned; links the pending experiment card in `tab_id` to its assigned UUID and PID) |

@@ -112,6 +112,8 @@ pub async fn chat_send(
 
         let mut child = cmd.spawn().map_err(|e| e.to_string())?;
         let pid = child.id();
+        let stream_id = format!("{tab_id}:{pid}");
+        let mut event_id = 0_u64;
         session_clone.set_pid(&tab_id, pid);
         tracing::info!(tab_id = %tab_id, provider = %provider, pid = pid, resume = ?resume_id, "agent subprocess spawned");
 
@@ -132,9 +134,15 @@ pub async fn chat_send(
                     if let StreamEvent::Error { message: ref errmsg } = event {
                         tracing::warn!(tab_id = %tab_id, provider = %provider, error = %errmsg, "agent stream error");
                     }
+                    event_id += 1;
                     let _ = app_handle.emit(
                         "chat-stream",
-                        serde_json::json!({ "tab_id": &tab_id, "event": &event }),
+                        serde_json::json!({
+                            "tab_id": &tab_id,
+                            "stream_id": &stream_id,
+                            "event_id": event_id,
+                            "event": &event,
+                        }),
                     );
                 };
                 if provider == "codex" {
@@ -153,10 +161,18 @@ pub async fn chat_send(
         }
         tracing::info!(tab_id = %tab_id, "chat_send complete");
 
-        let _ = app_handle.emit(
-            "chat-stream",
-            serde_json::json!({ "tab_id": &tab_id, "event": &StreamEvent::Done }),
-        );
+        if !state.emitted_done {
+            event_id += 1;
+            let _ = app_handle.emit(
+                "chat-stream",
+                serde_json::json!({
+                    "tab_id": &tab_id,
+                    "stream_id": &stream_id,
+                    "event_id": event_id,
+                    "event": &StreamEvent::Done,
+                }),
+            );
+        }
         Ok::<(), String>(())
     })
     .await

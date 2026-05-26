@@ -20,6 +20,8 @@ import { ExperimentTabView } from "./ExperimentTabView";
 import { Icon } from "../Icon";
 import type { AskAnswer, AskBlockState, ChatMessage, Tab } from "../../types";
 
+const seenStreamEventIds = new Map<string, number>();
+
 const HERO_MESSAGES = [
   "Advancing science...",
   "Answering big questions...",
@@ -38,6 +40,15 @@ const HERO_MESSAGES = [
 
 function randomHeroMessage() {
   return HERO_MESSAGES[Math.floor(Math.random() * HERO_MESSAGES.length)];
+}
+
+function shouldProcessStreamEvent(tabId: string, streamId?: string, eventId?: number): boolean {
+  if (!streamId || eventId === undefined) return true;
+  const key = `${tabId}:${streamId}`;
+  const previous = seenStreamEventIds.get(key);
+  if (previous !== undefined && eventId <= previous) return false;
+  seenStreamEventIds.set(key, eventId);
+  return true;
 }
 
 export function ChatPane() {
@@ -102,7 +113,9 @@ export function ChatPane() {
       p.then((u) => { if (cancelled) u(); else unlisteners.push(u); });
     }
 
-    reg(onChatStream(({ tab_id, event }) => {
+    reg(onChatStream(({ tab_id, stream_id, event_id, event }) => {
+      if (!shouldProcessStreamEvent(tab_id, stream_id, event_id)) return;
+
       const msgId = assistantIdByTab.current.get(tab_id);
 
       switch (event.kind) {

@@ -57,6 +57,7 @@ pub enum StreamEvent {
 pub struct StreamState {
     pub session_id: String,
     pub emitted_text: bool,
+    pub emitted_done: bool,
     emitted_text_chars_by_block: Vec<usize>,
     emitted_thinking_chars_by_block: Vec<usize>,
     emitted_tool_ids: Vec<String>,
@@ -89,6 +90,7 @@ pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, em
                 text,
                 session_id: state.session_id.clone(),
             });
+            state.emitted_done = true;
             emit(StreamEvent::Done);
         }
         "error" => {
@@ -98,6 +100,7 @@ pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, em
                 .unwrap_or("unknown error")
                 .to_string();
             emit(StreamEvent::Error { message: msg });
+            state.emitted_done = true;
             emit(StreamEvent::Done);
         }
         _ => {}
@@ -598,5 +601,20 @@ mod tests {
                 meta: json!({}),
             }]
         );
+    }
+
+    #[test]
+    fn tracks_terminal_done_for_result() {
+        let mut state = StreamState::default();
+        let mut events = Vec::new();
+        let json = json!({
+            "type": "result",
+            "result": "done",
+        });
+
+        dispatch(&json, &mut state, &mut |event| events.push(event));
+
+        assert!(state.emitted_done);
+        assert!(matches!(events.last(), Some(StreamEvent::Done)));
     }
 }

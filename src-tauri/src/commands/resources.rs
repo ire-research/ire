@@ -438,6 +438,8 @@ fn start_resource_summary(
 
             let mut child = cmd.spawn().map_err(|e| e.to_string())?;
             let pid = child.id();
+            let stream_id = format!("{tab_id_clone}:{pid}");
+            let mut event_id = 0_u64;
             session.set_pid(&tab_id_clone, pid);
             tracing::info!(tab_id = %tab_id_clone, pid = pid, "resource CC turn spawned");
 
@@ -450,9 +452,15 @@ fn start_resource_summary(
                         if let StreamEvent::Init { ref session_id } = event {
                             session.set_session_id(&tab_id_clone, session_id.clone());
                         }
+                        event_id += 1;
                         let _ = app.emit(
                             "chat-stream",
-                            serde_json::json!({ "tab_id": &tab_id_clone, "event": &event }),
+                            serde_json::json!({
+                                "tab_id": &tab_id_clone,
+                                "stream_id": &stream_id,
+                                "event_id": event_id,
+                                "event": &event,
+                            }),
                         );
                     });
                 }
@@ -461,10 +469,18 @@ fn start_resource_summary(
             let _ = child.wait();
             session.clear_pid(&tab_id_clone);
 
-            let _ = app.emit(
-                "chat-stream",
-                serde_json::json!({ "tab_id": &tab_id_clone, "event": &StreamEvent::Done }),
-            );
+            if !state.emitted_done {
+                event_id += 1;
+                let _ = app.emit(
+                    "chat-stream",
+                    serde_json::json!({
+                        "tab_id": &tab_id_clone,
+                        "stream_id": &stream_id,
+                        "event_id": event_id,
+                        "event": &StreamEvent::Done,
+                    }),
+                );
+            }
 
             Ok::<(), String>(())
         })

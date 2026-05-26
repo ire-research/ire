@@ -107,6 +107,7 @@ pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, em
                 text: None,
                 session_id: state.session_id.clone(),
             });
+            state.emitted_done = true;
             emit(StreamEvent::Done);
         }
         "error" => {
@@ -115,6 +116,7 @@ pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, em
                 .unwrap_or("unknown error")
                 .to_string();
             emit(StreamEvent::Error { message: msg });
+            state.emitted_done = true;
             emit(StreamEvent::Done);
         }
         _ => {}
@@ -587,5 +589,19 @@ mod tests {
             panic!("expected ToolDone");
         };
         assert_eq!(*status, ToolStatus::Failed);
+    }
+
+    #[test]
+    fn tracks_terminal_done_for_turn_completed() {
+        let mut state = StreamState::default();
+        let events = collect(
+            json!({
+                "type": "turn.completed"
+            }),
+            &mut state,
+        );
+
+        assert!(state.emitted_done);
+        assert!(matches!(events.last(), Some(StreamEvent::Done)));
     }
 }
