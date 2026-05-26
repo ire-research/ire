@@ -79,6 +79,7 @@ pub fn open_workspace(
     tracing::info!(path = %path, "open_workspace");
     let path = PathBuf::from(path);
     ws_init::validate_existing(&path).map_err(|e| e.to_string())?;
+    ws_init::ensure_git(&path).map_err(|e| e.to_string())?;
     let sm = (*session).clone();
     let result = attach(&active, &mcp, sm, path.clone(), app);
     match &result {

@@ -37,15 +37,27 @@ pub fn get_system_status(active: State<'_, ActiveWorkspace>) -> Result<SystemSta
             .clone()
     };
 
-    // Git branch
+    // Git branch: symbolic-ref works even on a fresh repo with no commits;
+    // rev-parse is only reached in detached-HEAD state.
     let git_branch = Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .args(["symbolic-ref", "--short", "HEAD"])
         .current_dir(&workspace_path)
         .output()
         .ok()
+        .filter(|o| o.status.success())
         .and_then(|o| String::from_utf8(o.stdout).ok())
         .map(|s| s.trim().to_string())
-        .unwrap_or_else(|| "HEAD".to_string());
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| {
+            Command::new("git")
+                .args(["rev-parse", "--abbrev-ref", "HEAD"])
+                .current_dir(&workspace_path)
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .map(|s| s.trim().to_string())
+                .unwrap_or_else(|| "HEAD".to_string())
+        });
 
     // Git diff stat
     let (git_insertions, git_deletions) = git_diff_stat(&workspace_path);
@@ -99,6 +111,9 @@ fn git_diff_stat(path: &std::path::Path) -> (u32, u32) {
         .current_dir(path)
         .output();
     let Ok(out) = out else { return (0, 0) };
+    if !out.status.success() {
+        return (0, 0);
+    }
     let s = String::from_utf8_lossy(&out.stdout);
     let ins = parse_stat(&s, "insertion");
     let del = parse_stat(&s, "deletion");

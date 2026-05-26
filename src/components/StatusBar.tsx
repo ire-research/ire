@@ -67,10 +67,10 @@ export function StatusBar() {
 
         {/* Agent status */}
         <div className="flex items-center gap-1.5 px-2 shrink-0 h-6 ml-auto">
-          <span className={status.cc_connected ? "text-ok" : "text-error"}>claude-code</span>
+          <span className={status.cc_connected ? "" : "text-error"}>claude-code</span>
           <span className={`w-1.5 h-1.5 rounded-full ${status.cc_connected ? "bg-ok" : "bg-error"}`} />
           <span className="text-outline-variant">·</span>
-          <span className={status.codex_connected ? "text-ok" : "text-on-surface-variant/40"}>codex</span>
+          <span className={status.codex_connected ? "" : "text-on-surface-variant/40"}>codex</span>
           <span className={`w-1.5 h-1.5 rounded-full ${status.codex_connected ? "bg-ok" : "bg-surface-container-high"}`} />
         </div>
       </div>
