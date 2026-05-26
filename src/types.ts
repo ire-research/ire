@@ -133,6 +133,8 @@ export interface Tab {
   isStreaming: boolean;
   isPinned: boolean;
   kind: TabKind;
+  historySessionUuid?: string;
+  historyStartedAt?: string;
   resourceId?: string;
   resourceStatus?: ResourceStatus;
   wikiPath?: string;
@@ -222,6 +224,17 @@ export type WorkspaceEvent =
   | { kind: "resource-deleted"; source: WorkspaceEventSource; resource_id: string }
   | { kind: "experiment-changed"; source: WorkspaceEventSource; experiment: ExperimentRow }
   | { kind: "experiment-deleted"; source: WorkspaceEventSource; uuid: string };
+
+export interface ChatSessionSummary {
+  session_uuid: string;
+  tab_label: string;
+  provider: string;
+  model: string;
+  started_at: string;
+  ended_at: string;
+  message_count: number;
+  first_user_msg: string | null;
+}
 
 export interface SystemStatus {
   workspace_path: string;

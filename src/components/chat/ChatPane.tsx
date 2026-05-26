@@ -14,10 +14,31 @@ import {
 import { MessageList } from "./MessageList";
 import { Composer } from "./Composer";
 import { TabBar } from "./TabBar";
+import { HistoryPanel } from "./HistoryPanel";
 import { ResourcePreviewPane } from "./ResourcePreviewPane";
 import { ExperimentTabView } from "./ExperimentTabView";
 import { Icon } from "../Icon";
-import type { AskAnswer, AskBlockState, Tab } from "../../types";
+import type { AskAnswer, AskBlockState, ChatMessage, Tab } from "../../types";
+
+const HERO_MESSAGES = [
+  "Advancing science...",
+  "Answering big questions...",
+  "Accelerating discovery...",
+  "Exploring the unknown...",
+  "Pushing knowledge forward...",
+  "Investigating new ideas...",
+  "Connecting the dots...",
+  "Uncovering new knowledge...",
+  "Discovering what matters...",
+  "Research without limits...",
+  "Think deeper...",
+  "Explore further...",
+  "Discover faster...",
+];
+
+function randomHeroMessage() {
+  return HERO_MESSAGES[Math.floor(Math.random() * HERO_MESSAGES.length)];
+}
 
 export function ChatPane() {
   const { model, provider, effort } = useChatOptions();
@@ -38,18 +59,21 @@ export function ChatPane() {
     setMessageError,
     setStreaming,
     setResourceStatus,
-    clearMessages,
     addTool,
     markToolDone,
     addAskQuestion,
     linkExperimentUuid,
     updateExperimentStatus,
     appendExperimentLog,
+    setTabHistoryMeta,
+    createTabWithMessages,
   } = useChat();
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
 
   const [previewContent, setPreviewContent] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [heroMessage, setHeroMessage] = useState(randomHeroMessage);
 
   useEffect(() => {
     if (activeTab?.kind !== "preview" || !activeTab.wikiPath) return;
@@ -58,6 +82,10 @@ export function ChatPane() {
 
   // Maps tab_id → in-flight assistant message id.
   const assistantIdByTab = useRef<Map<string, string>>(new Map());
+  // Per-tab stable session UUID and start time — generated on first send, stored
+  // on the tab, and reused for upserts so restart/close does not duplicate rows.
+  const sessionUuidByTab = useRef<Map<string, string>>(new Map());
+  const sessionStartedAtByTab = useRef<Map<string, string>>(new Map());
 
   // Global stream listener — routes events to the correct tab.
   //
@@ -122,12 +150,17 @@ export function ChatPane() {
           if (msgId) setMessageError(tab_id, msgId, event.message);
           setStreaming(tab_id, false);
           assistantIdByTab.current.delete(tab_id);
+          void ipc.saveWorkspaceState(useWorkspace.getState().toPersisted())
+            .catch((e) => toastError("save state", e));
           break;
 
         case "Done": {
           if (msgId) finishMessage(tab_id, msgId);
           setStreaming(tab_id, false);
           assistantIdByTab.current.delete(tab_id);
+          void persistCompletedChat(tab_id);
+          void ipc.saveWorkspaceState(useWorkspace.getState().toPersisted())
+            .catch((e) => toastError("save state", e));
 
           const currentTab = useChat.getState().tabs.find((t) => t.id === tab_id);
           if (currentTab?.kind === "resource") {
@@ -178,8 +211,41 @@ export function ChatPane() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** Return (or lazily create) the stable session UUID + startedAt for a tab. */
+  const getSessionMeta = (tabId: string): { uuid: string; startedAt: string } => {
+    const tab = useChat.getState().tabs.find((t) => t.id === tabId);
+    if (!sessionUuidByTab.current.has(tabId) && tab?.historySessionUuid && tab.historyStartedAt) {
+      sessionUuidByTab.current.set(tabId, tab.historySessionUuid);
+      sessionStartedAtByTab.current.set(tabId, tab.historyStartedAt);
+    }
+    if (!sessionUuidByTab.current.has(tabId)) {
+      const uuid = crypto.randomUUID();
+      const startedAt = new Date().toISOString();
+      sessionUuidByTab.current.set(tabId, uuid);
+      sessionStartedAtByTab.current.set(tabId, startedAt);
+      setTabHistoryMeta(tabId, uuid, startedAt);
+    }
+    return {
+      uuid: sessionUuidByTab.current.get(tabId)!,
+      startedAt: sessionStartedAtByTab.current.get(tabId)!,
+    };
+  };
+
+  const persistCompletedChat = async (tabId: string) => {
+    const tab = useChat.getState().tabs.find((t) => t.id === tabId);
+    if (!tab || tab.kind !== "chat" || tab.messages.length === 0 || tab.isStreaming) return;
+    const { uuid, startedAt } = getSessionMeta(tabId);
+    const { model: m, provider: p } = useChatOptions.getState();
+    await ipc
+      .chatHistorySave(tab.label, p, m, startedAt, JSON.stringify(tab.messages), uuid)
+      .catch((e) => toastError("save chat history", e));
+  };
+
   const handleSend = async (text: string) => {
     if (!activeTab || activeTab.isStreaming) return;
+
+    // Ensure a stable session UUID exists for this tab before the first message.
+    getSessionMeta(activeTabId);
 
     addUserMessage(activeTabId, text);
     const aid = beginAssistantMessage(activeTabId);
@@ -200,6 +266,9 @@ export function ChatPane() {
       if (currentMsgId) finishMessage(activeTabId, currentMsgId);
       assistantIdByTab.current.delete(activeTabId);
       setStreaming(activeTabId, false);
+      void persistCompletedChat(activeTabId);
+      void ipc.saveWorkspaceState(useWorkspace.getState().toPersisted())
+        .catch((e) => toastError("save state", e));
     }
   };
 
@@ -214,14 +283,26 @@ export function ChatPane() {
   };
 
   const handleNewTab = () => {
+    if (tabs.length === 0) {
+      setHeroMessage(randomHeroMessage());
+    }
     createTab();
   };
 
-  const handleCloseTab = (tabId: string) => {
+  const handleCloseTab = async (tabId: string) => {
     if (activeTab.isStreaming && tabId === activeTabId) {
       ipc.chatCancel(tabId);
     }
+    // Save history for any non-streaming chat tab with messages before removing it.
+    const tab = tabs.find((t) => t.id === tabId);
+    if (tab && tab.kind === "chat" && tab.messages.length > 0 && !tab.isStreaming) {
+      await persistCompletedChat(tabId);
+      sessionUuidByTab.current.delete(tabId);
+      sessionStartedAtByTab.current.delete(tabId);
+    }
     closeTab(tabId);
+    void ipc.saveWorkspaceState(useWorkspace.getState().toPersisted())
+      .catch((e) => toastError("save state", e));
   };
 
   const handleConfirmResource = async () => {
@@ -243,6 +324,18 @@ export function ChatPane() {
     }
   };
 
+  const handleRestore = async (sessionUuid: string, tabLabel: string, startedAt?: string) => {
+    const json = await ipc
+      .chatHistoryGet(sessionUuid)
+      .catch((e) => { toastError("load history", e); return null; });
+    if (!json) return;
+    const messages: ChatMessage[] = JSON.parse(json);
+    // Remove from history — the session is now active again as a tab.
+    // It will be re-saved to history when the tab is closed.
+    ipc.chatHistoryDelete(sessionUuid).catch(() => {});
+    createTabWithMessages(tabLabel, messages, sessionUuid, startedAt);
+  };
+
   const handleDiscardResource = () => {
     if (activeTab.resourceId) {
       ipc.discardResource(activeTab.resourceId).catch((e) => toastError("discard resource", e));
@@ -250,18 +343,51 @@ export function ChatPane() {
     closeTab(activeTabId);
   };
 
+  const activeHistorySessionUuids = tabs
+    .filter((tab) => tab.kind === "chat" && tab.historySessionUuid)
+    .map((tab) => tab.historySessionUuid!);
+
+  const tabBar = (
+    <TabBar
+      tabs={tabs}
+      activeTabId={activeTabId}
+      onSelect={setActiveTab}
+      onClose={handleCloseTab}
+      onNew={handleNewTab}
+      onRename={renameTab}
+      rightSlot={
+        <>
+          <button
+            className="flex h-8 w-8 items-center justify-center text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors"
+            title="Chat history"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => setHistoryOpen((o) => !o)}
+          >
+            <i className="fa-solid fa-clock-rotate-left text-[13px]" />
+          </button>
+          <HistoryPanel
+            isOpen={historyOpen}
+            onClose={() => setHistoryOpen(false)}
+            excludeSessionUuids={activeHistorySessionUuids}
+            onRestore={handleRestore}
+          />
+        </>
+      }
+    />
+  );
+
   const showResourceBar =
     activeTab?.kind === "resource" && activeTab.resourceStatus === "ready";
 
   if (tabs.length === 0) {
     return (
       <section className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
-        <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTab} onClose={handleCloseTab} onNew={handleNewTab} onRename={renameTab} />
+        {tabBar}
         <div className="flex-1 flex flex-col items-center justify-center gap-7 text-center px-10">
           <div className="flex flex-col items-center gap-3">
             <h1 className="text-xl font-semibold text-on-surface-variant tracking-tight">Integrated Research Environment (IRE)</h1>
             <p className="text-[13px] text-on-surface-variant max-w-sm leading-relaxed">
-              Start a new chat to begin your research session, or open an experiment to review past runs.
+              {heroMessage}
             </p>
           </div>
           <button
@@ -280,7 +406,7 @@ export function ChatPane() {
   if (activeTab.kind === "preview") {
     return (
       <section className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
-        <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTab} onClose={handleCloseTab} onNew={handleNewTab} onRename={renameTab} />
+        {tabBar}
         <div className="flex-1 overflow-hidden relative">
           <ResourcePreviewPane title={activeTab.label} content={previewContent} />
         </div>
@@ -289,7 +415,7 @@ export function ChatPane() {
   } else if (activeTab.kind === "experiment") {
     return (
       <section className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
-        <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTab} onClose={handleCloseTab} onNew={handleNewTab} onRename={renameTab} />
+        {tabBar}
         <div className="flex-1 overflow-hidden relative">
           <div className="absolute inset-0 overflow-y-auto px-4 py-4 pb-8">
             <ExperimentTabView uuid={activeTab.experimentUuid!} name={activeTab.label} />
@@ -301,26 +427,7 @@ export function ChatPane() {
 
   return (
     <section className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
-      <TabBar tabs={tabs} activeTabId={activeTabId} onSelect={setActiveTab} onClose={handleCloseTab} onNew={handleNewTab} onRename={renameTab} />
-      <div className="flex items-center justify-end px-4 h-8 shrink-0 border-b border-outline-variant/30">
-        {activeTab.isStreaming && (
-          <button className="text-on-surface-variant hover:text-on-surface transition-colors text-xs" onClick={() => ipc.chatCancel(activeTabId)}>
-            Cancel
-          </button>
-        )}
-        {!activeTab.isStreaming && (
-          <button
-            className="text-on-surface-variant hover:text-on-surface transition-colors p-1"
-            title="Reset conversation"
-            onClick={() => {
-              clearMessages(activeTabId);
-              ipc.chatResetSession(activeTabId);
-            }}
-          >
-            <Icon name="refresh" className="w-[16px] h-[16px]" />
-          </button>
-        )}
-      </div>
+      {tabBar}
       <div className="flex-1 overflow-hidden relative">
         {/* Chat view */}
         <div className="absolute inset-0 overflow-y-auto px-4 md:px-8 lg:px-12 pt-4 pb-40 space-y-6">
@@ -330,7 +437,7 @@ export function ChatPane() {
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-full px-6 pointer-events-none" style={{ zIndex: 20 }}>
           <div className="pointer-events-auto">
             {!showResourceBar && (
-              <Composer onSend={handleSend} disabled={activeTab.isStreaming} />
+              <Composer onSend={handleSend} disabled={activeTab.isStreaming} onCancel={() => ipc.chatCancel(activeTabId)} />
             )}
           </div>
         </div>

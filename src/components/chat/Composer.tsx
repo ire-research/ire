@@ -12,29 +12,14 @@ import { Icon } from "../Icon";
 interface ComposerProps {
   onSend?: (text: string) => void;
   disabled?: boolean;
+  onCancel?: () => void;
 }
 
-const PLACEHOLDER_SENTENCES = [
-  "Advancing science...",
-  "Answering big questions...",
-  "Accelerating discovery...",
-  "Exploring the unknown...",
-  "Pushing knowledge forward...",
-  "Investigating new ideas...",
-  "Connecting the dots...",
-  "Uncovering new knowledge...",
-  "Discovering what matters...",
-  "Research without limits...",
-  "Think deeper...",
-  "Explore further...",
-  "Discover faster...",
-];
+const COMPOSER_PLACEHOLDER =
+  "Ask IRE to brainstorm directions, ingest resources, or run experiments...";
 
-export function Composer({ onSend, disabled }: ComposerProps) {
+export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
   const [text, setText] = useState("");
-  const [placeholder] = useState(
-    () => PLACEHOLDER_SENTENCES[Math.floor(Math.random() * PLACEHOLDER_SENTENCES.length)],
-  );
   const [modelOpen, setModelOpen] = useState(false);
   const [effortOpen, setEffortOpen] = useState(false);
   const modelRef = useRef<HTMLDivElement>(null);
@@ -146,7 +131,7 @@ export function Composer({ onSend, disabled }: ComposerProps) {
         ref={textareaRef}
         id="composer-textarea"
         className="w-full bg-transparent border-none text-on-surface text-[14px] focus:ring-0 px-3 py-2.5 placeholder-on-surface-variant/50 outline-none resize-none"
-        placeholder={placeholder}
+        placeholder={COMPOSER_PLACEHOLDER}
         value={text}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={handleKeyDown}
@@ -203,16 +188,28 @@ export function Composer({ onSend, disabled }: ComposerProps) {
             </div>
           </div>
         </div>
-        {/* Right: hint + send */}
+        {/* Right: hint + send/stop */}
         <div className="flex items-center gap-2">
-          <span className="text-[10px] text-on-surface-variant/50">⌘↵</span>
-          <button
-            className="bg-accent text-accent-fg px-4 py-1 rounded text-[12px] font-medium hover:opacity-90 transition-opacity flex items-center gap-1 disabled:opacity-40"
-            onClick={handleSend}
-            disabled={!text.trim() || disabled}
-          >
-            Send <Icon name="arrow_upward" className="w-[14px] h-[14px]" />
-          </button>
+          {disabled && onCancel ? (
+            <button
+              className="w-[28px] h-[28px] rounded bg-on-surface flex items-center justify-center hover:opacity-80 transition-opacity shrink-0"
+              onClick={onCancel}
+              title="Stop"
+            >
+              <span className="w-[10px] h-[10px] rounded-[2px] bg-background block" />
+            </button>
+          ) : (
+            <>
+              <span className="text-[10px] text-on-surface-variant/50">⌘↵</span>
+              <button
+                className="bg-accent text-accent-fg px-4 py-1 rounded text-[12px] font-medium hover:opacity-90 transition-opacity flex items-center gap-1 disabled:opacity-40"
+                onClick={handleSend}
+                disabled={!text.trim() || disabled}
+              >
+                Send <Icon name="arrow_upward" className="w-[14px] h-[14px]" />
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

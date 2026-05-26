@@ -21,6 +21,12 @@ pub struct PersistedWorkspace {
     pub provider: String,
     #[serde(default = "default_effort")]
     pub effort: String,
+    /// All open tabs serialised as opaque JSON blobs. Rust has no need to
+    /// understand the Tab type hierarchy — it just stores and returns the JSON.
+    #[serde(default)]
+    pub tabs: Option<Vec<serde_json::Value>>,
+    #[serde(default)]
+    pub active_tab_id: Option<String>,
 }
 
 impl Default for PersistedWorkspace {
@@ -32,6 +38,8 @@ impl Default for PersistedWorkspace {
             model: default_model(),
             provider: default_provider(),
             effort: default_effort(),
+            tabs: None,
+            active_tab_id: None,
         }
     }
 }

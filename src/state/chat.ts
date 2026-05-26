@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AskAnswer, AskQuestion, AssistantContentBlock, AssistantMessage, ExperimentStatus, ResourceStatus, Tab, ToolCallState, ToolIo, ToolMeta, ToolStatus } from "../types";
+import type { AskAnswer, AskQuestion, AssistantContentBlock, AssistantMessage, ChatMessage, ExperimentStatus, ResourceStatus, Tab, ToolCallState, ToolIo, ToolMeta, ToolStatus } from "../types";
 
 const MAIN_TAB_ID = "main";
 
@@ -45,6 +45,12 @@ interface ChatStore {
   appendExperimentLog: (uuid: string, line: string) => void;
   /** Remove a tool card by tool_id from all messages across all tabs. */
   removeTool: (toolId: string) => void;
+  /** Restore tabs persisted from a previous workspace session. Replaces all
+   *  current tabs. Any tab with isStreaming=true is normalised to false. */
+  restorePersistedTabs: (tabs: Tab[], activeTabId?: string) => void;
+  setTabHistoryMeta: (tabId: string, sessionUuid: string, startedAt: string) => void;
+  /** Open a new chat tab pre-populated with historical messages (read from history). */
+  createTabWithMessages: (label: string, messages: ChatMessage[], sessionUuid?: string, startedAt?: string) => void;
 }
 
 let seq = 0;
@@ -450,5 +456,55 @@ export const useChat = create<ChatStore>((set) => ({
         }),
       })),
     })),
-}));
 
+  restorePersistedTabs: (tabs, activeTabId) =>
+    set(() => {
+      const normalised = tabs.map((t) => ({
+        ...t,
+        isStreaming: false,
+        messages: t.messages.map((m) =>
+          m.role === "assistant" ? { ...m, isStreaming: false } : m
+        ),
+      }));
+      const restoredActiveTabId =
+        normalised.find((t) => t.id === activeTabId)?.id ?? normalised[0]?.id ?? MAIN_TAB_ID;
+      return {
+        tabs: normalised,
+        activeTabId: restoredActiveTabId,
+        previousTabId: null,
+      };
+    }),
+
+  setTabHistoryMeta: (tabId, sessionUuid, startedAt) =>
+    set((s) => ({
+      tabs: updateTab(s.tabs, tabId, (t) => ({
+        ...t,
+        historySessionUuid: sessionUuid,
+        historyStartedAt: startedAt,
+      })),
+    })),
+
+  createTabWithMessages: (label, messages, sessionUuid, startedAt) => {
+    const id = crypto.randomUUID();
+    const clean: ChatMessage[] = messages.map((m) =>
+      m.role === "assistant" ? { ...m, isStreaming: false } : m
+    );
+    set((s) => ({
+      tabs: [
+        ...s.tabs,
+        {
+          id,
+          label,
+          messages: clean,
+          isStreaming: false,
+          isPinned: false,
+          kind: "chat",
+          historySessionUuid: sessionUuid,
+          historyStartedAt: startedAt,
+        },
+      ],
+      previousTabId: s.activeTabId,
+      activeTabId: id,
+    }));
+  },
+}));

@@ -120,7 +120,7 @@ my_research_project/
 ├── .ire/
 │   ├── .lock                        # PID of running IRE instance (gitignored)
 │   ├── _SYSTEM.md                   # IRE framework context + wiki schema, injected first into every agent turn
-│   ├── workspace.json               # per-workspace UI layout (panel sizes); gitignored
+│   ├── workspace.json               # per-workspace UI state (panel sizes, tabs, chat options); gitignored
 │   ├── cache/                       # raw extracted resource text (gitignored)
 │   └── wiki/                        # ALL TRACKED IN GIT
 │       ├── local.db                 # SQLite (gitignored)
@@ -210,7 +210,7 @@ On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel. `
    - If present and PID alive: refuse, show "already open in another window".
    - If present and PID dead: reclaim (overwrite with current PID).
 4. Initialise SQLite (run pending migrations).
-5. Load `workspace.json` if present (restores pane layout + last CC session id).
+5. Load `workspace.json` if present (restores pane layout, open tabs, and chat options).
 6. Spawn the MCP server subprocess (long-lived, lives as long as the workspace is open).
 7. Emit `workspace-ready` event to the frontend.
 
@@ -482,6 +482,8 @@ IRE supports multiple independent chat tabs in the central pane.
 
 **Event routing.** `chat-stream` events are wrapped as `{ tab_id, event }` before being emitted to the frontend. The frontend maintains a single global listener that routes each event to the correct tab's message list using the `tab_id` field. A `tab-created` event (payload: `{ tab_id, label, kind, resource_id? }`) is emitted by the backend whenever a new tab is opened programmatically (e.g. during resource ingestion). Preview tabs are created client-side only (no `tab-created` event) — the store's `openPreviewTab` action handles deduplication and activation.
 
+**History persistence.** Chat tabs carry optional `historySessionUuid` and `historyStartedAt` fields. The frontend creates them on first send, persists them in `.ire/workspace.json`, and passes the UUID to `chat_history_save` so every completed turn upserts the same `chat_sessions` row. The History menu filters out any row whose UUID is currently open as a chat tab, so autosaved active chats are not shown as archived history after a send or workspace reopen. Closing the tab removes that UUID from the active-tab filter, making the saved row visible. Restoring a row from the history menu opens a chat tab with the same UUID/start time and deletes the archived row; the next completed turn or close re-saves it under the same UUID. Workspace close is best-effort only — completed turns are already durable before close/restart.
+
 **User-initiated turn (any tab)**
 
 ```
@@ -730,7 +732,7 @@ The Tauri window opens in windowed mode at 1280 × 820 so the primary rails, cen
 - The active tab uses `bg-surface-container-highest` and a 1 px top border in the `primary` colour token (light silver), visually merging with the content area below. The tab bar background is `bg-surface-container-low`.
 - Inactive tabs use `text-on-surface-variant` with no background fill. Hovering applies `bg-surface-container-highest` and `text-on-surface`.
 - The close button (×) is hidden until the tab row is **hovered** (`group-hover`). It does not appear simply because the tab is active. Pinned tabs (Main) have no close button.
-- A `+` button (Material Symbol `add`) at the right end of the bar opens a new chat tab.
+- A `+` button (Material Symbol `add`) after the tab handles opens a new chat tab. A history button lives in the same tab bar, fixed at the far right, so chat history remains available even when no chat tabs are open.
 - If there are more tabs than fit the bar width the row scrolls horizontally (scrollbar hidden via `.no-scrollbar`).
 - Each tab shows a Material Symbol icon left of the label: `chat` for chat tabs, `description` for resource/preview tabs, `science` for experiment tabs. A resource tab that is actively being summarised shows a `progress_activity` icon instead, with `animate-spin`.
 
@@ -743,7 +745,7 @@ The Tauri window opens in windowed mode at 1280 × 820 so the primary rails, cen
 
 **Composer footer.** Below the textarea, a footer bar holds two dropdown selectors and the Send button. Both dropdowns share the same visual style (a small pill button that opens a menu above it):
 - The textarea starts at 60px high, grows with content, caps at 240px, then scrolls internally.
-- Each composer instance samples one placeholder sentence from the built-in research/discovery prompt list when it mounts, and keeps that placeholder stable until the composer is remounted.
+- The composer textarea always shows the fixed placeholder `Ask IRE to brainstorm directions, ingest resources, or run experiments...`. The no-tabs hero empty state shows the currently prepared sentence from the built-in research/discovery message list. A fresh sentence is prepared when the user clicks the hero's New chat button, so the next no-tabs hero appearance renders without a visible text swap.
 - **Model** — selects provider and model from grouped options in `MODELS` in `state/chatOptions.ts`, filtered by the workspace session's `availableProviders` captured from `setup_status` during workspace open/init. Claude Code models are Opus 4.7, Sonnet 4.6, and Haiku 4.5. Codex models are GPT-5.5, GPT-5.4, GPT-5.4-Mini, GPT-5.3-Codex, and GPT-5.2. Default when both providers are available: Claude Code / Sonnet 4.6. If only one provider is available, the selector shows only that provider's models and invalid persisted selections are coerced to that provider's default model. Font Awesome brand icons are loaded in `index.html` through `<script src="https://kit.fontawesome.com/a8c373c57e.js" crossorigin="anonymous"></script>` and rendered as `fa-brands fa-claude` / `fa-brands fa-openai`.
 - **Effort / Reasoning** — Claude Code shows Low → Med → High → XHigh → Max. Codex shows Low → Med → High → XHigh. The label reads `effort` for Claude Code and `reasoning` for Codex. Default: **Low**. Switching provider resets the level to Low so Codex never receives Claude-only `max`. Persisted to `.ire/workspace.json` (debounced 1 s) and rehydrated on workspace open.
 `model`, `provider`, and `effort` are passed as `options: { model, provider, effort }` on every `chat_send` invocation.
@@ -789,13 +791,28 @@ Typography uses bundled `geist` package font files (`Geist`, `Geist Mono`) refer
   "last_opened": "2026-05-06T10:14:00Z",
   "model": "claude-sonnet-4-6",
   "provider": "claude",
-  "effort": "low"
+  "effort": "low",
+  "tabs": [
+    {
+      "id": "main",
+      "label": "Chat",
+      "messages": [],
+      "isStreaming": false,
+      "isPinned": false,
+      "kind": "chat",
+      "historySessionUuid": "550e8400-e29b-41d4-a716-446655440000",
+      "historyStartedAt": "2026-05-06T10:14:00Z"
+    }
+  ],
+  "active_tab_id": "main"
 }
 ```
 
-Each entry under `panel_layout.groups.<group-id>` is the `Layout` map (`{ panel-id: percentage }`) that `react-resizable-panels` accepts as `defaultLayout` on `<Group>`. `panel_layout.collapsed.left/right` stores the independent top-navbar sidebar collapsed state; older layouts without this field infer it from `panel_layout.groups.body.left/right === 0`. Unknown / missing groups fall back to per-`<Panel>` `defaultSize` props. Persisted via `save_workspace_state` (debounced 1 s on layout, collapsed-state, model, provider, or effort change; also saved immediately before a chat turn is sent). Hydrated by `read_workspace_state` from `SetupScreen.handlePick` immediately after `open_workspace`/`init_workspace`, before the workspace transitions to `phase = "ready"` so the panels mount with the correct sizes and the composer restores the last selected model-effort pair.
+Each entry under `panel_layout.groups.<group-id>` is the `Layout` map (`{ panel-id: percentage }`) that `react-resizable-panels` accepts as `defaultLayout` on `<Group>`. `panel_layout.collapsed.left/right` stores the independent top-navbar sidebar collapsed state; older layouts without this field infer it from `panel_layout.groups.body.left/right === 0`. Unknown / missing groups fall back to per-`<Panel>` `defaultSize` props. Persisted via `save_workspace_state` (debounced 1 s on layout, collapsed-state, model, provider, effort, tab, message, or active-tab change; also saved immediately before/after chat sends and before workspace close). Hydrated by `read_workspace_state` from `SetupScreen.handlePick` immediately after `open_workspace`/`init_workspace`, before the workspace transitions to `phase = "ready"` so the panels mount with the correct sizes and the composer restores the last selected model-effort pair.
 
 `model` and `provider` store the last selected agent model. `effort` stores the last selected thinking-budget / reasoning level (`"low"` | `"medium"` | `"high"` | `"xhigh"` | `"max"` for Claude Code, without `"max"` for Codex). Defaults are Claude Code / Sonnet 4.6 / `"low"` when both providers are available, or the first model for the only detected provider when the workspace is opened in Claude-only or Codex-only mode. `SetupScreen` validates the persisted tuple against `MODELS`, the provider-specific effort list, and the open-time `availableProviders` before applying it to `useChatOptions`.
+
+`tabs` stores the open central-column tabs as opaque frontend `Tab` JSON, including chat messages, preview wiki path, experiment UUID, and optional chat-history metadata. `active_tab_id` stores the selected tab. Streaming flags are normalized to `false` when writing and again when restoring, because backend agent `session_id`s and subprocesses are in-memory only and are reset on app close.
 
 Theme is **not** stored here — it is a user-level preference and lives in `~/.config/ire/config.json` (see [§13.7](#137-user-config-configireconfig.json)).
 
@@ -861,6 +878,10 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 | `get_system_status` | — | `SystemStatus` (workspace path, git branch/diff, CPU/GPU/RAM metrics, `cc_connected`, `codex_connected`) |
 | `read_workspace_state` | — | `PersistedWorkspace` (panel layout from `.ire/workspace.json`) |
 | `save_workspace_state` | `{ state: PersistedWorkspace }` | `{}` (debounced from frontend; atomic write) |
+| `chat_history_save` | `{ session_uuid?, tab_label, provider, model, started_at, messages_json }` | `{}` (upserts `chat_sessions`; frontend usually passes stable UUID from the tab) |
+| `chat_history_list` | `{ limit? }` | `[ChatSessionRow]` ordered by `ended_at DESC` |
+| `chat_history_get` | `{ session_uuid }` | `messages_json: string \| null` |
+| `chat_history_delete` | `{ session_uuid }` | `{}` |
 | `read_user_config` | — | `UserConfig` (`{ theme?, recent_workspaces? }` from `~/.config/ire/config.json`) |
 | `save_user_config` | `{ config: UserConfig }` | `{}` (writes full config) |
 
@@ -968,7 +989,7 @@ ire/
 │   │   │   └── AddResourceSection.tsx  # ordered URL/file buffer for resource ingestion
 │   │   ├── chat/
 │   │   │   ├── ChatPane.tsx            # tab router: chat / resource / preview / experiment
-│   │   │   ├── TabBar.tsx              # TDI tab bar with icons and + button
+│   │   │   ├── TabBar.tsx              # TDI tab bar with icons, + button, and right-side controls
 │   │   │   ├── MessageList.tsx         # message bubbles, ToolCard (inline), ExperimentCard
 │   │   │   ├── MessageMarkdown.tsx     # react-markdown + remark-gfm + KaTeX renderer
 │   │   │   ├── ExperimentCard.tsx      # experiment.start tool-call card with live log tail
@@ -993,6 +1014,7 @@ ire/
 │       │   ├── workspace.rs            # setup_status, open/init/close_workspace, workspace state, user config, emit_initial_state burst
 │       │   ├── wiki.rs                 # read/save wiki, notes, pulse, ideas
 │       │   ├── chat.rs                 # chat_send, chat_cancel, chat_reset_session
+│       │   ├── history.rs              # chat_history_save/list/get/delete
 │       │   ├── resources.rs            # submit/discard/list_resources, get_resource_confirm_prompt
 │       │   └── system.rs               # get_system_status
 │       ├── workspace/
@@ -1060,7 +1082,7 @@ Each phase ends with a demoable milestone.
 
 **Phase 6 — Experiments.** `experiment.start`, detached subprocess, monitor, wake-up turn composition. Experiment cards in chat with live log tail. *Milestone:* an agent can run a Python script ablation, tell the user "I'll be back", and resume with results when the script exits. ✅
 
-**Phase 7 — Polish.** `workspace.json` persistence (theme + per-group panel layouts via `read_workspace_state` / `save_workspace_state`, debounced 1 s, hydrated before the Layout mounts). Error toast stack (top-right) wired to a frontend `useToasts` zustand store; subscribes to the backend `error` event and replaces silent `console.error` calls in user-facing flows. Cancel button on `ExperimentCard` (visible while status is `starting` or `running`) calls `experiment_cancel`. Inline focus editor saves `pulse.json` fields through `save_pulse_field`. *Milestone:* layout, theme, and focus survive restart; user-visible failures surface as toasts; experiments can be cancelled from the chat.
+**Phase 7 — Polish.** `workspace.json` persistence (per-group panel layouts, open tabs, and chat options via `read_workspace_state` / `save_workspace_state`, debounced 1 s, hydrated before the Layout mounts). Error toast stack (top-right) wired to a frontend `useToasts` zustand store; subscribes to the backend `error` event and replaces silent `console.error` calls in user-facing flows. Cancel button on `ExperimentCard` (visible while status is `starting` or `running`) calls `experiment_cancel`. Inline focus editor saves `pulse.json` fields through `save_pulse_field`. *Milestone:* layout, tabs, model/effort, and focus survive restart; user-visible failures surface as toasts; experiments can be cancelled from the chat.
 
 ---
 

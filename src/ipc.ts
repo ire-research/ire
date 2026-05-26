@@ -36,6 +36,9 @@ export interface PersistedWorkspace {
   provider?: "claude" | "codex" | null;
   last_opened?: string | null;
   effort?: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tabs?: any[] | null;
+  active_tab_id?: string | null;
 }
 
 export interface UserConfig {
@@ -109,6 +112,21 @@ export const ipc = {
     invoke("save_user_config", { config }),
   openInVscode: (path: string): Promise<void> =>
     invoke("open_in_vscode", { path }),
+  chatHistorySave: (
+    tabLabel: string,
+    provider: string,
+    model: string,
+    startedAt: string,
+    messagesJson: string,
+    sessionUuid?: string,
+  ): Promise<void> =>
+    invoke("chat_history_save", { sessionUuid, tabLabel, provider, model, startedAt, messagesJson }),
+  chatHistoryList: (limit?: number): Promise<import("./types").ChatSessionSummary[]> =>
+    invoke("chat_history_list", { limit }),
+  chatHistoryGet: (sessionUuid: string): Promise<string | null> =>
+    invoke("chat_history_get", { sessionUuid }),
+  chatHistoryDelete: (sessionUuid: string): Promise<void> =>
+    invoke("chat_history_delete", { sessionUuid }),
 };
 
 export function onWorkspaceEvent(

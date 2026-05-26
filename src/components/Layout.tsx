@@ -23,6 +23,8 @@ export function Layout() {
   const model = useChatOptions((s) => s.model);
   const provider = useChatOptions((s) => s.provider);
   const effort = useChatOptions((s) => s.effort);
+  const tabs = useChat((s) => s.tabs);
+  const activeTabId = useChat((s) => s.activeTabId);
   const leftPanelRef = useRef<PanelImperativeHandle>(null);
   const rightPanelRef = useRef<PanelImperativeHandle>(null);
 
@@ -60,9 +62,21 @@ export function Layout() {
       ipc.saveWorkspaceState(toPersisted()).catch((e) => toastError("save state", e));
     }, 1000);
     return () => clearTimeout(handle);
-  }, [panelLayout, model, provider, effort, toPersisted]);
+  }, [panelLayout, model, provider, effort, tabs, activeTabId, toPersisted]);
 
   const handleClose = async () => {
+    await ipc.saveWorkspaceState(toPersisted()).catch((e) => toastError("save state", e));
+    // Save all non-empty, non-streaming chat tabs to history before closing.
+    const currentTabs = useChat.getState().tabs;
+    for (const tab of currentTabs) {
+      if (tab.kind === "chat" && tab.messages.length > 0 && !tab.isStreaming) {
+        const sessionUuid = tab.historySessionUuid ?? crypto.randomUUID();
+        const startedAt = tab.historyStartedAt ?? new Date().toISOString();
+        await ipc
+          .chatHistorySave(tab.label, provider, model, startedAt, JSON.stringify(tab.messages), sessionUuid)
+          .catch(() => {}); // best-effort
+      }
+    }
     await ipc.closeWorkspace();
     useChat.getState().reset();
     const status = await ipc.setupStatus();
