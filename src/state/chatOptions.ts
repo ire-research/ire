@@ -53,17 +53,53 @@ export function isValidChatOptions(model: string | null | undefined, provider: s
   return effortLevelsForProvider(provider).some((entry) => entry.value === effort);
 }
 
+export function defaultModelForProvider(provider: Provider): string {
+  return MODELS.find((entry) => entry.provider === provider)?.id ?? DEFAULT_CHAT_OPTIONS.model;
+}
+
+export function optionsForAvailableProviders(
+  model: string | null | undefined,
+  provider: string | null | undefined,
+  effort: string | null | undefined,
+  availableProviders: Provider[],
+) {
+  if (isValidChatOptions(model, provider, effort)) {
+    const validProvider = provider as Provider;
+    if (!availableProviders.includes(validProvider)) {
+      return optionsForAvailableProviders(null, null, null, availableProviders);
+    }
+    return {
+      model,
+      provider: validProvider,
+      effort: effort as EffortLevel,
+    };
+  }
+
+  const fallbackProvider = availableProviders.includes(DEFAULT_CHAT_OPTIONS.provider)
+    ? DEFAULT_CHAT_OPTIONS.provider
+    : availableProviders[0] ?? DEFAULT_CHAT_OPTIONS.provider;
+
+  return {
+    model: defaultModelForProvider(fallbackProvider),
+    provider: fallbackProvider,
+    effort: DEFAULT_CHAT_OPTIONS.effort,
+  };
+}
+
 interface ChatOptionsState {
   model: string;
   provider: Provider;
   effort: EffortLevel;
+  availableProviders: Provider[];
   setModel(model: string, provider: Provider): void;
   setEffort(e: EffortLevel): void;
   setOptions(options: { model: string; provider: Provider; effort: EffortLevel }): void;
+  setAvailableProviders(providers: Provider[]): void;
 }
 
 export const useChatOptions = create<ChatOptionsState>((set) => ({
   ...DEFAULT_CHAT_OPTIONS,
+  availableProviders: ["claude", "codex"],
   setModel: (model, provider) => set((state) => ({
     model,
     provider,
@@ -71,4 +107,18 @@ export const useChatOptions = create<ChatOptionsState>((set) => ({
   })),
   setEffort: (effort) => set({ effort }),
   setOptions: (options) => set(options),
+  setAvailableProviders: (providers) => set((state) => {
+    const availableProviders = Array.from(new Set(providers));
+    if (availableProviders.length === 0) return state;
+    if (availableProviders.includes(state.provider)) {
+      return { availableProviders };
+    }
+    const provider = availableProviders[0];
+    return {
+      availableProviders,
+      model: defaultModelForProvider(provider),
+      provider,
+      effort: DEFAULT_CHAT_OPTIONS.effort,
+    };
+  }),
 }));

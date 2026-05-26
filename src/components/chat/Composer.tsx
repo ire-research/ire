@@ -41,12 +41,16 @@ export function Composer({ onSend, disabled }: ComposerProps) {
   const effortRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const { model, provider, effort, setModel, setEffort } = useChatOptions();
+  const { model, provider, effort, availableProviders, setModel, setEffort } = useChatOptions();
   const modelLabel = MODELS.find((m) => m.id === model)?.label ?? model;
   const effortLevels = provider === "codex" ? CODEX_EFFORT_LEVELS : CLAUDE_EFFORT_LEVELS;
   const effortLabel = effortLevels.find((l) => l.value === effort)?.label ?? effort;
-  const claudeModels = MODELS.filter((m) => m.provider === "claude");
-  const codexModels = MODELS.filter((m) => m.provider === "codex");
+  const claudeModels = availableProviders.includes("claude")
+    ? MODELS.filter((m) => m.provider === "claude")
+    : [];
+  const codexModels = availableProviders.includes("codex")
+    ? MODELS.filter((m) => m.provider === "codex")
+    : [];
 
   useEffect(() => {
     if (!modelOpen) return;
@@ -162,8 +166,12 @@ export function Composer({ onSend, disabled }: ComposerProps) {
               <Icon name="expand_more" className="w-[12px] h-[12px]" />
             </button>
             <div className={`${modelOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 min-w-[230px] overflow-hidden z-50`}>
-              <ProviderSection label="Claude Code" provider="claude" models={claudeModels} />
-              <ProviderSection label="Codex" provider="codex" models={codexModels} />
+              {claudeModels.length > 0 && (
+                <ProviderSection label="Claude Code" provider="claude" models={claudeModels} />
+              )}
+              {codexModels.length > 0 && (
+                <ProviderSection label="Codex" provider="codex" models={codexModels} />
+              )}
             </div>
           </div>
           {/* Effort picker */}

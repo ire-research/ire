@@ -1,8 +1,11 @@
 import { useState } from "react";
 import { ipc, pickDirectory, type SetupStatus } from "../../ipc";
 import { useWorkspace } from "../../state/workspace";
-import { isValidChatOptions, useChatOptions, type Provider } from "../../state/chatOptions";
-import type { EffortLevel } from "../../types";
+import {
+  optionsForAvailableProviders,
+  useChatOptions,
+  type Provider,
+} from "../../state/chatOptions";
 import { Icon } from "../Icon";
 
 interface Props {
@@ -17,18 +20,21 @@ export function SetupScreen({ status, onRefresh }: Props) {
   const recentWorkspaces = useWorkspace((s) => s.recentWorkspaces);
   const setRecentWorkspaces = useWorkspace((s) => s.setRecentWorkspaces);
   const setOptions = useChatOptions((s) => s.setOptions);
+  const setAvailableProviders = useChatOptions((s) => s.setAvailableProviders);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const applyPersisted = (persisted: Parameters<typeof hydrateFromPersisted>[0]) => {
+  const applyPersisted = (
+    persisted: Parameters<typeof hydrateFromPersisted>[0],
+    availableProviders: Provider[],
+  ) => {
     hydrateFromPersisted(persisted);
-    if (isValidChatOptions(persisted.model, persisted.provider, persisted.effort)) {
-      setOptions({
-        model: persisted.model,
-        provider: persisted.provider as Provider,
-        effort: persisted.effort as EffortLevel,
-      });
-    }
+    setOptions(optionsForAvailableProviders(
+      persisted.model,
+      persisted.provider,
+      persisted.effort,
+      availableProviders,
+    ));
   };
 
   const removeRecentWorkspace = async (path: string) => {
@@ -47,6 +53,10 @@ export function SetupScreen({ status, onRefresh }: Props) {
 
   const binaryFound = status.binary.kind === "found";
   const codexFound = status.codex_binary.kind === "found";
+  const availableProviders: Provider[] = [
+    ...(binaryFound ? (["claude"] as const) : []),
+    ...(codexFound ? (["codex"] as const) : []),
+  ];
   const canOpenWorkspace = binaryFound || codexFound;
   const providerBanner =
     binaryFound && !codexFound
@@ -60,9 +70,14 @@ export function SetupScreen({ status, onRefresh }: Props) {
     setBusy(true);
     try {
       const workspace = await ipc.openWorkspace(path);
+      setAvailableProviders(availableProviders);
       pushRecentWorkspace(path);
       const persisted = await ipc.readWorkspaceState().catch(() => null);
-      if (persisted) applyPersisted(persisted);
+      if (persisted) {
+        applyPersisted(persisted, availableProviders);
+      } else {
+        setOptions(optionsForAvailableProviders(null, null, null, availableProviders));
+      }
       setPhase({ kind: "ready", workspace });
     } catch (e) {
       setError(String(e));
@@ -81,9 +96,14 @@ export function SetupScreen({ status, onRefresh }: Props) {
     try {
       const workspace =
         kind === "open" ? await ipc.openWorkspace(path) : await ipc.initWorkspace(path);
+      setAvailableProviders(availableProviders);
       pushRecentWorkspace(path);
       const persisted = await ipc.readWorkspaceState().catch(() => null);
-      if (persisted) applyPersisted(persisted);
+      if (persisted) {
+        applyPersisted(persisted, availableProviders);
+      } else {
+        setOptions(optionsForAvailableProviders(null, null, null, availableProviders));
+      }
       setPhase({ kind: "ready", workspace });
     } catch (e) {
       setError(String(e));
