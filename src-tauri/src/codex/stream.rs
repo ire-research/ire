@@ -118,6 +118,17 @@ pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, em
             state.emitted_done = true;
             emit(StreamEvent::Done);
         }
+        "turn.failed" => {
+            let msg = json["error"]["message"]
+                .as_str()
+                .or_else(|| json["message"].as_str())
+                .or_else(|| json["error"].as_str())
+                .unwrap_or("unknown error")
+                .to_string();
+            emit(StreamEvent::Error { message: msg });
+            state.emitted_done = true;
+            emit(StreamEvent::Done);
+        }
         "error" => {
             let msg = json["message"]
                 .as_str()
@@ -705,5 +716,28 @@ mod tests {
 
         assert!(state.emitted_done);
         assert!(matches!(events.last(), Some(StreamEvent::Done)));
+    }
+
+    #[test]
+    fn emits_error_and_done_for_turn_failed() {
+        let mut state = StreamState::default();
+        let events = collect(
+            json!({
+                "type": "turn.failed",
+                "error": { "message": "rate limit exceeded" }
+            }),
+            &mut state,
+        );
+
+        assert_eq!(
+            events,
+            vec![
+                StreamEvent::Error {
+                    message: "rate limit exceeded".into()
+                },
+                StreamEvent::Done,
+            ]
+        );
+        assert!(state.emitted_done);
     }
 }

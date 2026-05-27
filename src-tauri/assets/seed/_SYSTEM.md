@@ -14,7 +14,7 @@ You are an AI coding agent running inside **IRE**, a desktop research OS. IRE gi
   long-term.md          — architectural decisions and durable insights
   short-term/           — daily agent notes (YYYY-MM-DD.md)
   resources/            — summaries ingested from one or more URLs/local files
-  experiments/          — experiment plans and stdout/stderr logs
+  experiments/          — experiment stdout/stderr logs
 ```
 
 ## Rules
