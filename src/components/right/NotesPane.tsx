@@ -51,14 +51,14 @@ export function NotesPane() {
   const hasNotes = content.trim().length > 0;
 
   return (
-    <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
-      <div className="flex items-center gap-2 py-1 mb-2">
+    <div className="px-4 pt-4 pb-3 overflow-hidden flex-1 min-h-0 flex flex-col">
+      <div className="flex items-center gap-2 py-1 mb-2 shrink-0">
         <Icon name="edit_note" className="w-[16px] h-[16px] shrink-0 text-on-surface-variant" />
         <span className="text-[14px] text-on-surface-variant flex-1">
           Notes
         </span>
         <button
-          className="cursor-pointer hover:text-on-surface text-on-surface-variant"
+          className="app-icon-button cursor-pointer p-0.5"
           onClick={handleEditClick}
           title="Edit notes"
         >
@@ -73,12 +73,12 @@ export function NotesPane() {
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={handleKeyDown}
           onBlur={handleBlur}
-          className="w-full h-32 bg-transparent border border-outline-variant rounded text-[14px] text-on-surface px-2 py-1.5 focus:outline-none focus:border-outline resize-none"
+          className="w-full flex-1 min-h-0 bg-transparent border border-outline-variant rounded text-[14px] text-on-surface px-2 py-1.5 focus:outline-none focus:border-outline resize-none"
         />
       ) : (
         <>
           {hasNotes ? (
-            <div className="text-on-surface">
+            <div className="text-on-surface overflow-y-auto flex-1 min-h-0">
               <MessageMarkdown content={content} />
             </div>
           ) : (

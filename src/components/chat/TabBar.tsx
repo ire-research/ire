@@ -84,7 +84,7 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename, 
                   <span>{tab.label}</span>
                   {tab.kind === "chat" && (
                     <button
-                      className="opacity-0 group-hover:opacity-100 ml-1 flex items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors shrink-0"
+                      className="app-icon-button opacity-0 group-hover:opacity-100 ml-1 shrink-0"
                       title="Rename chat"
                       onClick={(e) => startRename(e, tab)}
                     >
@@ -92,7 +92,7 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename, 
                     </button>
                   )}
                   <button
-                    className="opacity-0 group-hover:opacity-100 text-[10px] ml-1 text-on-surface-variant hover:text-on-surface"
+                    className="app-icon-button opacity-0 group-hover:opacity-100 text-[10px] ml-1 px-0.5"
                     onClick={(e) => {
                       e.stopPropagation();
                       onClose(tab.id);
@@ -107,7 +107,7 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename, 
           );
         })}
         <div
-          className="flex items-center justify-center w-8 text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors cursor-pointer shrink-0"
+          className="app-icon-button w-8 cursor-pointer shrink-0"
           onClick={onNew}
           role="button"
           aria-label="New tab"

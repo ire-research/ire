@@ -147,7 +147,7 @@ export function Layout() {
     const collapsed = rightPanelRef.current?.isCollapsed() ?? false;
     if (collapsed !== rightCollapsed) setPanelCollapsed("right", collapsed);
   };
-  const toggleButtonClass = "text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center w-7 h-7 rounded border border-transparent hover:bg-surface-container-low hover:border-outline-variant";
+  const topbarIconButtonClass = "topbar-icon-button w-7 h-7 rounded border border-transparent";
 
   return (
     <div className="flex flex-col h-screen bg-background text-on-surface overflow-hidden">
@@ -160,7 +160,7 @@ export function Layout() {
             <div className="relative shrink-0">
               <button
                 onClick={() => setWsDropdownOpen((o) => !o)}
-                className="text-on-surface-variant hover:text-on-surface transition-colors ml-0.5"
+                className="topbar-icon-button ml-0.5"
                 aria-label="Workspace options"
               >
                 <Icon name="expand_more" className="w-[14px] h-[14px]" />
@@ -190,7 +190,7 @@ export function Layout() {
         <div className="flex items-center gap-2 shrink-0">
           <div className="flex items-center gap-1">
             <button
-              className={toggleButtonClass}
+              className={topbarIconButtonClass}
               onClick={toggleLeftRail}
               aria-label={leftCollapsed ? "Show left sidebar" : "Hide left sidebar"}
               title={leftCollapsed ? "Show left sidebar" : "Hide left sidebar"}
@@ -198,7 +198,7 @@ export function Layout() {
               <Icon name="sidebar_left" className="w-[18px] h-[18px]" />
             </button>
             <button
-              className={toggleButtonClass}
+              className={topbarIconButtonClass}
               onClick={toggleRightRail}
               aria-label={rightCollapsed ? "Show right sidebar" : "Hide right sidebar"}
               title={rightCollapsed ? "Show right sidebar" : "Hide right sidebar"}
@@ -207,14 +207,14 @@ export function Layout() {
             </button>
           </div>
           <button
-            className="text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center p-1"
+            className="topbar-icon-button p-1"
             aria-label="Settings"
           >
             <Icon name="settings" className="w-[18px] h-[18px]" />
           </button>
           <div className="relative" ref={helpRef}>
             <button
-              className={`text-on-surface-variant hover:text-on-surface transition-colors flex items-center justify-center w-7 h-7 rounded border ${helpOpen ? "border-outline-variant bg-surface-container-low text-on-surface" : "border-transparent"}`}
+              className={`topbar-icon-button w-7 h-7 rounded border ${helpOpen ? "border-outline-variant bg-surface-container-low text-on-surface" : "border-transparent"}`}
               onClick={() => setHelpOpen((o) => !o)}
               aria-label="Help"
               aria-haspopup="true"
@@ -241,7 +241,7 @@ export function Layout() {
             )}
           </div>
           <button
-            className="h-7 border border-outline-variant rounded px-3 text-xs font-medium text-on-surface-variant hover:bg-surface-container-low hover:border-outline transition-colors"
+            className="h-7 border border-outline-variant rounded px-3 text-xs font-medium text-on-surface-variant hover:text-on-surface transition-colors"
             onClick={handleClose}
           >
             close

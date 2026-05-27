@@ -176,7 +176,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
                       disabled={busy}
                       title="Remove from recent"
                       aria-label={`Remove ${name} from recent workspaces`}
-                      className="opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity text-outline-variant hover:text-error disabled:cursor-not-allowed disabled:opacity-40 shrink-0 ml-3 p-1"
+                      className="app-danger-icon-button opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity disabled:cursor-not-allowed disabled:opacity-40 shrink-0 ml-3 p-1"
                     >
                       <Icon name="delete" className="w-[15px] h-[15px]" />
                     </button>
