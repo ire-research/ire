@@ -26,7 +26,7 @@ export function ResourcesSection({ onOpen }: Props) {
         <button
           onClick={() => setModalOpen(true)}
           title="Add resource"
-          className="w-5 h-5 flex items-center justify-center rounded text-[16px] text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
+          className="app-icon-button w-5 h-5 text-[16px]"
         >
           +
         </button>

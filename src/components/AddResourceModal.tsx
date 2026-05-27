@@ -117,7 +117,7 @@ export function AddResourceModal({ onClose }: Props) {
           <span className="flex-1 text-[13px] font-medium text-on-surface">Add resources</span>
           <button
             onClick={onClose}
-            className="w-6 h-6 flex items-center justify-center rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors"
+            className="app-icon-button w-6 h-6"
           >
             <Icon name="close" className="w-[14px] h-[14px]" />
           </button>
@@ -177,7 +177,7 @@ export function AddResourceModal({ onClose }: Props) {
                     type="button"
                     onClick={() => removeSource(source.id)}
                     disabled={loading}
-                    className="text-on-surface-variant hover:text-on-surface transition-colors p-1 disabled:opacity-50 shrink-0"
+                    className="app-icon-button p-1 disabled:opacity-50 shrink-0"
                   >
                     <Icon name="close" className="w-[12px] h-[12px]" />
                   </button>

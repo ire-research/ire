@@ -100,7 +100,7 @@ export function IdeasPane() {
           Ideas
         </span>
         <button
-          className="cursor-pointer hover:text-on-surface text-on-surface-variant"
+          className="app-icon-button cursor-pointer p-0.5"
           onClick={handleAddClick}
           title="Add idea"
         >
@@ -133,7 +133,7 @@ export function IdeasPane() {
             >
               <span className="flex-1">{idea.text}</span>
               <button
-                className="p-0.5 text-on-surface-variant hover:text-error transition-colors shrink-0 mt-0.5 opacity-0 group-hover:opacity-100"
+                className="app-danger-icon-button p-0.5 shrink-0 mt-0.5 opacity-0 group-hover:opacity-100"
                 title="Remove idea"
                 onClick={() => handleTrash(idea.id)}
               >

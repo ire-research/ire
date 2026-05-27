@@ -323,7 +323,7 @@ function NavArrow({ direction, disabled, onClick }: { direction: "prev" | "next"
       onClick={onClick}
       disabled={disabled}
       aria-label={direction === "prev" ? "Previous" : "Next"}
-      className="w-7 h-7 inline-flex items-center justify-center rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-on-surface-variant"
+      className="app-icon-button w-7 h-7 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-on-surface-variant"
     >
       <Icon name={direction === "prev" ? "chevron_left" : "chevron_right"} className="w-[14px] h-[14px]" />
     </button>
@@ -372,7 +372,7 @@ function EditModal({
             type="button"
             onClick={onClose}
             aria-label="Close"
-            className="ml-auto w-7 h-7 inline-flex items-center justify-center rounded text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors"
+            className="app-icon-button ml-auto w-7 h-7"
           >
             <Icon name="close" className="w-[14px] h-[14px]" />
           </button>

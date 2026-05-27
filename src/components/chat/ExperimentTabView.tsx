@@ -161,7 +161,7 @@ export function ExperimentTabView({ uuid, name }: Props) {
               {displayName}
             </span>
             <button
-              className="opacity-0 group-hover:opacity-100 flex h-5 w-5 items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors shrink-0"
+              className="app-icon-button opacity-0 group-hover:opacity-100 h-5 w-5 shrink-0"
               title="Rename experiment"
               onClick={startRename}
             >

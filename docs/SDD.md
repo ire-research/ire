@@ -725,7 +725,7 @@ The Tauri window opens in windowed mode at 1280 × 820 so the primary rails, cen
 - The right rail is a vertical `react-resizable-panels` group `right` with panels `notes`, `ideas`, and `resource-input`; row handles sit between Notes / Ideas and Ideas / Add resources.
 - `ResourcesSection` and `ExperimentsSection` use the same outer pane padding as `NotesPane` and `IdeasPane`, and render compact inline SVG title icons. Empty lists show `no resources yet` and `no experiments yet`.
 - `IdeasPane` renders active ideas sorted by `order`, opens an inline draft card on Add, saves the draft to `ideas.json` on Enter, and hides trashed ideas by persisting `trashed: true`.
-- `FocusPane` and `NotesPane` use **inline editing**: clicking a field activates a textarea in place; blur/Enter saves. No separate Edit/Preview toggle. `NotesPane` renders saved `notes.md` content as markdown in display mode rather than forcing each line into a bullet item.
+- `FocusPane` and `NotesPane` use **inline editing**: clicking a field activates a textarea in place; blur/Enter saves. No separate Edit/Preview toggle. `NotesPane` renders saved `notes.md` content as markdown in display mode rather than forcing each line into a bullet item; in edit mode, its textarea fills the remaining height of the resizable notes panel.
 - Clicking an experiment row in `ExperimentsSection` opens (or re-focuses) an `experiment` tab in the centre column; the tab renders `ExperimentTabView` with a metadata grid and live log tail. Hovering an experiment row reveals an `edit_document` rename button between the experiment name and status pill; pressing Enter commits the inline rename through `experiment_rename`, while Escape or blur cancels. `ExperimentTabView` uses the same hover-revealed `edit_document` rename button beside the header name.
 - The top navbar shows the full workspace path on the far left as the project title. The bottom `StatusBar` polls `get_system_status` every 5 s and displays (left-to-right): workspace path + git branch + insertions/deletions, CPU model + usage %, GPU model + usage % + VRAM (or `n/a` when unavailable), RAM total GB, `username@hostname`, and right-aligned `Claude Code` / `codex` availability chips. `cc_connected` is true when `find_claude_binary()` succeeds; `codex_connected` is true when `find_codex_binary()` succeeds. These flags mean the CLI is available for interaction; they do not require an active subprocess.
 
@@ -759,7 +759,7 @@ The Tauri window opens in windowed mode at 1280 × 820 so the primary rails, cen
 ### 13.3 Edit/preview toggle behaviour
 
 - Resource preview tabs open in **Preview** by default, rendering the wiki markdown via `ResourcePreviewPane`. Switching to Edit loads the raw file contents into a textarea; switching back to Preview without Submit discards local edits (with a confirm if dirty). Submit calls `save_wiki_file`.
-- `NotesPane` renders `notes.md` as markdown in display mode, edits it inline as raw markdown, and saves through `save_notes` on blur / Ctrl+Enter.
+- `NotesPane` renders `notes.md` as markdown in display mode, edits it inline as raw markdown in a full-height textarea, and saves through `save_notes` on blur / Ctrl+Enter.
 - `IdeasPane` does not use markdown edit/preview. It writes the structured `ideas.json` list directly via `save_ideas_json`.
 
 ### 13.4 Resource list
@@ -773,6 +773,8 @@ Clicking a resource entry (only enabled when `wiki_path` is non-null) opens a **
 The UI uses a fixed dark theme. All colours are defined as Tailwind token extensions in `tailwind.config.ts` (e.g. `surface-container-low`, `on-surface`, `primary`, `error`, `warn`, `ok`, `accent`). There are no light-mode overrides and no theme-toggle button in the current implementation.
 
 Typography uses bundled `geist` package font files (`Geist`, `Geist Mono`) referenced from `styles.css`; icons are inline SVGs from `src/components/Icon.tsx`. The app does not load Google Fonts at runtime.
+
+Icon button hover animation is split by app section. Top navbar icon buttons use `.topbar-icon-button`, which only brightens the icon (`text-on-surface-variant` → `text-on-surface`) and does not darken the background on hover. Icon buttons outside the top navbar use `.app-icon-button` / `.app-danger-icon-button`, which apply the same icon-colour transition plus `hover:bg-surface-container-high`.
 
 `~/.config/ire/config.json` still has a `theme` field in its schema (reserved for future use), and `read_user_config` returns it, but the frontend does not apply it: `hydrateFromUserConfig` in the workspace Zustand store only restores `recentWorkspaces`.
 
