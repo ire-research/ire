@@ -24,11 +24,7 @@ impl WorkspaceLock {
         let our_pid = std::process::id();
 
         loop {
-            match OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&path)
-            {
+            match OpenOptions::new().write(true).create_new(true).open(&path) {
                 Ok(mut file) => {
                     file.write_all(our_pid.to_string().as_bytes())?;
                     file.sync_all()?;
@@ -45,10 +41,7 @@ impl WorkspaceLock {
                     if existing_pid != 0 && pid_alive(existing_pid) {
                         return Err(LockError::AlreadyHeld { pid: existing_pid });
                     }
-                    tracing::warn!(
-                        stale_pid = existing_pid,
-                        "reclaiming stale workspace lock"
-                    );
+                    tracing::warn!(stale_pid = existing_pid, "reclaiming stale workspace lock");
                     fs::remove_file(&path)?;
                     continue;
                 }

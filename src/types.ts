@@ -1,11 +1,33 @@
 export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
+export type Provider = "claude" | "codex";
 
 export interface ChatOptions {
   model: string;
+  provider: Provider;
   effort: EffortLevel;
 }
 
 export type ExperimentStatus = "starting" | "running" | "completed" | "failed" | "cancelled";
+export type ToolProvider = "claude" | "codex";
+export type ToolKind =
+  | "command"
+  | "file_read"
+  | "file_write"
+  | "file_edit"
+  | "file_search"
+  | "web_fetch"
+  | "wiki_read"
+  | "wiki_write"
+  | "wiki_append"
+  | "wiki_rename"
+  | "memory_write"
+  | "pulse_update"
+  | "experiment_start"
+  | "experiment_status"
+  | "experiment_tail_logs"
+  | "other";
+export type ToolStatus = "running" | "completed" | "failed";
+export type ToolFormat = "text" | "json";
 
 export interface UserMessage {
   id: string;
@@ -13,18 +35,34 @@ export interface UserMessage {
   text: string;
 }
 
+export interface ToolIo {
+  preview?: string | null;
+  full?: string | null;
+  format: ToolFormat;
+}
+
+export interface ToolMeta {
+  [key: string]: unknown;
+  path?: string;
+  paths?: string[];
+  command?: string;
+  name?: string;
+  experiment_uuid?: string;
+  experiment_status?: ExperimentStatus;
+  experiment_exit_code?: number;
+  experiment_pid?: number;
+}
+
 export interface ToolCallState {
   tool_id: string;
-  tool_name: string;
-  input_preview: string | null;
-  input_full: string | null;
-  output_preview: string | null;
-  output_full: string | null;
-  isDone: boolean;
-  experimentUuid?: string;
-  experimentStatus?: ExperimentStatus;
-  experimentExitCode?: number;
-  experimentPid?: number;
+  provider: ToolProvider;
+  kind: ToolKind;
+  raw_name: string;
+  title: string;
+  input: ToolIo;
+  output?: ToolIo | null;
+  status: ToolStatus;
+  meta: ToolMeta;
   logLines?: string[];
 }
 
@@ -73,8 +111,8 @@ export type StreamEvent =
   | { kind: "Init"; session_id: string }
   | { kind: "TextDelta"; text: string }
   | { kind: "ThinkingDelta"; text: string }
-  | { kind: "ToolStart"; tool_id: string; tool_name: string; input_preview: string | null; input_full: string | null }
-  | { kind: "ToolDone"; tool_id: string; output_preview: string | null; output_full: string | null }
+  | { kind: "ToolStart"; tool: ToolCallState }
+  | { kind: "ToolDone"; tool_id: string; output: ToolIo | null; status: ToolStatus; meta: ToolMeta }
   | { kind: "AskUserQuestion"; tool_id: string; questions: AskQuestion[] }
   | { kind: "Result"; text: string | null; session_id: string }
   | { kind: "Error"; message: string }
@@ -95,6 +133,9 @@ export interface Tab {
   isStreaming: boolean;
   isPinned: boolean;
   kind: TabKind;
+  agentOptions?: ChatOptions;
+  historySessionUuid?: string;
+  historyStartedAt?: string;
   resourceId?: string;
   resourceStatus?: ResourceStatus;
   wikiPath?: string;
@@ -104,6 +145,8 @@ export interface Tab {
 /** Payload for the "chat-stream" Tauri event. */
 export interface TabStreamPayload {
   tab_id: string;
+  stream_id?: string;
+  event_id?: number;
   event: StreamEvent;
 }
 
@@ -113,6 +156,7 @@ export interface TabCreatedPayload {
   label: string;
   kind: TabKind;
   resource_id?: string;
+  agent_options?: ChatOptions;
 }
 
 /** A resource row returned by list_resources. */
@@ -185,6 +229,17 @@ export type WorkspaceEvent =
   | { kind: "experiment-changed"; source: WorkspaceEventSource; experiment: ExperimentRow }
   | { kind: "experiment-deleted"; source: WorkspaceEventSource; uuid: string };
 
+export interface ChatSessionSummary {
+  session_uuid: string;
+  tab_label: string;
+  provider: string;
+  model: string;
+  started_at: string;
+  ended_at: string;
+  message_count: number;
+  first_user_msg: string | null;
+}
+
 export interface SystemStatus {
   workspace_path: string;
   git_branch: string;
@@ -199,4 +254,5 @@ export interface SystemStatus {
   hostname: string;
   username: string;
   cc_connected: boolean;
+  codex_connected: boolean;
 }

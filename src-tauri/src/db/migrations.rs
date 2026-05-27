@@ -51,6 +51,21 @@ ALTER TABLE resources ADD COLUMN source_label TEXT;
 UPDATE resources SET source_label = url WHERE source_label IS NULL;
 ";
 
+const MIGRATION_4: &str = "
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    session_uuid   TEXT PRIMARY KEY,
+    tab_label      TEXT NOT NULL,
+    provider       TEXT NOT NULL,
+    model          TEXT NOT NULL,
+    started_at     TEXT NOT NULL,
+    ended_at       TEXT NOT NULL,
+    message_count  INTEGER NOT NULL,
+    first_user_msg TEXT,
+    messages_json  TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_ended ON chat_sessions(ended_at DESC);
+";
+
 pub fn run(ire_dir: &Path) -> Result<()> {
     let db_path = ire_dir.join("wiki/local.db");
     let conn = Connection::open(&db_path).with_context(|| format!("open {}", db_path.display()))?;
@@ -96,6 +111,24 @@ pub fn run(ire_dir: &Path) -> Result<()> {
             params![chrono::Local::now().to_rfc3339()],
         )
         .context("record migration 3")?;
+    }
+
+    let v4_applied: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM schema_migrations WHERE version = 4",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap_or(0)
+        > 0;
+
+    if !v4_applied {
+        conn.execute_batch(MIGRATION_4).context("run migration 4")?;
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (4, ?1)",
+            params![chrono::Local::now().to_rfc3339()],
+        )
+        .context("record migration 4")?;
     }
 
     Ok(())

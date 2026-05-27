@@ -22,15 +22,22 @@ pub fn validate_existing(path: &Path) -> Result<()> {
     if !path.is_dir() {
         return Err(anyhow!("not a directory: {}", path.display()));
     }
-    if !path.join(".git").exists() {
-        return Err(anyhow!("not a git repository: {}", path.display()));
-    }
     let system = path.join(".ire/_SYSTEM.md");
     let pulse = path.join(".ire/wiki/pulse.json");
     if !system.exists() || !pulse.exists() {
         return Err(anyhow!(
             "missing .ire/_SYSTEM.md or .ire/wiki/pulse.json — not an IRE workspace"
         ));
+    }
+    Ok(())
+}
+
+/// Ensure the workspace has a git repository and IRE gitignore entries.
+/// No-op if `.git` already exists.
+pub fn ensure_git(path: &Path) -> Result<()> {
+    if !path.join(".git").exists() {
+        run_git(path, &["init", "--quiet"])?;
+        ensure_gitignore(path)?;
     }
     Ok(())
 }

@@ -77,6 +77,9 @@ mod tests {
         };
 
         assert!(remove_missing_recent_workspaces(&mut config));
-        assert_eq!(config.recent_workspaces, vec![existing.to_string_lossy().to_string()]);
+        assert_eq!(
+            config.recent_workspaces,
+            vec![existing.to_string_lossy().to_string()]
+        );
     }
 }
