@@ -425,6 +425,11 @@ fn start_resource_summary(
                 "label": &tab_label,
                 "kind": "resource",
                 "resource_id": &sha256,
+                "agent_options": {
+                    "provider": &options.provider,
+                    "model": &options.model,
+                    "effort": &options.effort,
+                },
             }),
         )
         .map_err(|e| e.to_string())?;
@@ -476,7 +481,7 @@ fn start_resource_summary(
 
             let mut child = cmd.spawn().map_err(|e| e.to_string())?;
             let pid = child.id();
-            let stream_id = format!("{tab_id_clone}:{pid}");
+            let stream_id = format!("{}:{}", tab_id_clone, uuid::Uuid::new_v4());
             let mut event_id = 0_u64;
             session.set_agent_options(&tab_id_clone, &provider, &model, &effort);
             session.set_pid(&tab_id_clone, pid);

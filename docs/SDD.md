@@ -375,7 +375,7 @@ User queues one or more URLs/files → Ingest
 
 The selected agent streams the summary into the resource tab. When the turn ends, **Confirm** and **Discard** buttons appear.
 
-**Confirm**: triggers a second agent turn in the same tab with the instruction to write the summary to `resources/<slug>.md` via the `wiki.write` MCP tool. This turn also uses the current composer-selected provider/model/effort and resumes the resource tab only when that provider has an existing session id. Frontmatter follows the schema in `.ire/_SYSTEM.md`: `title`, `type: summary`, `sources: [<all original sources in order>]`, `updated: YYYY-MM-DD`, and `summary`. URL sources use the original URL; local file sources use `file:<sha256>:<filename>`. Body starts with a `#` heading matching the title, then the summary. The tab auto-closes when this second agent turn ends. The written file is indexed in SQLite by matching every stored source ref in `sources`, but no git commit is created by IRE.
+**Confirm**: triggers a second agent turn in the same tab with the instruction to write the summary to `resources/<slug>.md` via the `wiki.write` MCP tool. This turn reuses the provider/model/effort captured when the resource tab was created, so it resumes the same resource-summary session even if the global composer selection changed in another tab. Frontmatter follows the schema in `.ire/_SYSTEM.md`: `title`, `type: summary`, `sources: [<all original sources in order>]`, `updated: YYYY-MM-DD`, and `summary`. URL sources use the original URL; local file sources use `file:<sha256>:<filename>`. Body starts with a `#` heading matching the title, then the summary. The tab auto-closes when this second agent turn ends. The written file is indexed in SQLite by matching every stored source ref in `sources`, but no git commit is created by IRE.
 
 **Discard**: deletes `.ire/cache/<sha256>.txt` or `.ire/cache/<batch_sha>/`, marks the DB row `status=rejected`, closes the tab immediately. No wiki file is written.
 
@@ -481,7 +481,7 @@ IRE supports multiple independent chat tabs in the central pane.
 
 **Session isolation.** Each tab carries its own `tab_id` (UUID for dynamically created tabs; `"main"` for the pinned tab). The backend `SessionManager` maintains a `HashMap<tab_id, PerTabSession>` where `PerTabSession` holds `{ session_id: Option<String>, session_provider: Option<String>, running_pid: Option<u32> }`. This replaces the old single `ChatSession` global and prevents cross-provider resume.
 
-**Event routing.** `chat-stream` events are wrapped as `{ tab_id, stream_id, event_id, event }` before being emitted to the frontend. `stream_id` is stable for one spawned agent process (`{tab_id}:{pid}`) and `event_id` increments within that process; the frontend maintains a single global listener, routes each event to the correct tab's message list using `tab_id`, and ignores any already-seen `{tab_id, stream_id, event_id}` delivery. User-initiated turns keep their `assistantIdByTab` entry until a stream `Done`/`Error` event arrives; `ipc.chatSend` resolving is not treated as turn completion because Tauri event delivery can lag behind the command promise. A `tab-created` event (payload: `{ tab_id, label, kind, resource_id? }`) is emitted by the backend whenever a new tab is opened programmatically (e.g. during resource ingestion). Preview tabs are created client-side only (no `tab-created` event) — the store's `openPreviewTab` action handles deduplication and activation.
+**Event routing.** `chat-stream` events are wrapped as `{ tab_id, stream_id, event_id, event }` before being emitted to the frontend. `stream_id` is stable for one spawned agent process and includes a fresh UUID (`{tab_id}:{stream_uuid}`), while `event_id` increments within that process; the frontend maintains a single global listener, routes each event to the correct tab's message list using `tab_id`, and ignores any already-seen `{tab_id, stream_id, event_id}` delivery. User-initiated turns keep their `assistantIdByTab` entry until a stream `Done`/`Error` event arrives; `ipc.chatSend` resolving is not treated as turn completion because Tauri event delivery can lag behind the command promise. A `tab-created` event (payload: `{ tab_id, label, kind, resource_id?, agent_options? }`) is emitted by the backend whenever a new tab is opened programmatically (e.g. during resource ingestion). Preview tabs are created client-side only (no `tab-created` event) — the store's `openPreviewTab` action handles deduplication and activation.
 
 **History persistence.** Chat tabs carry optional `historySessionUuid` and `historyStartedAt` fields. The frontend creates them on first send, persists them in `.ire/workspace.json`, and passes the UUID to `chat_history_save` so every completed turn upserts the same `chat_sessions` row. The History menu filters out any row whose UUID is currently open as a chat tab, so autosaved active chats are not shown as archived history after a send or workspace reopen. Closing the tab removes that UUID from the active-tab filter, making the saved row visible. Restoring a row from the history menu opens a chat tab with the same UUID/start time and deletes the archived row; the next completed turn or close re-saves it under the same UUID. Workspace close is best-effort only — completed turns are already durable before close/restart.
 
@@ -501,11 +501,11 @@ User types → handleSend(tabId)
 
 ```
 submit_resource() kicks the composer-selected agent with a new tab_id
-  → emits tab-created { tab_id, label, kind: "resource" }
+  → emits tab-created { tab_id, label, kind: "resource", agent_options }
   → frontend adds resource tab, switches to it
   → agent emits { tab_id, Init } → frontend begins assistant message
   → agent streams summary → Done → resourceStatus = "ready"
-  → Confirm / Discard buttons appear in the tab
+  → Confirm / Discard buttons appear in the tab; Confirm uses agent_options
 ```
 
 **IPC changes from single-session baseline**
@@ -516,7 +516,7 @@ submit_resource() kicks the composer-selected agent with a new tab_id
 | `chat_cancel` | `{}` | `{ tab_id }` |
 | `chat_reset_session` | `{}` | `{ tab_id }` |
 | `chat-stream` event | `StreamEvent` | `{ tab_id, stream_id, event_id, event: StreamEvent }` |
-| `tab-created` event | — | `{ tab_id, label, kind, resource_id? }` |
+| `tab-created` event | — | `{ tab_id, label, kind, resource_id?, agent_options? }` |
 
 ---
 
@@ -548,7 +548,7 @@ Codex spawn uses `codex exec`, `codex exec resume <thread_id>`, `--json`, `-m <m
 
 ### 10.3 JSONL parsers (`cc::stream`, `codex::stream`)
 
-Reads stdout line-by-line on a `spawn_blocking` thread; deserialises each line into `serde_json::Value`; dispatches provider-specific JSONL into typed `StreamEvent`s emitted to the frontend on the `chat-stream` channel. Each emitted payload includes `stream_id = "{tab_id}:{pid}"` and a per-process monotonic `event_id`; the frontend uses those fields to make event delivery idempotent. When a provider stream already emits `Done`, the subprocess wrapper does not emit an additional synthetic `Done` after `wait()`:
+Reads stdout line-by-line on a `spawn_blocking` thread; deserialises each line into `serde_json::Value`; dispatches provider-specific JSONL into typed `StreamEvent`s emitted to the frontend on the `chat-stream` channel. Each emitted payload includes `stream_id = "{tab_id}:{stream_uuid}"` and a per-process monotonic `event_id`; the frontend uses those fields to make event delivery idempotent without depending on OS PID uniqueness. When a provider stream already emits `Done`, the subprocess wrapper does not emit an additional synthetic `Done` after `wait()`:
 
 ```rust
 #[serde(tag = "kind")]
@@ -815,7 +815,7 @@ Each entry under `panel_layout.groups.<group-id>` is the `Layout` map (`{ panel-
 
 `model` and `provider` store the last selected agent model. `effort` stores the last selected thinking-budget / reasoning level (`"low"` | `"medium"` | `"high"` | `"xhigh"` | `"max"` for Claude Code, without `"max"` for Codex). Defaults are Claude Code / Sonnet 4.6 / `"low"` when both providers are available, or the first model for the only detected provider when the workspace is opened in Claude-only or Codex-only mode. `SetupScreen` validates the persisted tuple against `MODELS`, the provider-specific effort list, and the open-time `availableProviders` before applying it to `useChatOptions`.
 
-`tabs` stores the open central-column tabs as opaque frontend `Tab` JSON, including chat messages, preview wiki path, experiment UUID, and optional chat-history metadata. `active_tab_id` stores the selected tab. Streaming flags are normalized to `false` when writing and again when restoring, because backend agent `session_id`s and subprocesses are in-memory only and are reset on app close.
+`tabs` stores the open central-column tabs as opaque frontend `Tab` JSON, including chat messages, preview wiki path, experiment UUID, optional chat-history metadata, and optional `agentOptions` for backend-created resource tabs. `active_tab_id` stores the selected tab. Streaming flags are normalized to `false` when writing and again when restoring, because backend agent `session_id`s and subprocesses are in-memory only and are reset on app close.
 
 Theme is **not** stored here — it is a user-level preference and lives in `~/.config/ire/config.json` (see [§13.7](#137-user-config-configireconfig.json)).
 

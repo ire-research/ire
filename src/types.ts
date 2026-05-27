@@ -133,6 +133,7 @@ export interface Tab {
   isStreaming: boolean;
   isPinned: boolean;
   kind: TabKind;
+  agentOptions?: ChatOptions;
   historySessionUuid?: string;
   historyStartedAt?: string;
   resourceId?: string;
@@ -155,6 +156,7 @@ export interface TabCreatedPayload {
   label: string;
   kind: TabKind;
   resource_id?: string;
+  agent_options?: ChatOptions;
 }
 
 /** A resource row returned by list_resources. */

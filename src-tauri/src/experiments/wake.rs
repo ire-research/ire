@@ -137,7 +137,7 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
     let tab_id_owned = tab_id.to_string();
     let provider_owned = provider.to_string();
     session_manager.set_agent_options(tab_id, provider, model, effort);
-    let stream_id = format!("{tab_id}:{pid}");
+    let stream_id = format!("{tab_id}:{}", uuid::Uuid::new_v4());
     let mut event_id = 0_u64;
 
     for line in BufReader::new(stdout).lines() {

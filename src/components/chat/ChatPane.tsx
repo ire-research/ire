@@ -198,6 +198,7 @@ export function ChatPane() {
         isStreaming: false,
         isPinned: false,
         kind: payload.kind,
+        agentOptions: payload.agent_options,
         resourceId: payload.resource_id,
         resourceStatus: payload.kind === "resource" ? "summarizing" : undefined,
       };
@@ -325,7 +326,7 @@ export function ChatPane() {
       await ipc
         .saveWorkspaceState(useWorkspace.getState().toPersisted())
         .catch((e) => toastError("save chat options", e));
-      await ipc.chatSend(activeTabId, prompt, { model, provider, effort });
+      await ipc.chatSend(activeTabId, prompt, activeTab.agentOptions ?? { model, provider, effort });
     } catch (err) {
       const msgId = assistantIdByTab.current.get(activeTabId);
       if (msgId) setMessageError(activeTabId, msgId, String(err));

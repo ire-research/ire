@@ -114,7 +114,7 @@ pub async fn chat_send(
 
         let mut child = cmd.spawn().map_err(|e| e.to_string())?;
         let pid = child.id();
-        let stream_id = format!("{tab_id}:{pid}");
+        let stream_id = format!("{tab_id}:{}", uuid::Uuid::new_v4());
         let mut event_id = 0_u64;
         session_clone.set_pid(&tab_id, pid);
         tracing::info!(tab_id = %tab_id, provider = %provider, pid = pid, resume = ?resume_id, "agent subprocess spawned");
