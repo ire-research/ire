@@ -58,6 +58,8 @@ pub struct StreamState {
     pub session_id: String,
     pub emitted_text: bool,
     pub emitted_done: bool,
+    pub emitted_codex_agent_item_ids: Vec<String>,
+    claude_message_id: Option<String>,
     emitted_text_chars_by_block: Vec<usize>,
     emitted_thinking_chars_by_block: Vec<usize>,
     emitted_tool_ids: Vec<String>,
@@ -108,9 +110,18 @@ pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, em
 }
 
 // CC's stream-json format emits `{"type":"assistant","message":{...}}` snapshots.
-// Each snapshot contains the full content array accumulated so far, so we track
-// cursors to emit only the new portion as deltas.
+// Text/thinking blocks in the same message can be repeated as they grow, so we
+// track cursors to emit only the new portion. Claude starts a new message after
+// tool execution, and those message-local block indexes start over at zero.
 fn dispatch_assistant<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, emit: &mut F) {
+    if let Some(message_id) = json["message"]["id"].as_str() {
+        if state.claude_message_id.as_deref() != Some(message_id) {
+            state.claude_message_id = Some(message_id.to_string());
+            state.emitted_text_chars_by_block.clear();
+            state.emitted_thinking_chars_by_block.clear();
+        }
+    }
+
     let Some(arr) = json["message"]["content"].as_array() else {
         return;
     };
@@ -334,6 +345,20 @@ mod tests {
         events
     }
 
+    fn collect_assistant_message_events(
+        message_id: &str,
+        content: Value,
+        state: &mut StreamState,
+    ) -> Vec<StreamEvent> {
+        let mut events = Vec::new();
+        let json = json!({
+            "type": "assistant",
+            "message": { "id": message_id, "content": content },
+        });
+        dispatch(&json, state, &mut |event| events.push(event));
+        events
+    }
+
     #[test]
     fn emits_text_tool_text_in_content_order() {
         let mut state = StreamState::default();
@@ -386,6 +411,48 @@ mod tests {
             &mut state,
         );
         assert_eq!(third, vec![StreamEvent::TextDelta { text: "B".into() }]);
+    }
+
+    #[test]
+    fn resets_text_cursors_for_new_claude_message_after_tool_use() {
+        let mut state = StreamState::default();
+
+        let first = collect_assistant_message_events(
+            "msg_1",
+            json!([
+                { "type": "text", "text": "hello, message 1" },
+            ]),
+            &mut state,
+        );
+        assert_eq!(
+            first,
+            vec![StreamEvent::TextDelta {
+                text: "hello, message 1".into()
+            }]
+        );
+
+        let tool = collect_assistant_message_events(
+            "msg_1",
+            json!([
+                { "type": "tool_use", "id": "tool-1", "name": "Bash", "input": { "command": "printf 'tool, message 2'" } },
+            ]),
+            &mut state,
+        );
+        assert!(matches!(tool.as_slice(), [StreamEvent::ToolStart { .. }]));
+
+        let final_text = collect_assistant_message_events(
+            "msg_2",
+            json!([
+                { "type": "text", "text": "done, message 3" },
+            ]),
+            &mut state,
+        );
+        assert_eq!(
+            final_text,
+            vec![StreamEvent::TextDelta {
+                text: "done, message 3".into()
+            }]
+        );
     }
 
     #[test]

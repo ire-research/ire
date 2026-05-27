@@ -273,10 +273,6 @@ export function ChatPane() {
     } catch (err) {
       const currentMsgId = assistantIdByTab.current.get(activeTabId);
       if (currentMsgId) setMessageError(activeTabId, currentMsgId, String(err));
-    } finally {
-      // Belt-and-suspenders: clear streaming state even if Done never fires.
-      const currentMsgId = assistantIdByTab.current.get(activeTabId);
-      if (currentMsgId) finishMessage(activeTabId, currentMsgId);
       assistantIdByTab.current.delete(activeTabId);
       setStreaming(activeTabId, false);
       void persistCompletedChat(activeTabId);

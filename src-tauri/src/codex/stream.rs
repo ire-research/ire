@@ -13,6 +13,9 @@ pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, em
         "item.agentMessage.delta" => {
             if let Some(delta) = json["delta"].as_str() {
                 if !delta.is_empty() {
+                    if let Some(id) = codex_item_id(json) {
+                        mark_codex_agent_item_emitted(state, id);
+                    }
                     state.emitted_text = true;
                     emit(StreamEvent::TextDelta {
                         text: delta.to_string(),
@@ -55,11 +58,16 @@ pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, em
             let item = &json["item"];
             match item["type"].as_str() {
                 Some("agent_message" | "agentMessage") => {
-                    if state.emitted_text {
+                    let id = item["id"].as_str().unwrap_or("");
+                    if !id.is_empty() && state.emitted_codex_agent_item_ids.iter().any(|v| v == id)
+                    {
                         return;
                     }
                     if let Some(text) = item["text"].as_str() {
                         if !text.is_empty() {
+                            if !id.is_empty() {
+                                mark_codex_agent_item_emitted(state, id);
+                            }
                             state.emitted_text = true;
                             emit(StreamEvent::TextDelta {
                                 text: text.to_string(),
@@ -134,6 +142,24 @@ fn is_tool_item_type(t: &str) -> bool {
             | "dynamicToolCall"
             | "mcp_tool_call"
     )
+}
+
+fn codex_item_id(json: &Value) -> Option<&str> {
+    json["item_id"]
+        .as_str()
+        .or_else(|| json["itemId"].as_str())
+        .or_else(|| json["id"].as_str())
+        .or_else(|| json["item"]["id"].as_str())
+}
+
+fn mark_codex_agent_item_emitted(state: &mut StreamState, id: &str) {
+    if !state
+        .emitted_codex_agent_item_ids
+        .iter()
+        .any(|existing| existing == id)
+    {
+        state.emitted_codex_agent_item_ids.push(id.to_string());
+    }
 }
 
 fn codex_tool_name(item: &Value, item_type: &str) -> String {
@@ -226,8 +252,13 @@ fn extract_input_full(item: &Value) -> Option<String> {
     for (key, value) in obj {
         if matches!(
             key.as_str(),
-            "id" | "type" | "status" | "exit_code" | "output" | "aggregated_output"
-                | "result" | "error"
+            "id" | "type"
+                | "status"
+                | "exit_code"
+                | "output"
+                | "aggregated_output"
+                | "result"
+                | "error"
         ) || is_empty_value(value)
         {
             continue;
@@ -247,10 +278,7 @@ fn extract_input_full(item: &Value) -> Option<String> {
 /// Extracts the text payload from an `mcp_tool_call` item's `result.content` array.
 fn extract_mcp_result_text(item: &Value) -> Option<String> {
     let content = item["result"]["content"].as_array()?;
-    let parts: Vec<&str> = content
-        .iter()
-        .filter_map(|c| c["text"].as_str())
-        .collect();
+    let parts: Vec<&str> = content.iter().filter_map(|c| c["text"].as_str()).collect();
     if parts.is_empty() {
         None
     } else {
@@ -328,6 +356,80 @@ mod tests {
         );
 
         assert_eq!(events, vec![StreamEvent::TextDelta { text: "OK".into() }]);
+    }
+
+    #[test]
+    fn emits_multiple_completed_agent_messages_in_one_turn() {
+        let mut state = StreamState::default();
+
+        let first = collect(
+            json!({
+                "type": "item.completed",
+                "item": {
+                    "id": "item_0",
+                    "type": "agent_message",
+                    "text": "hello, message 1"
+                }
+            }),
+            &mut state,
+        );
+        assert_eq!(
+            first,
+            vec![StreamEvent::TextDelta {
+                text: "hello, message 1".into()
+            }]
+        );
+
+        let second = collect(
+            json!({
+                "type": "item.completed",
+                "item": {
+                    "id": "item_2",
+                    "type": "agent_message",
+                    "text": "done, message 3"
+                }
+            }),
+            &mut state,
+        );
+        assert_eq!(
+            second,
+            vec![StreamEvent::TextDelta {
+                text: "done, message 3".into()
+            }]
+        );
+    }
+
+    #[test]
+    fn suppresses_completed_agent_message_after_delta_for_same_item() {
+        let mut state = StreamState::default();
+
+        let delta = collect(
+            json!({
+                "type": "item.agentMessage.delta",
+                "item_id": "item_0",
+                "delta": "streamed"
+            }),
+            &mut state,
+        );
+        assert_eq!(
+            delta,
+            vec![StreamEvent::TextDelta {
+                text: "streamed".into()
+            }]
+        );
+
+        let completed = collect(
+            json!({
+                "type": "item.completed",
+                "item": {
+                    "id": "item_0",
+                    "type": "agent_message",
+                    "text": "streamed"
+                }
+            }),
+            &mut state,
+        );
+        assert!(completed.is_empty());
     }
 
     #[test]
