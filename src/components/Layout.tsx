@@ -7,11 +7,12 @@ import { useChat } from "../state/chat";
 import { useWorkspaceData, selectRunningCount } from "../state/workspaceData";
 import { useChatOptions } from "../state/chatOptions";
 import { toastError } from "../state/toasts";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faFolder, faChevronDown, faSidebarLeft, faSidebarRight, faGear, faCircleQuestion, faCircleInfo, iconClass } from "../icons";
 import { ChatPane } from "./chat/ChatPane";
 import { LeftRail } from "./left/LeftRail";
 import { RightRail } from "./right/RightRail";
 import { StatusBar } from "./StatusBar";
-import { Icon } from "./Icon";
 
 export function Layout() {
   const phase = useWorkspace((s) => s.phase);
@@ -155,7 +156,7 @@ export function Layout() {
       <header className="flex items-center justify-between px-3 h-10 w-full bg-background border-b border-outline-variant shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex items-center gap-1.5 min-w-0 text-xs font-medium text-on-surface" ref={wsDropdownRef} title={workspacePath}>
-            <Icon name="folder" className="w-[16px] h-[16px] text-primary shrink-0" />
+            <FontAwesomeIcon icon={faFolder} className={`${iconClass.lg} text-primary shrink-0`} />
             <span className="truncate max-w-[360px]">{workspacePath}</span>
             <div className="relative shrink-0">
               <button
@@ -163,7 +164,7 @@ export function Layout() {
                 className="topbar-icon-button ml-0.5"
                 aria-label="Workspace options"
               >
-                <Icon name="expand_more" className="w-[14px] h-[14px]" />
+                <FontAwesomeIcon icon={faChevronDown} className={iconClass.md} />
               </button>
               {wsDropdownOpen && (
                 <div className="absolute left-0 top-full mt-1 bg-surface-container-low border border-outline-variant rounded shadow-lg z-50 min-w-[160px]">
@@ -195,7 +196,7 @@ export function Layout() {
               aria-label={leftCollapsed ? "Show left sidebar" : "Hide left sidebar"}
               title={leftCollapsed ? "Show left sidebar" : "Hide left sidebar"}
             >
-              <Icon name="sidebar_left" className="w-[18px] h-[18px]" />
+              <FontAwesomeIcon icon={faSidebarLeft} className={iconClass.lg} />
             </button>
             <button
               className={topbarIconButtonClass}
@@ -203,14 +204,14 @@ export function Layout() {
               aria-label={rightCollapsed ? "Show right sidebar" : "Hide right sidebar"}
               title={rightCollapsed ? "Show right sidebar" : "Hide right sidebar"}
             >
-              <Icon name="sidebar_right" className="w-[18px] h-[18px]" />
+              <FontAwesomeIcon icon={faSidebarRight} className={iconClass.lg} />
             </button>
           </div>
           <button
             className="topbar-icon-button p-1"
             aria-label="Settings"
           >
-            <Icon name="settings" className="w-[18px] h-[18px]" />
+            <FontAwesomeIcon icon={faGear} className={iconClass.lg} />
           </button>
           <div className="relative" ref={helpRef}>
             <button
@@ -220,7 +221,7 @@ export function Layout() {
               aria-haspopup="true"
               aria-expanded={helpOpen}
             >
-              <Icon name="help" className="w-[16px] h-[16px]" />
+              <FontAwesomeIcon icon={faCircleQuestion} className={iconClass.lg} />
             </button>
             {helpOpen && (
               <div className="absolute top-full right-0 mt-1.5 w-[200px] bg-surface-container-high border border-outline-variant rounded-lg shadow-lg z-50 overflow-hidden">
@@ -230,7 +231,7 @@ export function Layout() {
                   target="_blank"
                   rel="noopener noreferrer"
                 >
-                  <Icon name="info" className="w-[14px] h-[14px] shrink-0" />
+                  <FontAwesomeIcon icon={faCircleInfo} className={`${iconClass.md} shrink-0`} />
                   Report a bug
                 </a>
                 <div className="flex items-center gap-2 px-3 py-2 border-t border-outline-variant">

@@ -461,7 +461,7 @@ fn start_resource_summary(
                     workspace: &workspace_clone2,
                     message: &prompt,
                     model: &model,
-                    reasoning_effort: &effort,
+                    reasoning_effort: effort.as_deref().unwrap_or("low"),
                     system_prompt: Some(&system_prompt),
                     mcp_config: mcp_config.as_deref(),
                     resume_id: None,
@@ -475,7 +475,7 @@ fn start_resource_summary(
                     mcp_config: mcp_config.as_deref(),
                     system_prompt: Some(&system_prompt),
                     model: &model,
-                    effort: &effort,
+                    effort: effort.as_deref(),
                 })
             };
 
@@ -483,7 +483,7 @@ fn start_resource_summary(
             let pid = child.id();
             let stream_id = format!("{}:{}", tab_id_clone, uuid::Uuid::new_v4());
             let mut event_id = 0_u64;
-            session.set_agent_options(&tab_id_clone, &provider, &model, &effort);
+            session.set_agent_options(&tab_id_clone, &provider, &model, effort.as_deref());
             session.set_pid(&tab_id_clone, pid);
             tracing::info!(tab_id = %tab_id_clone, provider = %provider, pid = pid, "resource agent turn spawned");
 

@@ -40,17 +40,36 @@ export const EFFORT_LEVELS = CLAUDE_EFFORT_LEVELS;
 export const DEFAULT_CHAT_OPTIONS = {
   model: "claude-sonnet-4-6",
   provider: "claude" as Provider,
-  effort: "low" as EffortLevel,
+  effort: "low" as EffortLevel | null,
 };
 
-export function effortLevelsForProvider(provider: Provider) {
-  return provider === "codex" ? CODEX_EFFORT_LEVELS : CLAUDE_EFFORT_LEVELS;
+export function effortLevelsForModel(provider: Provider, model: string) {
+  if (provider === "codex") return CODEX_EFFORT_LEVELS;
+  if (model.includes("haiku")) return [];
+  if (model.includes("opus")) return CLAUDE_EFFORT_LEVELS;
+  return CLAUDE_EFFORT_LEVELS.filter((entry) => entry.value !== "xhigh");
+}
+
+export function defaultEffortForModel(provider: Provider, model: string): EffortLevel | null {
+  return effortLevelsForModel(provider, model)[0]?.value ?? null;
+}
+
+function normalizedEffortForModel(provider: Provider, model: string, effort: string | null | undefined): EffortLevel | null {
+  const levels = effortLevelsForModel(provider, model);
+  if (levels.length === 0) return null;
+  return levels.some((entry) => entry.value === effort)
+    ? effort as EffortLevel
+    : levels[0].value;
 }
 
 export function isValidChatOptions(model: string | null | undefined, provider: string | null | undefined, effort: string | null | undefined): model is string {
   if (provider !== "claude" && provider !== "codex") return false;
+  if (!model) return false;
   if (!MODELS.some((entry) => entry.id === model && entry.provider === provider)) return false;
-  return effortLevelsForProvider(provider).some((entry) => entry.value === effort);
+  const levels = effortLevelsForModel(provider, model);
+  return levels.length === 0
+    ? effort === null || effort === undefined || effort === ""
+    : levels.some((entry) => entry.value === effort);
 }
 
 export function defaultModelForProvider(provider: Provider): string {
@@ -63,37 +82,41 @@ export function optionsForAvailableProviders(
   effort: string | null | undefined,
   availableProviders: Provider[],
 ) {
-  if (isValidChatOptions(model, provider, effort)) {
+  if (provider === "claude" || provider === "codex") {
     const validProvider = provider as Provider;
-    if (!availableProviders.includes(validProvider)) {
-      return optionsForAvailableProviders(null, null, null, availableProviders);
+    if (
+      model &&
+      availableProviders.includes(validProvider) &&
+      MODELS.some((entry) => entry.id === model && entry.provider === validProvider)
+    ) {
+      return {
+        model,
+        provider: validProvider,
+        effort: normalizedEffortForModel(validProvider, model, effort),
+      };
     }
-    return {
-      model,
-      provider: validProvider,
-      effort: effort as EffortLevel,
-    };
   }
 
   const fallbackProvider = availableProviders.includes(DEFAULT_CHAT_OPTIONS.provider)
     ? DEFAULT_CHAT_OPTIONS.provider
     : availableProviders[0] ?? DEFAULT_CHAT_OPTIONS.provider;
 
+  const fallbackModel = defaultModelForProvider(fallbackProvider);
   return {
-    model: defaultModelForProvider(fallbackProvider),
+    model: fallbackModel,
     provider: fallbackProvider,
-    effort: DEFAULT_CHAT_OPTIONS.effort,
+    effort: defaultEffortForModel(fallbackProvider, fallbackModel),
   };
 }
 
 interface ChatOptionsState {
   model: string;
   provider: Provider;
-  effort: EffortLevel;
+  effort: EffortLevel | null;
   availableProviders: Provider[];
   setModel(model: string, provider: Provider): void;
   setEffort(e: EffortLevel): void;
-  setOptions(options: { model: string; provider: Provider; effort: EffortLevel }): void;
+  setOptions(options: { model: string; provider: Provider; effort: EffortLevel | null }): void;
   setAvailableProviders(providers: Provider[]): void;
 }
 
@@ -103,7 +126,11 @@ export const useChatOptions = create<ChatOptionsState>((set) => ({
   setModel: (model, provider) => set((state) => ({
     model,
     provider,
-    effort: state.provider === provider ? state.effort : "low",
+    effort: normalizedEffortForModel(
+      provider,
+      model,
+      state.provider === provider ? state.effort : null,
+    ),
   })),
   setEffort: (effort) => set({ effort }),
   setOptions: (options) => set(options),
@@ -114,11 +141,12 @@ export const useChatOptions = create<ChatOptionsState>((set) => ({
       return { availableProviders };
     }
     const provider = availableProviders[0];
+    const model = defaultModelForProvider(provider);
     return {
       availableProviders,
-      model: defaultModelForProvider(provider),
+      model,
       provider,
-      effort: DEFAULT_CHAT_OPTIONS.effort,
+      effort: defaultEffortForModel(provider, model),
     };
   }),
 }));

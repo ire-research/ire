@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from "react";
 import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
 import { useWorkspaceData } from "../../state/workspaceData";
-import { Icon } from "../Icon";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faPenToSquare, iconClass } from "../../icons";
 import { MessageMarkdown } from "../chat/MessageMarkdown";
 
 export function NotesPane() {
@@ -53,7 +54,7 @@ export function NotesPane() {
   return (
     <div className="px-4 pt-4 pb-3 overflow-hidden flex-1 min-h-0 flex flex-col">
       <div className="sticky top-0 z-10 flex items-center gap-2 py-1 mb-2 bg-surface-container-low shrink-0">
-        <Icon name="edit_note" className="w-[16px] h-[16px] shrink-0 text-on-surface-variant" />
+        <FontAwesomeIcon icon={faPenToSquare} className={`${iconClass.lg} shrink-0 text-on-surface-variant`} />
         <span className="text-[14px] text-on-surface-variant flex-1">
           Notes
         </span>
@@ -62,7 +63,7 @@ export function NotesPane() {
           onClick={handleEditClick}
           title="Edit notes"
         >
-          <Icon name="edit_document" className="w-[14px] h-[14px]" />
+          <FontAwesomeIcon icon={faPenToSquare} className={iconClass.md} />
         </button>
       </div>
 

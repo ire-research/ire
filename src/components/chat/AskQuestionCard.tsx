@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { AskAnswer, AskBlockState, AskQuestion, AskQuestionOption } from "../../types";
 import { useChat } from "../../state/chat";
-import { Icon } from "../Icon";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCheck, faCircleQuestion, faPenToSquare, faChevronRight, faChevronLeft, faXmark, iconClass } from "../../icons";
 
 interface Props {
   ask: AskBlockState;
@@ -106,9 +107,9 @@ function CardHeader({ isReview, step, total }: { isReview: boolean; step: number
   return (
     <div className="px-4 py-2.5 border-b border-outline-variant flex items-center gap-2.5 text-[12px]">
       {isReview ? (
-        <Icon name="check" className="w-[14px] h-[14px] text-on-surface" />
+        <FontAwesomeIcon icon={faCheck} className={`${iconClass.md} text-on-surface`} />
       ) : (
-        <Icon name="help_outline" className="w-[14px] h-[14px] text-on-surface-variant" />
+        <FontAwesomeIcon icon={faCircleQuestion} className={`${iconClass.md} text-on-surface-variant`} />
       )}
       <span className="text-on-surface font-medium tracking-[0.01em]">
         {isReview ? "Review your answers" : "Claude is asking for input"}
@@ -254,7 +255,7 @@ function ReviewPanel({ ask, onEdit }: { ask: AskBlockState; onEdit: (i: number) 
                 {summary ? `→ ${summary}` : <span className="text-on-surface-variant/60 italic">no answer</span>}
               </div>
             </div>
-            <Icon name="edit_document" className="w-[14px] h-[14px] text-on-surface-variant/60 mt-1" />
+            <FontAwesomeIcon icon={faPenToSquare} className={`${iconClass.md} text-on-surface-variant/60 mt-1`} />
           </button>
         );
       })}
@@ -307,7 +308,7 @@ function NavFooter({ step, total, canGoBack, onPrev, onNext, onReview, onSubmit 
           className="px-3 py-1.5 text-[12px] rounded bg-surface-container border border-outline-variant text-on-surface hover:bg-surface-container-high transition-colors flex items-center gap-1.5"
         >
           Review
-          <Icon name="chevron_right" className="w-[12px] h-[12px]" />
+          <FontAwesomeIcon icon={faChevronRight} className={iconClass.sm} />
         </button>
       ) : (
         <NavArrow direction="next" onClick={onNext} />
@@ -325,7 +326,7 @@ function NavArrow({ direction, disabled, onClick }: { direction: "prev" | "next"
       aria-label={direction === "prev" ? "Previous" : "Next"}
       className="app-icon-button w-7 h-7 disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-on-surface-variant"
     >
-      <Icon name={direction === "prev" ? "chevron_left" : "chevron_right"} className="w-[14px] h-[14px]" />
+      <FontAwesomeIcon icon={direction === "prev" ? faChevronLeft : faChevronRight} className={iconClass.md} />
     </button>
   );
 }
@@ -366,7 +367,7 @@ function EditModal({
     >
       <div className="animate-modal-in w-[560px] max-w-[90vw] rounded-lg border border-outline-variant bg-surface-container-low overflow-hidden shadow-2xl">
         <div className="px-4 py-2.5 border-b border-outline-variant flex items-center gap-2.5 text-[12px]">
-          <Icon name="edit_document" className="w-[14px] h-[14px] text-on-surface-variant" />
+          <FontAwesomeIcon icon={faPenToSquare} className={`${iconClass.md} text-on-surface-variant`} />
           <span className="text-on-surface font-medium tracking-[0.01em]">Edit answer</span>
           <button
             type="button"
@@ -374,7 +375,7 @@ function EditModal({
             aria-label="Close"
             className="app-icon-button ml-auto w-7 h-7"
           >
-            <Icon name="close" className="w-[14px] h-[14px]" />
+            <FontAwesomeIcon icon={faXmark} className={iconClass.md} />
           </button>
         </div>
 
@@ -408,7 +409,7 @@ function AnsweredSummary({ ask }: { ask: AskBlockState }) {
   return (
     <div className="w-full rounded-lg border border-outline-variant bg-surface-container-low overflow-hidden opacity-90">
       <div className="px-4 py-2.5 border-b border-outline-variant flex items-center gap-2.5 text-[12px]">
-        <Icon name="check" className="w-[14px] h-[14px] text-ok" />
+        <FontAwesomeIcon icon={faCheck} className={`${iconClass.md} text-ok`} />
         <span className="text-on-surface font-medium tracking-[0.01em]">Answered</span>
         <span className="ml-auto font-mono text-[10.5px] text-on-surface-variant/70">
           {ask.questions.length} question{ask.questions.length === 1 ? "" : "s"}

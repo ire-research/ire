@@ -2,7 +2,8 @@ import { useState } from "react";
 import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
 import type { ToolCallState } from "../../types";
-import { Icon } from "../Icon";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faChevronDown, iconClass } from "../../icons";
 import { ToolIoField } from "./ToolCard";
 
 interface Props {
@@ -89,9 +90,9 @@ export function ExperimentCard({ tool }: Props) {
         )}
 
         {/* Chevron */}
-        <Icon
-          name="expand_more"
-          className={`w-[13px] h-[13px] text-on-surface-variant ml-0 shrink-0 opacity-0 group-hover:opacity-60 transition-all duration-150 ${expanded ? "rotate-180 !opacity-60" : ""}`}
+        <FontAwesomeIcon
+          icon={faChevronDown}
+          className={`${iconClass.sm} text-on-surface-variant ml-0 shrink-0 opacity-0 group-hover:opacity-60 transition-all duration-150 ${expanded ? "rotate-180 !opacity-60" : ""}`}
         />
       </div>
 

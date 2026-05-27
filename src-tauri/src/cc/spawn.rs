@@ -9,7 +9,7 @@ pub struct SpawnArgs<'a> {
     pub mcp_config: Option<&'a Path>,
     pub system_prompt: Option<&'a str>,
     pub model: &'a str,
-    pub effort: &'a str,
+    pub effort: Option<&'a str>,
 }
 
 pub fn build_command(args: &SpawnArgs<'_>) -> Command {
@@ -18,10 +18,13 @@ pub fn build_command(args: &SpawnArgs<'_>) -> Command {
     cmd.arg("-p")
         .arg(args.message)
         .arg("--model")
-        .arg(args.model)
-        .arg("--effort")
-        .arg(args.effort)
-        .arg("--output-format")
+        .arg(args.model);
+
+    if let Some(effort) = args.effort {
+        cmd.arg("--effort").arg(effort);
+    }
+
+    cmd.arg("--output-format")
         .arg("stream-json")
         .arg("--verbose")
         .arg("--include-partial-messages")
@@ -47,4 +50,49 @@ pub fn build_command(args: &SpawnArgs<'_>) -> Command {
         .stderr(Stdio::piped());
 
     cmd
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn command_args(cmd: &Command) -> Vec<String> {
+        cmd.get_args()
+            .map(|arg| arg.to_string_lossy().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn build_command_includes_effort_when_present() {
+        let cmd = build_command(&SpawnArgs {
+            bin: Path::new("claude"),
+            workspace: Path::new("/tmp/workspace"),
+            message: "hello",
+            resume_id: None,
+            mcp_config: None,
+            system_prompt: None,
+            model: "claude-sonnet-4-6",
+            effort: Some("high"),
+        });
+        let args = command_args(&cmd);
+
+        assert!(args.windows(2).any(|pair| pair == ["--effort", "high"]));
+    }
+
+    #[test]
+    fn build_command_omits_effort_when_absent() {
+        let cmd = build_command(&SpawnArgs {
+            bin: Path::new("claude"),
+            workspace: Path::new("/tmp/workspace"),
+            message: "hello",
+            resume_id: None,
+            mcp_config: None,
+            system_prompt: None,
+            model: "claude-haiku-4-5-20251001",
+            effort: None,
+        });
+        let args = command_args(&cmd);
+
+        assert!(!args.iter().any(|arg| arg == "--effort"));
+    }
 }

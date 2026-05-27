@@ -9,6 +9,15 @@ export default defineConfig(async () => ({
   plugins: [react()],
   build: {
     chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("/node_modules/@fortawesome/")) {
+            return "fontawesome";
+          }
+        },
+      },
+    },
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

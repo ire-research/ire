@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faClaude, faOpenai, faTrash, iconClass } from "../../icons";
 import { ipc } from "../../ipc";
 import type { ChatSessionSummary } from "../../types";
 
@@ -98,8 +100,9 @@ export function HistoryPanel({ isOpen, onClose, excludeSessionUuids, onRestore }
                 onClose();
               }}
             >
-              <i
-                className={`fa-brands ${s.provider === "claude" ? "fa-claude" : "fa-openai"} text-[13px] text-on-surface-variant/80 shrink-0`}
+              <FontAwesomeIcon
+                icon={s.provider === "claude" ? faClaude : faOpenai}
+                className="text-[13px] text-on-surface-variant/80 shrink-0"
               />
               <span className="flex-1 min-w-0 text-[12px] text-on-surface truncate">
                 {s.first_user_msg ?? (
@@ -115,7 +118,7 @@ export function HistoryPanel({ isOpen, onClose, excludeSessionUuids, onRestore }
               title="Delete session"
               onClick={(e) => handleDelete(s.session_uuid, e)}
             >
-              <i className="fa-solid fa-trash text-[10px]" />
+              <FontAwesomeIcon icon={faTrash} className={iconClass.xs} />
             </button>
           </div>
         ))}
