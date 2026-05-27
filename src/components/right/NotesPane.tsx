@@ -52,7 +52,7 @@ export function NotesPane() {
 
   return (
     <div className="px-4 pt-4 pb-3 overflow-hidden flex-1 min-h-0 flex flex-col">
-      <div className="flex items-center gap-2 py-1 mb-2 shrink-0">
+      <div className="sticky top-0 z-10 flex items-center gap-2 py-1 mb-2 bg-surface-container-low shrink-0">
         <Icon name="edit_note" className="w-[16px] h-[16px] shrink-0 text-on-surface-variant" />
         <span className="text-[14px] text-on-surface-variant flex-1">
           Notes

@@ -60,7 +60,7 @@ export function FocusPane() {
   return (
     <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
       {/* Header */}
-      <div className="flex items-center gap-2 px-0 py-1 mb-2">
+      <div className="sticky top-0 z-10 flex items-center gap-2 px-0 py-1 mb-2 bg-surface-container-low">
         <Icon name="target" className="w-[16px] h-[16px] shrink-0 text-on-surface-variant" />
         <span className="text-[14px] text-on-surface-variant">Focus</span>
       </div>
