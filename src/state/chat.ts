@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AskAnswer, AskQuestion, AssistantContentBlock, AssistantMessage, ChatMessage, ExperimentStatus, ResourceStatus, Tab, ToolCallState, ToolIo, ToolMeta, ToolStatus } from "../types";
+import type { AskAnswer, AskQuestion, AssistantContentBlock, AssistantMessage, ChatMessage, ChatOptions, ExperimentStatus, ResourceStatus, Tab, ToolCallState, ToolIo, ToolMeta, ToolStatus } from "../types";
 
 const MAIN_TAB_ID = "main";
 
@@ -48,6 +48,7 @@ interface ChatStore {
   /** Restore tabs persisted from a previous workspace session. Replaces all
    *  current tabs. Any tab with isStreaming=true is normalised to false. */
   restorePersistedTabs: (tabs: Tab[], activeTabId?: string) => void;
+  setTabAgentOptions: (tabId: string, options: ChatOptions) => void;
   setTabHistoryMeta: (tabId: string, sessionUuid: string, startedAt: string) => void;
   /** Open a new chat tab pre-populated with historical messages (read from history). */
   createTabWithMessages: (label: string, messages: ChatMessage[], sessionUuid?: string, startedAt?: string) => void;
@@ -474,6 +475,14 @@ export const useChat = create<ChatStore>((set) => ({
         previousTabId: null,
       };
     }),
+
+  setTabAgentOptions: (tabId, options) =>
+    set((s) => ({
+      tabs: updateTab(s.tabs, tabId, (t) => ({
+        ...t,
+        agentOptions: options,
+      })),
+    })),
 
   setTabHistoryMeta: (tabId, sessionUuid, startedAt) =>
     set((s) => ({

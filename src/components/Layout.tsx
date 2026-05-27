@@ -72,8 +72,9 @@ export function Layout() {
       if (tab.kind === "chat" && tab.messages.length > 0 && !tab.isStreaming) {
         const sessionUuid = tab.historySessionUuid ?? crypto.randomUUID();
         const startedAt = tab.historyStartedAt ?? new Date().toISOString();
+        const savedOptions = tab.agentOptions ?? { provider, model, effort };
         await ipc
-          .chatHistorySave(tab.label, provider, model, startedAt, JSON.stringify(tab.messages), sessionUuid)
+          .chatHistorySave(tab.label, savedOptions.provider, savedOptions.model, startedAt, JSON.stringify(tab.messages), sessionUuid)
           .catch(() => {}); // best-effort
       }
     }

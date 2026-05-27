@@ -76,6 +76,7 @@ export function ChatPane() {
     linkExperimentUuid,
     updateExperimentStatus,
     appendExperimentLog,
+    setTabAgentOptions,
     setTabHistoryMeta,
     createTabWithMessages,
   } = useChat();
@@ -249,9 +250,9 @@ export function ChatPane() {
     const tab = useChat.getState().tabs.find((t) => t.id === tabId);
     if (!tab || tab.kind !== "chat" || tab.messages.length === 0 || tab.isStreaming) return;
     const { uuid, startedAt } = getSessionMeta(tabId);
-    const { model: m, provider: p } = useChatOptions.getState();
+    const savedOptions = tab.agentOptions ?? useChatOptions.getState();
     await ipc
-      .chatHistorySave(tab.label, p, m, startedAt, JSON.stringify(tab.messages), uuid)
+      .chatHistorySave(tab.label, savedOptions.provider, savedOptions.model, startedAt, JSON.stringify(tab.messages), uuid)
       .catch((e) => toastError("save chat history", e));
   };
 
@@ -260,6 +261,7 @@ export function ChatPane() {
 
     // Ensure a stable session UUID exists for this tab before the first message.
     getSessionMeta(activeTabId);
+    setTabAgentOptions(activeTabId, { model, provider, effort });
 
     addUserMessage(activeTabId, text);
     const aid = beginAssistantMessage(activeTabId);
