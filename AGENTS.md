@@ -7,6 +7,7 @@ Before implementing:
 - If multiple interpretations exist, present them - don't pick silently.
 - If a simpler approach exists, say so. Push back when warranted.
 - If something is unclear, stop. Name what's confusing. Ask.
+- For frontend work that involves a redesign, layout change, or other significant style choice that cannot be determined from the codebase alone, use the tmp-html skill first and prototype the direction in /tmp before touching the real codebase.
 
 ### 2. Simplicity First
 
