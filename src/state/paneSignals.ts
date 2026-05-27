@@ -64,11 +64,11 @@ export const usePaneSignals = create<PaneSignalsStore>((set) => {
           bump("notes");
           return;
         case "ideas-changed": {
-          const prevIds = new Set(prior.ideas.map((i) => i.id));
+          const prevActive = prior.ideas.filter((i) => !i.trashed);
+          const prevIds = new Set(prevActive.map((i) => i.id));
           const newOnes = event.ideas.filter((i) => !i.trashed && !prevIds.has(i.id));
-          // No-op events are possible (reorder with same set) — only signal
-          // when something visibly changed.
-          if (newOnes.length === 0 && event.ideas.length === prior.ideas.length) return;
+          const nextActive = event.ideas.filter((i) => !i.trashed);
+          if (newOnes.length === 0 && nextActive.length === prevActive.length) return;
           bump("ideas");
           newOnes.forEach((i) => markRow(i.id, "new"));
           return;

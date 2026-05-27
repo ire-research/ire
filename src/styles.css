@@ -243,15 +243,6 @@
    Fired when the workspace event bus delivers a `mutation`
    event. Classes are toggled by usePaneSignals / hooks.
    ============================================================ */
-@keyframes pane-wash {
-  0%, 100% { opacity: 0; }
-  20%      { opacity: 1; }
-}
-@keyframes ico-halo {
-  0%   { opacity: 0;    transform: scale(0.6); }
-  25%  { opacity: 0.18; transform: scale(1.0); }
-  100% { opacity: 0;    transform: scale(1.8); }
-}
 @keyframes edge-trace {
   0%   { opacity: 0; background-position: 0 -55%; }
   15%  { opacity: 1; }
@@ -277,31 +268,8 @@
   100% { background-color: transparent; }
 }
 
-/* Pane root — `data-side` controls wash origin so it blooms from the
-   chat-facing edge. Class is force-reflowed by the hook so back-to-back
-   pulses always restart the animation. */
 .pane-signal { position: relative; }
-.pane-signal[data-side="left"]  { --wash-origin: 100% 50%; }
-.pane-signal[data-side="right"] { --wash-origin: 0%   50%; }
-.pane-signal.pane-signal-active::after {
-  content: "";
-  position: absolute; inset: 0;
-  pointer-events: none;
-  background: radial-gradient(120% 80% at var(--wash-origin, 100% 50%),
-              rgba(228,228,231,.08) 0%, transparent 60%);
-  animation: pane-wash 900ms cubic-bezier(.4,0,.2,1) forwards;
-}
-
-/* Header icon halo — child of pane-signal, sibling of the actual icon. */
 .pane-signal-icon { position: relative; display: inline-flex; }
-.pane-signal.pane-signal-active .pane-signal-icon::after {
-  content: "";
-  position: absolute; inset: -6px;
-  border-radius: 9999px;
-  background: #E4E4E7;
-  pointer-events: none;
-  animation: ico-halo 900ms cubic-bezier(.4,0,.2,1);
-}
 
 /* Per-pane signal dot in the section header. Visible only while pane is
    signaling — gives the user a localized "this section just updated" mark. */
