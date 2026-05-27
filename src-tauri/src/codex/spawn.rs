@@ -46,7 +46,8 @@ pub fn build_codex_command(args: &CodexSpawnArgs<'_>) -> Command {
         cmd.arg(id);
     }
 
-    cmd.arg(args.message)
+    cmd.arg("--")
+        .arg(args.message)
         .current_dir(args.workspace)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -177,7 +178,10 @@ mod tests {
                 "mcp_servers.ire.env.IRE_BACKEND_SOCKET=\"/tmp/ire.sock\"",
             ]
         }));
-        assert_eq!(args.last().map(String::as_str), Some("hello"));
+        assert_eq!(
+            &args[args.len() - 2..],
+            ["--".to_string(), "hello".to_string()]
+        );
     }
 
     #[test]
@@ -201,8 +205,32 @@ mod tests {
             .windows(2)
             .any(|pair| pair == ["-c", "model_reasoning_effort=medium"]));
         assert_eq!(
+            &args[args.len() - 3..],
+            [
+                "thread-123".to_string(),
+                "--".to_string(),
+                "continue".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn prompt_separator_allows_messages_that_start_with_dash() {
+        let cmd = build_codex_command(&CodexSpawnArgs {
+            bin: Path::new("codex"),
+            workspace: Path::new("/tmp/workspace"),
+            message: "- continue from this bullet",
+            model: "gpt-5.3-codex",
+            reasoning_effort: "medium",
+            system_prompt: None,
+            mcp_config: None,
+            resume_id: None,
+        });
+        let args = command_args(&cmd);
+
+        assert_eq!(
             &args[args.len() - 2..],
-            ["thread-123".to_string(), "continue".to_string()]
+            ["--".to_string(), "- continue from this bullet".to_string()]
         );
     }
 }

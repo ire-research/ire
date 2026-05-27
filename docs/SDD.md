@@ -396,14 +396,15 @@ User types in central pane → Send
         --mcp-config .ire/mcp.json
         --append-system-prompt "<composed per §7.4>"
         --resume <session_id_if_any>
-      codex exec "<message>" --json
+      codex exec --json
         -m <model>
         -c model_reasoning_effort=<low|medium|high|xhigh>
         -c developer_instructions="<composed per §7.4>"
         -c mcp_servers.ire.command="node" -c mcp_servers.ire.args=[...]
         -C <workspace>
         --dangerously-bypass-approvals-and-sandbox
-      codex exec resume [OPTIONS] <thread_id> "<message>"
+        -- "<message>"
+      codex exec resume [OPTIONS] <thread_id> -- "<message>"
         (uses current_dir=<workspace>; resume does not accept -C)
   → Rust parses JSONL line-by-line, emits chat-stream events
   → on `Init`: capture provider-scoped session/thread id
@@ -544,7 +545,7 @@ Claude Code spawn non-negotiables:
 
 Always pair `--output-format stream-json` with `--verbose --include-partial-messages`.
 
-Codex spawn uses `codex exec`, `codex exec resume <thread_id>`, `--json`, `-m <model>`, `--dangerously-bypass-approvals-and-sandbox`, and `-c model_reasoning_effort=<low|medium|high|xhigh>`. Fresh turns also pass `-C <workspace>`; resumed turns run with `Command::current_dir(workspace_root)` because `codex exec resume` does not accept `-C`. The composed system prompt is passed through `-c developer_instructions=<TOML string>`. `.ire/mcp.json` is translated into Codex config flags such as `-c mcp_servers.ire.command="node"`, `-c mcp_servers.ire.args=[...]`, and `-c mcp_servers.ire.env.IRE_WORKSPACE="..."`.
+Codex spawn uses `codex exec`, `codex exec resume <thread_id>`, `--json`, `-m <model>`, `--dangerously-bypass-approvals-and-sandbox`, and `-c model_reasoning_effort=<low|medium|high|xhigh>`. Fresh turns also pass `-C <workspace>`; resumed turns run with `Command::current_dir(workspace_root)` because `codex exec resume` does not accept `-C`. The prompt is passed after a `--` separator so messages beginning with `-` are not parsed as Codex CLI flags. The composed system prompt is passed through `-c developer_instructions=<TOML string>`. `.ire/mcp.json` is translated into Codex config flags such as `-c mcp_servers.ire.command="node"`, `-c mcp_servers.ire.args=[...]`, and `-c mcp_servers.ire.env.IRE_WORKSPACE="..."`.
 
 ### 10.3 JSONL parsers (`cc::stream`, `codex::stream`)
 
