@@ -18,7 +18,7 @@ use crate::cc::stream::{self as cc_stream, StreamEvent, StreamState};
 use crate::codex::stream as codex_stream;
 use crate::workspace::state::ActiveWorkspace;
 
-#[derive(serde::Deserialize)]
+#[derive(Clone, serde::Deserialize)]
 pub struct ChatOptions {
     pub model: String,
     #[serde(default = "default_provider")]
@@ -86,6 +86,8 @@ pub async fn chat_send(
     );
 
     let result = tokio::task::spawn_blocking(move || {
+        session_clone.set_agent_options(&tab_id, &provider, &options.model, &options.effort);
+
         let mut cmd = if provider == "codex" {
             build_codex_command(&CodexSpawnArgs {
                 bin: &bin,

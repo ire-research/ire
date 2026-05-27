@@ -301,9 +301,7 @@ fn experiment_start(
     crate::experiments::runner::start_experiment(
         params,
         workspace_root,
-        active.tab_id,
-        active.session_id,
-        active.provider,
+        active,
         session_manager.clone(),
         app.clone(),
     )

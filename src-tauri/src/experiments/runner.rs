@@ -7,19 +7,25 @@ use anyhow::{anyhow, Context, Result};
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
-use crate::cc::session::SessionManager;
+use crate::cc::session::{ActiveSession, SessionManager};
 use crate::db::models as db;
 use crate::events;
 
 pub fn start_experiment(
     params: &serde_json::Value,
     workspace_root: &Path,
-    tab_id: String,
-    session_id: String,
-    provider: String,
+    active_session: ActiveSession,
     session_manager: SessionManager,
     app: AppHandle,
 ) -> Result<serde_json::Value> {
+    let ActiveSession {
+        tab_id,
+        session_id,
+        provider,
+        model,
+        effort,
+    } = active_session;
+
     let name = params["name"]
         .as_str()
         .ok_or_else(|| anyhow!("missing name"))?
@@ -82,6 +88,8 @@ pub fn start_experiment(
         tab_id,
         session_id,
         provider,
+        model,
+        effort,
         wake_prompt,
         app: app.clone(),
         session_manager,
@@ -107,6 +115,8 @@ struct MonitorArgs {
     tab_id: String,
     session_id: String,
     provider: String,
+    model: String,
+    effort: String,
     wake_prompt: String,
     app: AppHandle,
     session_manager: SessionManager,
@@ -139,6 +149,8 @@ fn monitor(mut child: Child, args: MonitorArgs) {
         tab_id,
         session_id,
         provider,
+        model,
+        effort,
         wake_prompt,
         app,
         session_manager,
@@ -211,6 +223,8 @@ fn monitor(mut child: Child, args: MonitorArgs) {
                     tab_id: &tab_id,
                     session_id: &session_id,
                     provider: &provider,
+                    model: &model,
+                    effort: &effort,
                     wake_prompt: &wake_prompt,
                     app: &app,
                     session_manager: &session_manager,

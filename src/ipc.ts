@@ -85,12 +85,12 @@ export const ipc = {
     invoke("chat_cancel", { tabId }),
   chatResetSession: (tabId: string): Promise<void> =>
     invoke("chat_reset_session", { tabId }),
-  submitResource: (url: string): Promise<string> =>
-    invoke("submit_resource", { url }),
-  submitLocalResource: (path: string): Promise<string> =>
-    invoke("submit_local_resource", { path }),
-  submitResources: (sources: ResourceSourceInput[]): Promise<string> =>
-    invoke("submit_resources", { sources }),
+  submitResource: (url: string, options: ChatOptions): Promise<string> =>
+    invoke("submit_resource", { url, options }),
+  submitLocalResource: (path: string, options: ChatOptions): Promise<string> =>
+    invoke("submit_local_resource", { path, options }),
+  submitResources: (sources: ResourceSourceInput[], options: ChatOptions): Promise<string> =>
+    invoke("submit_resources", { sources, options }),
   discardResource: (resourceId: string): Promise<void> =>
     invoke("discard_resource", { resourceId }),
   getResourceConfirmPrompt: (): Promise<string> =>

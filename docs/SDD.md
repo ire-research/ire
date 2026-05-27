@@ -332,17 +332,17 @@ User edits the notes pane (raw text)
   → `workspace-event notes-changed { content }` is emitted; the workspace-data slice applies it and the notes pane re-renders.
 ```
 
-No CC turn is triggered. CC reads `notes.md` only if the user explicitly requests it, or if the context warrants it; it is never injected into the system prompt by default.
+No agent turn is triggered. The selected agent reads `notes.md` only if the user explicitly requests it, or if the context warrants it; it is never injected into the system prompt by default.
 
 ### 8.2 Ideas ingestion
 
-Ideas are stored directly in `wiki/ideas.json` through `read_ideas` / `save_ideas_json`. Clicking Add in `IdeasPane` opens an inline draft card; pressing Enter writes a new `{ id, text, trashed: false, order }` entry and reorders active ideas. Clicking the trash icon soft-deletes by setting `trashed: true`; trashed ideas remain in JSON but are hidden from the pane. Drag-to-reorder rewrites active `order` values. No CC turn is triggered.
+Ideas are stored directly in `wiki/ideas.json` through `read_ideas` / `save_ideas_json`. Clicking Add in `IdeasPane` opens an inline draft card; pressing Enter writes a new `{ id, text, trashed: false, order }` entry and reorders active ideas. Clicking the trash icon soft-deletes by setting `trashed: true`; trashed ideas remain in JSON but are hidden from the pane. Drag-to-reorder rewrites active `order` values. No agent turn is triggered.
 
 ### 8.3 Resource ingestion
 
 ```
 User queues one or more URLs/files → Ingest
-  → submit_resources(sources) Tauri command
+  → submit_resources(sources, options: { provider, model, effort }) Tauri command
   → Rust:
       1. URL resources: fetch URL with reqwest (20 s timeout, follow redirects)
       2. URL arXiv shortcut: if URL is arxiv.org/abs/<id> or arxiv.org/pdf/<id>,
@@ -365,16 +365,17 @@ User queues one or more URLs/files → Ingest
          'local_file', or 'batch')
       8. open a new resource chat tab (see §9.4), labelled by URL hostname, filename,
          or "<N> sources"
-      9. kick a CC turn in that tab with prompt:
+      9. kick an agent turn in that tab, using the composer-selected
+         provider/model/effort, with prompt:
            "Read <cache file(s)> (source: <source ref(s)>). Provide one comprehensive
             executive summary — what the material is, what is relevant to this project,
             why it matters, and how it could be used. Use bullet points.
             Do NOT write to the wiki yet."
 ```
 
-CC streams the summary into the resource tab. When the turn ends, **Confirm** and **Discard** buttons appear.
+The selected agent streams the summary into the resource tab. When the turn ends, **Confirm** and **Discard** buttons appear.
 
-**Confirm**: triggers a second CC turn in the same tab with the instruction to write the summary to `resources/<slug>.md` via the `wiki.write` MCP tool. Frontmatter follows the schema in `.ire/_SYSTEM.md`: `title`, `type: summary`, `sources: [<all original sources in order>]`, `updated: YYYY-MM-DD`, and `summary`. URL sources use the original URL; local file sources use `file:<sha256>:<filename>`. Body starts with a `#` heading matching the title, then the summary. The tab auto-closes when this second CC turn ends. The written file is indexed in SQLite by matching every stored source ref in `sources`, but no git commit is created by IRE.
+**Confirm**: triggers a second agent turn in the same tab with the instruction to write the summary to `resources/<slug>.md` via the `wiki.write` MCP tool. This turn also uses the current composer-selected provider/model/effort and resumes the resource tab only when that provider has an existing session id. Frontmatter follows the schema in `.ire/_SYSTEM.md`: `title`, `type: summary`, `sources: [<all original sources in order>]`, `updated: YYYY-MM-DD`, and `summary`. URL sources use the original URL; local file sources use `file:<sha256>:<filename>`. Body starts with a `#` heading matching the title, then the summary. The tab auto-closes when this second agent turn ends. The written file is indexed in SQLite by matching every stored source ref in `sources`, but no git commit is created by IRE.
 
 **Discard**: deletes `.ire/cache/<sha256>.txt` or `.ire/cache/<batch_sha>/`, marks the DB row `status=rejected`, closes the tab immediately. No wiki file is written.
 
@@ -435,7 +436,7 @@ T2  MCP server forwards to IRE Rust backend over its private channel:
                  .spawn()
        - returns { uuid, status: "started" } to CC
 T3  CC's response to the user: "Started experiment <uuid>; I'll come back
-    when it's done." Then this CC turn ENDS naturally.
+    when it's done." Then this agent turn ENDS naturally.
 T4  Backend monitor task waits on the child PID (off-thread). Frontend
     receives experiment-status events (started, log lines, …) and renders
     a live tail.
@@ -490,7 +491,7 @@ IRE supports multiple independent chat tabs in the central pane.
 User types → handleSend(tabId)
   → beginAssistantMessage(tabId)
   → ipc.chatSend(tabId, text)
-  → Rust: resume CC for tabId with --resume <session_id>
+  → Rust: resume the selected provider for tabId with its provider-scoped session id
   → events emitted as { tab_id, stream_id, event_id, event }
   → frontend routes to tabId's messages
   → Done → finishMessage(tabId)
@@ -499,11 +500,11 @@ User types → handleSend(tabId)
 **Backend-initiated turn (resource tab)**
 
 ```
-submit_resource() kicks CC with a new tab_id
+submit_resource() kicks the composer-selected agent with a new tab_id
   → emits tab-created { tab_id, label, kind: "resource" }
   → frontend adds resource tab, switches to it
-  → CC emits { tab_id, Init } → frontend begins assistant message
-  → CC streams summary → Done → resourceStatus = "ready"
+  → agent emits { tab_id, Init } → frontend begins assistant message
+  → agent streams summary → Done → resourceStatus = "ready"
   → Confirm / Discard buttons appear in the tab
 ```
 
@@ -585,12 +586,14 @@ Each chat tab (see §9.4) has its own provider-scoped `session_id`, stored insid
 struct PerTabSession {
     session_id: Option<String>,
     session_provider: Option<String>,
+    model: Option<String>,
+    effort: Option<String>,
     running_pid: Option<u32>,
 }
 pub struct SessionManager(Arc<Mutex<HashMap<String, PerTabSession>>>);
 ```
 
-`session_id` is captured from the first `Init` event for a given `tab_id` and provider, then stored in the map. Subsequent `chat_send` calls for that same tab and provider pass `--resume <session_id>` for Claude or `codex exec resume <thread_id>` for Codex. Switching providers in a tab starts a fresh provider session instead of cross-resuming with the wrong CLI. Reset clears the `session_id` entry for the tab; the next send starts a fresh session. `experiment.start` records the active `tab_id`, `session_id`, and `session_provider` from the running turn before spawning the detached command; the monitor uses those values to fire the wake-up through the same provider instead of assuming Claude Code.
+`session_id` is captured from the first `Init` event for a given `tab_id` and provider, then stored in the map. The model and effort selected for each spawned turn are stored alongside that provider. Subsequent `chat_send` calls for that same tab and provider pass `--resume <session_id>` for Claude or `codex exec resume <thread_id>` for Codex. Switching providers in a tab starts a fresh provider session instead of cross-resuming with the wrong CLI. Reset clears the `session_id` entry for the tab; the next send starts a fresh session. `experiment.start` records the active `tab_id`, `session_id`, `session_provider`, `model`, and `effort` from the running turn before spawning the detached command; the monitor uses those values to fire the wake-up through the same provider and model settings instead of assuming Claude Code.
 
 ---
 
@@ -861,9 +864,9 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 | `save_ideas_json` | `{ ideas }` | `{}` (writes `ideas.json`) |
 | `read_pulse` | — | `{ research_question, this_week }` |
 | `save_pulse_field` | `{ field: "research_question" \| "this_week", content }` | `{}` (updates `pulse.json`) |
-| `submit_resource` | `{ url }` | `resource_id: string` |
-| `submit_local_resource` | `{ path }` | `resource_id: string` |
-| `submit_resources` | `{ sources: ({ kind: "url", url } \| { kind: "local_file", path })[] }` | `resource_id: string` |
+| `submit_resource` | `{ url, options: { model: string, provider: "claude" \| "codex", effort: EffortLevel } }` | `resource_id: string` |
+| `submit_local_resource` | `{ path, options: { model: string, provider: "claude" \| "codex", effort: EffortLevel } }` | `resource_id: string` |
+| `submit_resources` | `{ sources: ({ kind: "url", url } \| { kind: "local_file", path })[], options: { model: string, provider: "claude" \| "codex", effort: EffortLevel } }` | `resource_id: string` |
 | `discard_resource` | `{ resource_id }` | `{}` (deletes cache file, marks DB row `rejected`, emits `workspace-event resource-deleted`) |
 | `list_resources` | — | `ResourceItem[]` (only `summarized` entries) |
 | `get_resource_confirm_prompt` | — | `string` (the second-turn confirm prompt loaded from `assets/prompts/`) |
@@ -1076,9 +1079,9 @@ Each phase ends with a demoable milestone.
 
 **Phase 3 — CC subprocess layer.** Binary discovery + spawn + NDJSON parser + session management. A debug "Send" button next to the chat pane that sends a raw message and renders streaming text only (no tool cards yet). No MCP yet. *Milestone:* user can chat with CC inside the central pane, multi-turn via `--resume`. ✅
 
-**Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. CC config wired up via `--mcp-config`. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` handles atomic writes, index regeneration, typed `workspace-event` dispatch, and renames without creating git commits. System prompt composed from wiki context files on every CC turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and CC actually does it. ✅
+**Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. Agent MCP config is wired through Claude Code's `--mcp-config` or Codex's `-c mcp_servers.*` flags. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` handles atomic writes, index regeneration, typed `workspace-event` dispatch, and renames without creating git commits. System prompt composed from wiki context files on every agent turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and the selected agent actually does it. ✅
 
-**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML/local-file extractors. `submit_resources` accepts an ordered list of URL and local-file sources, extracts all text all-or-nothing, writes one cache file for a single source or `.ire/cache/<batch_sha>/source-NNN.txt` for multiple sources, inserts one DB row (with `url` holding a single source ref or a JSON-encoded array of source refs for batches), emits `tab-created`, and kicks one CC summarisation turn. The legacy `submit_resource` and `submit_local_resource` commands remain available for single-source callers. Confirm sends a second CC turn that writes `resources/<slug>.md` via `wiki.write`; `WikiStore::write` parses the new file's frontmatter `sources:` array, lists unindexed DB rows, links any row whose stored source refs (schema-aligned URL or `file:<sha256>:<filename>`) are all present in the file's `sources:` array, extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), and emits `workspace-event resource-changed { resource }` for each linked row — all before `wiki.write` returns, so the panel updates the moment the file is written. Discard calls `discard_resource` (deletes cache, marks `rejected`, emits `resource-deleted`). Notes and ideas write directly to disk without committing. The resources list shows only `summarized` resources with their title and non-null `wiki_path`; no status label is shown. *Milestone:* ingest one or more supported sources → one resource summary appears in the right pane. ✅
+**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML/local-file extractors. `submit_resources` accepts an ordered list of URL and local-file sources plus the composer-selected provider/model/effort, extracts all text all-or-nothing, writes one cache file for a single source or `.ire/cache/<batch_sha>/source-NNN.txt` for multiple sources, inserts one DB row (with `url` holding a single source ref or a JSON-encoded array of source refs for batches), emits `tab-created`, and kicks one selected-agent summarisation turn. The legacy `submit_resource` and `submit_local_resource` commands remain available for single-source callers. Confirm sends a second selected-agent turn that writes `resources/<slug>.md` via `wiki.write`; `WikiStore::write` parses the new file's frontmatter `sources:` array, lists unindexed DB rows, links any row whose stored source refs (schema-aligned URL or `file:<sha256>:<filename>`) are all present in the file's `sources:` array, extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), and emits `workspace-event resource-changed { resource }` for each linked row — all before `wiki.write` returns, so the panel updates the moment the file is written. Discard calls `discard_resource` (deletes cache, marks `rejected`, emits `resource-deleted`). Notes and ideas write directly to disk without committing. The resources list shows only `summarized` resources with their title and non-null `wiki_path`; no status label is shown. *Milestone:* ingest one or more supported sources → one resource summary appears in the right pane. ✅
 
 **Phase 6 — Experiments.** `experiment.start`, detached subprocess, monitor, wake-up turn composition. Experiment cards in chat with live log tail. *Milestone:* an agent can run a Python script ablation, tell the user "I'll be back", and resume with results when the script exits. ✅
 

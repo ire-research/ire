@@ -21,6 +21,8 @@ pub struct FireWakeupArgs<'a> {
     pub tab_id: &'a str,
     pub session_id: &'a str,
     pub provider: &'a str,
+    pub model: &'a str,
+    pub effort: &'a str,
     pub wake_prompt: &'a str,
     pub app: &'a AppHandle,
     pub session_manager: &'a SessionManager,
@@ -34,6 +36,8 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         tab_id,
         session_id,
         provider,
+        model,
+        effort,
         wake_prompt,
         app,
         session_manager,
@@ -91,8 +95,8 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
             bin: &bin,
             workspace: workspace_root,
             message: &message,
-            model: "gpt-5.3-codex",
-            reasoning_effort: "high",
+            model,
+            reasoning_effort: effort,
             system_prompt: Some(&system_prompt),
             mcp_config: mcp_config.as_deref(),
             resume_id: resume_id.as_deref(),
@@ -104,8 +108,8 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
             resume_id: resume_id.as_deref(),
             mcp_config: mcp_config.as_deref(),
             system_prompt: Some(&system_prompt),
-            model: "claude-haiku-4-5-20251001",
-            effort: "high",
+            model,
+            effort,
         }),
     };
 
@@ -132,6 +136,7 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
     let mut state = StreamState::default();
     let tab_id_owned = tab_id.to_string();
     let provider_owned = provider.to_string();
+    session_manager.set_agent_options(tab_id, provider, model, effort);
     let stream_id = format!("{tab_id}:{pid}");
     let mut event_id = 0_u64;
 

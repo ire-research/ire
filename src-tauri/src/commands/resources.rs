@@ -8,7 +8,11 @@ use tauri::{Emitter, State};
 use crate::cc::discovery::find_claude_binary;
 use crate::cc::session::SessionManager;
 use crate::cc::spawn::{build_command, SpawnArgs};
-use crate::cc::stream::{dispatch, StreamEvent, StreamState};
+use crate::cc::stream::{self as cc_stream, StreamEvent, StreamState};
+use crate::codex::discovery::find_codex_binary;
+use crate::codex::spawn::{build_codex_command, CodexSpawnArgs};
+use crate::codex::stream as codex_stream;
+use crate::commands::chat::ChatOptions;
 use crate::db::models;
 use crate::events;
 use crate::prompts;
@@ -64,6 +68,7 @@ pub async fn submit_resource(
     active: State<'_, ActiveWorkspace>,
     session: State<'_, SessionManager>,
     url: String,
+    options: ChatOptions,
 ) -> Result<String, String> {
     tracing::info!(url = %url, "submit_resource");
 
@@ -108,6 +113,7 @@ pub async fn submit_resource(
             cache_rel: format!(".ire/cache/{sha256}.txt"),
         }],
         hostname_from_url(&url),
+        options,
     )?;
 
     tracing::info!(sha256 = %sha256, "submit_resource complete");
@@ -120,6 +126,7 @@ pub async fn submit_local_resource(
     active: State<'_, ActiveWorkspace>,
     session: State<'_, SessionManager>,
     path: String,
+    options: ChatOptions,
 ) -> Result<String, String> {
     tracing::info!(path = %path, "submit_local_resource");
 
@@ -173,6 +180,7 @@ pub async fn submit_local_resource(
             cache_rel: format!(".ire/cache/{sha256}.txt"),
         }],
         source_label,
+        options,
     )?;
 
     tracing::info!(sha256 = %sha256, "submit_local_resource complete");
@@ -185,6 +193,7 @@ pub async fn submit_resources(
     active: State<'_, ActiveWorkspace>,
     session: State<'_, SessionManager>,
     sources: Vec<ResourceSourceInput>,
+    options: ChatOptions,
 ) -> Result<String, String> {
     tracing::info!(source_count = sources.len(), "submit_resources");
 
@@ -268,6 +277,7 @@ pub async fn submit_resources(
         resource_id.clone(),
         summary_sources,
         tab_label,
+        options,
     )?;
 
     tracing::info!(resource_id = %resource_id, "submit_resources complete");
@@ -394,7 +404,18 @@ fn start_resource_summary(
     sha256: String,
     sources: Vec<SummarySource>,
     tab_label: String,
+    options: ChatOptions,
 ) -> Result<(), String> {
+    if options.provider != "claude" && options.provider != "codex" {
+        return Err(format!("unsupported provider: {}", options.provider));
+    }
+
+    let bin = if options.provider == "codex" {
+        find_codex_binary().map_err(|e| e.to_string())?.path
+    } else {
+        find_claude_binary().map_err(|e| e.to_string())?.path
+    };
+
     let tab_id = uuid::Uuid::new_v4().to_string();
     app_handle
         .emit(
@@ -408,12 +429,14 @@ fn start_resource_summary(
         )
         .map_err(|e| e.to_string())?;
 
-    // Fire-and-forget: kick a CC turn to summarise the cached source file(s).
-    let bin = find_claude_binary().map_err(|e| e.to_string())?.path;
+    // Fire-and-forget: kick an agent turn to summarise the cached source file(s).
     let app = app_handle.clone();
     let workspace_clone2 = workspace_path.clone();
     let sources_clone = sources.clone();
     let tab_id_clone = tab_id.clone();
+    let provider = options.provider.clone();
+    let model = options.model.clone();
+    let effort = options.effort.clone();
 
     tokio::spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
@@ -421,36 +444,56 @@ fn start_resource_summary(
             let system_prompt = build_resource_system_prompt(&workspace_clone2);
             let prompt = build_resource_summary_prompt(&sources_clone);
 
-            let mut cmd = build_command(&SpawnArgs {
-                bin: &bin,
-                workspace: &workspace_clone2,
-                message: &prompt,
-                resume_id: None,
-                mcp_config: if mcp_config.exists() {
-                    Some(&mcp_config)
-                } else {
-                    None
-                },
-                system_prompt: Some(&system_prompt),
-                model: "claude-haiku-4-5-20251001",
-                effort: "high",
-            });
+            let mcp_config = if mcp_config.exists() {
+                Some(mcp_config)
+            } else {
+                None
+            };
+
+            let mut cmd = if provider == "codex" {
+                build_codex_command(&CodexSpawnArgs {
+                    bin: &bin,
+                    workspace: &workspace_clone2,
+                    message: &prompt,
+                    model: &model,
+                    reasoning_effort: &effort,
+                    system_prompt: Some(&system_prompt),
+                    mcp_config: mcp_config.as_deref(),
+                    resume_id: None,
+                })
+            } else {
+                build_command(&SpawnArgs {
+                    bin: &bin,
+                    workspace: &workspace_clone2,
+                    message: &prompt,
+                    resume_id: None,
+                    mcp_config: mcp_config.as_deref(),
+                    system_prompt: Some(&system_prompt),
+                    model: &model,
+                    effort: &effort,
+                })
+            };
 
             let mut child = cmd.spawn().map_err(|e| e.to_string())?;
             let pid = child.id();
             let stream_id = format!("{tab_id_clone}:{pid}");
             let mut event_id = 0_u64;
+            session.set_agent_options(&tab_id_clone, &provider, &model, &effort);
             session.set_pid(&tab_id_clone, pid);
-            tracing::info!(tab_id = %tab_id_clone, pid = pid, "resource CC turn spawned");
+            tracing::info!(tab_id = %tab_id_clone, provider = %provider, pid = pid, "resource agent turn spawned");
 
             let stdout = child.stdout.take().ok_or("no stdout")?;
             let mut state = StreamState::default();
 
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
-                    dispatch(&json, &mut state, &mut |event| {
+                    let mut emit_event = |event: StreamEvent| {
                         if let StreamEvent::Init { ref session_id } = event {
-                            session.set_session_id(&tab_id_clone, session_id.clone());
+                            session.set_session_id_for_provider(
+                                &tab_id_clone,
+                                &provider,
+                                session_id.clone(),
+                            );
                         }
                         event_id += 1;
                         let _ = app.emit(
@@ -462,7 +505,12 @@ fn start_resource_summary(
                                 "event": &event,
                             }),
                         );
-                    });
+                    };
+                    if provider == "codex" {
+                        codex_stream::dispatch(&json, &mut state, &mut emit_event);
+                    } else {
+                        cc_stream::dispatch(&json, &mut state, &mut emit_event);
+                    }
                 }
             }
 
@@ -487,7 +535,7 @@ fn start_resource_summary(
         .await;
 
         if let Err(e) = result {
-            tracing::warn!(error = %e, "resource CC turn join error");
+            tracing::warn!(error = %e, "resource agent turn join error");
         }
     });
 
