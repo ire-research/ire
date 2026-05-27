@@ -193,6 +193,18 @@ const paths: Record<string, JSX.Element> = {
       <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
     </>
   ),
+  search: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M16.5 16.5L21 21" />
+    </>
+  ),
+  terminal: (
+    <>
+      <path d="M4 17l6-6-6-6" />
+      <path d="M12 19h8" />
+    </>
+  ),
 };
 
 export function Icon({ name, className }: Props) {

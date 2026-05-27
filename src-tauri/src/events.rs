@@ -22,7 +22,12 @@ impl EventSource {
     }
 }
 
-pub fn emit_pulse_changed(app: &AppHandle, source: EventSource, research_question: &str, this_week: &str) {
+pub fn emit_pulse_changed(
+    app: &AppHandle,
+    source: EventSource,
+    research_question: &str,
+    this_week: &str,
+) {
     let _ = app.emit(
         CHANNEL,
         json!({

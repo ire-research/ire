@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ipc, pickResourceFiles, type ResourceSourceInput } from "../ipc";
+import { useChatOptions } from "../state/chatOptions";
 import { Icon } from "./Icon";
 
 type QueuedSource =
@@ -32,6 +33,7 @@ interface Props {
 }
 
 export function AddResourceModal({ onClose }: Props) {
+  const { model, provider, effort } = useChatOptions();
   const [url, setUrl] = useState("");
   const [sources, setSources] = useState<QueuedSource[]>([]);
   const [loading, setLoading] = useState(false);
@@ -89,7 +91,7 @@ export function AddResourceModal({ onClose }: Props) {
     setLoading(true);
     clearError();
     try {
-      await ipc.submitResources(sources.map(toInput));
+      await ipc.submitResources(sources.map(toInput), { model, provider, effort });
       onClose();
     } catch (e) {
       const message = String(e);

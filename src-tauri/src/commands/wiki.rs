@@ -30,7 +30,10 @@ pub fn read_wiki_file(
         Ok(_) => tracing::debug!(path = %path, "wiki file read"),
         Err(e) => tracing::warn!(path = %path, error = %e, "read_wiki_file failed"),
     }
-    result.map(|(content, frontmatter)| WikiFileResult { content, frontmatter })
+    result.map(|(content, frontmatter)| WikiFileResult {
+        content,
+        frontmatter,
+    })
 }
 
 #[tauri::command]
@@ -41,7 +44,9 @@ pub fn save_notes(
 ) -> Result<(), String> {
     tracing::info!(bytes = content.len(), "save_notes");
     let store = wiki_store(&active)?;
-    store.write("notes.md", &content, &app).map_err(|e| e.to_string())?;
+    store
+        .write("notes.md", &content, &app)
+        .map_err(|e| e.to_string())?;
     tracing::info!("notes.md saved");
     Ok(())
 }
@@ -55,7 +60,9 @@ pub fn save_wiki_file(
 ) -> Result<(), String> {
     tracing::info!(path = %path, bytes = content.len(), "save_wiki_file");
     let store = wiki_store(&active)?;
-    store.write(&path, &content, &app).map_err(|e| e.to_string())
+    store
+        .write(&path, &content, &app)
+        .map_err(|e| e.to_string())
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
@@ -92,7 +99,10 @@ pub fn save_pulse_field(
 pub(crate) fn read_pulse_content(store: &WikiStore) -> anyhow::Result<PulseContent> {
     let path = store.wiki_root.join("pulse.json");
     if !path.exists() {
-        return Ok(PulseContent { research_question: String::new(), this_week: String::new() });
+        return Ok(PulseContent {
+            research_question: String::new(),
+            this_week: String::new(),
+        });
     }
     let raw = std::fs::read_to_string(&path)?;
     Ok(serde_json::from_str(&raw)?)
@@ -152,5 +162,7 @@ pub fn save_ideas_json(
 ) -> Result<(), String> {
     let store = wiki_store(&active)?;
     let json = serde_json::to_string_pretty(&ideas).map_err(|e| e.to_string())?;
-    store.write("ideas.json", &json, &app).map_err(|e| e.to_string())
+    store
+        .write("ideas.json", &json, &app)
+        .map_err(|e| e.to_string())
 }

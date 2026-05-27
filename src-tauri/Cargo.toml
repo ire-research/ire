@@ -41,6 +41,7 @@ tar = "0.4"
 sysinfo = "0.32"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 roxmltree = "0.20"
+toml = "0.8"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

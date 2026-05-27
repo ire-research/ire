@@ -1,24 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import type { AskAnswer, AskBlockState, AssistantMessage, ChatMessage, ToolCallState } from "../../types";
+import type { AskAnswer, AskBlockState, AssistantMessage, ChatMessage } from "../../types";
 import { AskQuestionCard } from "./AskQuestionCard";
 import { ExperimentCard } from "./ExperimentCard";
 import { MessageMarkdown } from "./MessageMarkdown";
-import { Icon } from "../Icon";
-
-// CC may prefix MCP tool names with the server name (e.g. "ire__experiment.start"
-// or "mcp__ire__experiment__start"). Strip any prefix to get the bare tool name.
-function bareToolName(name: string): string {
-  // Split on __ and take everything after the last server-name segment
-  const parts = name.split("__");
-  if (parts.length === 1) return name;
-  // The bare name is the last part; dots may have been converted to underscores
-  // by some CC versions, so normalise underscores → dots for the comparison only.
-  return parts[parts.length - 1].replace(/_/g, ".");
-}
-
-function isExperimentStart(toolName: string): boolean {
-  return bareToolName(toolName) === "experiment.start";
-}
+import { ToolCard } from "./ToolCard";
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -90,7 +75,7 @@ function AssistantBubble({ msg, onAskSubmit }: { msg: AssistantMessage; onAskSub
         }
 
         if (block.kind === "tool") {
-          return isExperimentStart(block.tool.tool_name) ? (
+          return block.tool.kind === "experiment_start" ? (
             <ExperimentCard key={block.id} tool={block.tool} />
           ) : (
             <ToolCard key={block.id} tool={block.tool} />
@@ -180,8 +165,8 @@ function messageScrollKey(message: ChatMessage | undefined): string {
       if (block.kind === "tool") {
         return [
           block.tool.tool_id,
-          block.tool.isDone,
-          block.tool.output_full?.length ?? 0,
+          block.tool.status,
+          block.tool.output?.full?.length ?? 0,
           block.tool.logLines?.length ?? 0,
         ].join(":");
       }
@@ -191,57 +176,4 @@ function messageScrollKey(message: ChatMessage | undefined): string {
       return `${block.kind}:${block.text.length}`;
     })
     .join("|");
-}
-
-function ToolCard({ tool }: { tool: ToolCallState }) {
-  const [expanded, setExpanded] = useState(false);
-  const canExpand = !!(tool.input_full || tool.output_full);
-  const input = formatToolInput(tool);
-
-  return (
-    <div className="w-full flex flex-col">
-      <div
-        className="w-full bg-surface-container-low border border-outline-variant rounded px-3 py-2 flex items-center gap-3 text-xs cursor-pointer hover:bg-surface-container transition-colors"
-        onClick={() => canExpand && setExpanded((v) => !v)}
-      >
-        <Icon name="build" className="w-[16px] h-[16px] text-on-surface-variant" />
-        <span className="font-mono text-on-surface-variant flex-1">{tool.tool_name}</span>
-      </div>
-      {expanded && (
-        <div className="bg-surface-container-lowest border-x border-b border-outline-variant rounded-b overflow-hidden font-mono text-[11px] leading-relaxed">
-          {input && <ToolIoField label="IN" content={input} />}
-          {tool.output_full && <ToolIoField label="OUT" content={tool.output_full} />}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ToolIoField({ label, content }: { label: string; content: string }) {
-  return (
-    <div className="grid grid-cols-[42px_minmax(0,1fr)] border-t border-outline-variant first:border-t-0">
-      <div className="px-3 py-2 text-on-surface-variant/60 uppercase">{label}</div>
-      <pre className="px-3 py-2 text-on-surface-variant whitespace-pre-wrap break-words overflow-x-auto">{content}</pre>
-    </div>
-  );
-}
-
-function formatToolInput(tool: ToolCallState): string | null {
-  if (!tool.input_full) return null;
-
-  try {
-    const parsed = JSON.parse(tool.input_full);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      if (typeof parsed.command === "string" && parsed.command.length > 0) {
-        return parsed.command;
-      }
-
-      const values = Object.values(parsed).filter((value): value is string => typeof value === "string" && value.length > 0);
-      if (values.length === 1) return values[0];
-    }
-  } catch {
-    // Fall back to the raw input below.
-  }
-
-  return tool.input_full;
 }

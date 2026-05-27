@@ -13,7 +13,10 @@ pub fn fetch_and_extract(url: &str) -> Result<FetchResult> {
         match super::arxiv::fetch_latex_source(&id) {
             Ok(text) => {
                 tracing::info!(arxiv_id = %id, bytes = text.len(), "fetched arXiv LaTeX source");
-                return Ok(FetchResult { text, content_type: "application/x-tex".to_string() });
+                return Ok(FetchResult {
+                    text,
+                    content_type: "application/x-tex".to_string(),
+                });
             }
             Err(e) => {
                 tracing::warn!(arxiv_id = %id, error = %e, "arXiv LaTeX fetch failed, falling back to PDF");

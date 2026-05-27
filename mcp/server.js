@@ -154,12 +154,11 @@ const TOOLS = [
       type: 'object',
       properties: {
         name: { type: 'string', description: 'Short human-readable experiment name' },
-        plan_md: { type: 'string', description: 'Full experiment plan in markdown' },
         command: { type: 'string', description: 'Shell command to run (passed to sh -c)' },
         working_dir: { type: 'string', description: 'Working directory (defaults to workspace root)' },
         wake_prompt: { type: 'string', description: 'Prompt to send when the experiment finishes' },
       },
-      required: ['name', 'plan_md', 'command', 'wake_prompt'],
+      required: ['name', 'command', 'wake_prompt'],
     },
   },
   {

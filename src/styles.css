@@ -171,7 +171,7 @@
 
 /* Auto-resizing composer textarea */
 #composer-textarea {
-  min-height: 52px;
+  min-height: 100px;
   max-height: 240px;
   overflow-y: auto;
   resize: none;

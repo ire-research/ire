@@ -3,7 +3,18 @@ use std::sync::{Arc, Mutex};
 
 struct PerTabSession {
     session_id: Option<String>,
+    session_provider: Option<String>,
+    model: Option<String>,
+    effort: Option<String>,
     running_pid: Option<u32>,
+}
+
+pub struct ActiveSession {
+    pub tab_id: String,
+    pub session_id: String,
+    pub provider: String,
+    pub model: String,
+    pub effort: String,
 }
 
 /// Holds per-tab CC session state. Clone is cheap (Arc clone).
@@ -17,15 +28,48 @@ impl Default for SessionManager {
 }
 
 impl SessionManager {
-    pub fn get_session_id(&self, tab_id: &str) -> Option<String> {
-        self.0.lock().unwrap().get(tab_id)?.session_id.clone()
+    pub fn get_session_id_for_provider(&self, tab_id: &str, provider: &str) -> Option<String> {
+        let guard = self.0.lock().unwrap();
+        let session = guard.get(tab_id)?;
+        if session.session_provider.as_deref().unwrap_or("claude") == provider {
+            session.session_id.clone()
+        } else {
+            None
+        }
     }
 
-    pub fn set_session_id(&self, tab_id: &str, sid: String) {
+    pub fn set_session_id_for_provider(&self, tab_id: &str, provider: &str, sid: String) {
         let mut map = self.0.lock().unwrap();
-        map.entry(tab_id.to_string())
-            .or_insert_with(|| PerTabSession { session_id: None, running_pid: None })
-            .session_id = Some(sid);
+        let session = map
+            .entry(tab_id.to_string())
+            .or_insert_with(|| PerTabSession {
+                session_id: None,
+                session_provider: None,
+                model: None,
+                effort: None,
+                running_pid: None,
+            });
+        session.session_id = Some(sid);
+        session.session_provider = Some(provider.to_string());
+    }
+
+    pub fn set_agent_options(&self, tab_id: &str, provider: &str, model: &str, effort: &str) {
+        let mut map = self.0.lock().unwrap();
+        let session = map
+            .entry(tab_id.to_string())
+            .or_insert_with(|| PerTabSession {
+                session_id: None,
+                session_provider: None,
+                model: None,
+                effort: None,
+                running_pid: None,
+            });
+        if session.session_provider.as_deref() != Some(provider) {
+            session.session_id = None;
+            session.session_provider = Some(provider.to_string());
+        }
+        session.model = Some(model.to_string());
+        session.effort = Some(effort.to_string());
     }
 
     pub fn get_pid(&self, tab_id: &str) -> Option<u32> {
@@ -35,7 +79,13 @@ impl SessionManager {
     pub fn set_pid(&self, tab_id: &str, pid: u32) {
         let mut map = self.0.lock().unwrap();
         map.entry(tab_id.to_string())
-            .or_insert_with(|| PerTabSession { session_id: None, running_pid: None })
+            .or_insert_with(|| PerTabSession {
+                session_id: None,
+                session_provider: None,
+                model: None,
+                effort: None,
+                running_pid: None,
+            })
             .running_pid = Some(pid);
     }
 
@@ -48,17 +98,30 @@ impl SessionManager {
     pub fn reset(&self, tab_id: &str) {
         if let Some(s) = self.0.lock().unwrap().get_mut(tab_id) {
             s.session_id = None;
+            s.session_provider = None;
+            s.model = None;
+            s.effort = None;
         }
     }
 
-    /// Returns (tab_id, session_id) for the first tab with a running CC subprocess.
-    pub fn get_active_session(&self) -> Option<(String, String)> {
+    /// Returns the first tab with a running agent subprocess.
+    pub fn get_active_session(&self) -> Option<ActiveSession> {
         let guard = self.0.lock().unwrap();
         guard
             .iter()
             .find(|(_, s)| s.running_pid.is_some())
             .and_then(|(tab_id, s)| {
-                s.session_id.as_ref().map(|sid| (tab_id.clone(), sid.clone()))
+                let sid = s.session_id.as_ref()?;
+                let provider = s.session_provider.clone()?;
+                let model = s.model.clone()?;
+                let effort = s.effort.clone()?;
+                Some(ActiveSession {
+                    tab_id: tab_id.clone(),
+                    session_id: sid.clone(),
+                    provider,
+                    model,
+                    effort,
+                })
             })
     }
 

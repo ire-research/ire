@@ -217,6 +217,95 @@ pub fn update_resource_indexed(
     Ok(())
 }
 
+// ── Chat Sessions ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Clone)]
+pub struct ChatSessionRow {
+    pub session_uuid: String,
+    pub tab_label: String,
+    pub provider: String,
+    pub model: String,
+    pub started_at: String,
+    pub ended_at: String,
+    pub message_count: i64,
+    pub first_user_msg: Option<String>,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn insert_chat_session(
+    ire_dir: &Path,
+    session_uuid: &str,
+    tab_label: &str,
+    provider: &str,
+    model: &str,
+    started_at: &str,
+    ended_at: &str,
+    message_count: i64,
+    first_user_msg: Option<&str>,
+    messages_json: &str,
+) -> Result<()> {
+    let conn = open(ire_dir)?;
+    // Upsert: insert on first save, update mutable fields on subsequent saves.
+    // started_at is intentionally excluded from the UPDATE so it stays as the
+    // original session start time even as the session grows.
+    conn.execute(
+        "INSERT INTO chat_sessions \
+         (session_uuid, tab_label, provider, model, started_at, ended_at, message_count, first_user_msg, messages_json) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
+         ON CONFLICT(session_uuid) DO UPDATE SET \
+             tab_label      = excluded.tab_label, \
+             provider       = excluded.provider, \
+             model          = excluded.model, \
+             ended_at       = excluded.ended_at, \
+             message_count  = excluded.message_count, \
+             first_user_msg = excluded.first_user_msg, \
+             messages_json  = excluded.messages_json",
+        params![session_uuid, tab_label, provider, model, started_at, ended_at, message_count, first_user_msg, messages_json],
+    )?;
+    Ok(())
+}
+
+pub fn list_chat_sessions(ire_dir: &Path, limit: usize) -> Result<Vec<ChatSessionRow>> {
+    let conn = open(ire_dir)?;
+    let mut stmt = conn.prepare(
+        "SELECT session_uuid, tab_label, provider, model, started_at, ended_at, message_count, first_user_msg \
+         FROM chat_sessions ORDER BY ended_at DESC LIMIT ?1",
+    )?;
+    let rows = stmt.query_map(params![limit as i64], |r| {
+        Ok(ChatSessionRow {
+            session_uuid: r.get(0)?,
+            tab_label: r.get(1)?,
+            provider: r.get(2)?,
+            model: r.get(3)?,
+            started_at: r.get(4)?,
+            ended_at: r.get(5)?,
+            message_count: r.get(6)?,
+            first_user_msg: r.get(7)?,
+        })
+    })?;
+    rows.map(|r| r.context("chat session row")).collect()
+}
+
+pub fn get_chat_session_messages(ire_dir: &Path, session_uuid: &str) -> Result<Option<String>> {
+    let conn = open(ire_dir)?;
+    let mut stmt =
+        conn.prepare("SELECT messages_json FROM chat_sessions WHERE session_uuid = ?1")?;
+    let mut rows = stmt.query(params![session_uuid])?;
+    rows.next()?
+        .map(|r| r.get::<_, String>(0))
+        .transpose()
+        .context("get_chat_session_messages")
+}
+
+pub fn delete_chat_session(ire_dir: &Path, session_uuid: &str) -> Result<()> {
+    let conn = open(ire_dir)?;
+    conn.execute(
+        "DELETE FROM chat_sessions WHERE session_uuid = ?1",
+        params![session_uuid],
+    )?;
+    Ok(())
+}
+
 /// Returns only confirmed (summarized) resources — the ones visible to the user.
 pub fn list_resources(ire_dir: &Path) -> Result<Vec<ResourceRow>> {
     let conn = open(ire_dir)?;
