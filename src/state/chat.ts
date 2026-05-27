@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AskAnswer, AskQuestion, AssistantContentBlock, AssistantMessage, ExperimentStatus, ResourceStatus, Tab, ToolCallState } from "../types";
+import type { AskAnswer, AskQuestion, AssistantContentBlock, AssistantMessage, ChatMessage, ChatOptions, ExperimentStatus, ResourceStatus, Tab, ToolCallState, ToolIo, ToolMeta, ToolStatus } from "../types";
 
 const MAIN_TAB_ID = "main";
 
@@ -36,7 +36,7 @@ interface ChatStore {
 
   // Tool call management
   addTool: (tabId: string, msgId: string, tool: ToolCallState) => void;
-  markToolDone: (tabId: string, toolId: string, outputPreview?: string | null, outputFull?: string | null) => void;
+  markToolDone: (tabId: string, toolId: string, output: ToolIo | null, status: ToolStatus, meta?: ToolMeta | null) => void;
   /** Link the pending experiment card in tabId to its assigned UUID and PID. */
   linkExperimentUuid: (tabId: string, uuid: string, pid?: number) => void;
   /** Update experiment status across all tabs by UUID. */
@@ -45,9 +45,14 @@ interface ChatStore {
   appendExperimentLog: (uuid: string, line: string) => void;
   /** Remove a tool card by tool_id from all messages across all tabs. */
   removeTool: (toolId: string) => void;
+  /** Restore tabs persisted from a previous workspace session. Replaces all
+   *  current tabs. Any tab with isStreaming=true is normalised to false. */
+  restorePersistedTabs: (tabs: Tab[], activeTabId?: string) => void;
+  setTabAgentOptions: (tabId: string, options: ChatOptions) => void;
+  setTabHistoryMeta: (tabId: string, sessionUuid: string, startedAt: string) => void;
+  /** Open a new chat tab pre-populated with historical messages (read from history). */
+  createTabWithMessages: (label: string, messages: ChatMessage[], sessionUuid?: string, startedAt?: string, agentOptions?: ChatOptions) => void;
 }
-
-let seq = 0;
 
 function updateTab(tabs: Tab[], tabId: string, updater: (t: Tab) => Tab): Tab[] {
   return tabs.map((t) => (t.id === tabId ? updater(t) : t));
@@ -88,19 +93,11 @@ function appendTextBlock(msg: AssistantMessage, kind: "text" | "thinking", chunk
     const updatedLast: AssistantContentBlock = { ...last, text: last.text + chunk };
     return { ...msg, blocks: [...msg.blocks.slice(0, -1), updatedLast] };
   }
-  return { ...msg, blocks: [...msg.blocks, { id: String(seq++), kind, text: chunk }] };
+  return { ...msg, blocks: [...msg.blocks, { id: crypto.randomUUID(), kind, text: chunk }] };
 }
 
 function messageHasTool(msg: AssistantMessage, predicate: (t: ToolCallState) => boolean): boolean {
   return msg.blocks.some((block) => block.kind === "tool" && predicate(block.tool));
-}
-
-// CC prefixes MCP tool names with the server name (e.g. "ire__experiment.start").
-// Mirror the normalization in MessageList.tsx so look-ups match what was stored.
-function isExperimentToolName(name: string): boolean {
-  const parts = name.split("__");
-  const bare = parts[parts.length - 1].replace(/_/g, ".");
-  return bare === "experiment.start";
 }
 
 /** Find the last assistant message in a tab that has a pending experiment card (no UUID yet). */
@@ -111,7 +108,7 @@ function findPendingExperimentMsgId(tabs: Tab[], tabId: string): string | null {
     const m = tab.messages[i];
     if (m.role === "assistant") {
       const am = m as AssistantMessage;
-      const pending = messageHasTool(am, (t) => isExperimentToolName(t.tool_name) && !t.experimentUuid);
+      const pending = messageHasTool(am, (t) => t.kind === "experiment_start" && !t.meta.experiment_uuid);
       if (pending) return am.id;
     }
   }
@@ -205,7 +202,7 @@ export const useChat = create<ChatStore>((set) => ({
     }),
 
   addUserMessage: (tabId, text) => {
-    const id = String(seq++);
+    const id = crypto.randomUUID();
     set((s) => ({
       tabs: updateTab(s.tabs, tabId, (t) => ({
         ...t,
@@ -216,7 +213,7 @@ export const useChat = create<ChatStore>((set) => ({
   },
 
   beginAssistantMessage: (tabId) => {
-    const id = String(seq++);
+    const id = crypto.randomUUID();
     set((s) => ({
       tabs: updateTab(s.tabs, tabId, (t) => ({
         ...t,
@@ -276,7 +273,7 @@ export const useChat = create<ChatStore>((set) => ({
     set((s) => ({
       tabs: updateMessage(s.tabs, tabId, msgId, (m) => ({
         ...m,
-        blocks: [...m.blocks, { id: String(seq++), kind: "tool", tool }],
+        blocks: [...m.blocks, { id: crypto.randomUUID(), kind: "tool", tool }],
       })),
     })),
 
@@ -287,7 +284,7 @@ export const useChat = create<ChatStore>((set) => ({
         blocks: [
           ...m.blocks,
           {
-            id: String(seq++),
+            id: crypto.randomUUID(),
             kind: "ask",
             ask: {
               tool_id: toolId,
@@ -341,7 +338,7 @@ export const useChat = create<ChatStore>((set) => ({
       })),
     })),
 
-  markToolDone: (tabId, toolId, outputPreview?, outputFull?) =>
+  markToolDone: (tabId, toolId, output, status, meta?) =>
     set((s) => {
       const tab = s.tabs.find((t) => t.id === tabId);
       if (!tab) return s;
@@ -353,9 +350,9 @@ export const useChat = create<ChatStore>((set) => ({
             tabs: updateMessage(s.tabs, tabId, am.id, (m) =>
               updateToolInMessage(m, (t) => t.tool_id === toolId, (t) => ({
                 ...t,
-                isDone: true,
-                output_preview: outputPreview ?? null,
-                output_full: outputFull ?? null,
+                output,
+                status,
+                meta: { ...t.meta, ...(meta ?? {}) },
               }))
             ),
           };
@@ -372,12 +369,15 @@ export const useChat = create<ChatStore>((set) => ({
         tabs: updateMessage(s.tabs, tabId, msgId, (m) =>
           updateToolInMessage(
             m,
-            (t) => isExperimentToolName(t.tool_name) && !t.experimentUuid,
+            (t) => t.kind === "experiment_start" && !t.meta.experiment_uuid,
             (t) => ({
               ...t,
-              experimentUuid: uuid,
-              experimentStatus: "running" as ExperimentStatus,
-              ...(pid !== undefined ? { experimentPid: pid } : {}),
+              meta: {
+                ...t.meta,
+                experiment_uuid: uuid,
+                experiment_status: "running" as ExperimentStatus,
+                ...(pid !== undefined ? { experiment_pid: pid } : {}),
+              },
             })
           )
         ),
@@ -390,13 +390,20 @@ export const useChat = create<ChatStore>((set) => ({
         for (const msg of tab.messages) {
           if (msg.role !== "assistant") continue;
           const am = msg as AssistantMessage;
-          if (messageHasTool(am, (t) => t.experimentUuid === uuid)) {
+          if (messageHasTool(am, (t) => t.meta.experiment_uuid === uuid)) {
             return {
               tabs: updateMessage(s.tabs, tab.id, am.id, (m) =>
                 updateToolInMessage(
                   m,
-                  (t) => t.experimentUuid === uuid,
-                  (t) => ({ ...t, experimentStatus: status, ...(exitCode !== undefined ? { experimentExitCode: exitCode } : {}) })
+                  (t) => t.meta.experiment_uuid === uuid,
+                  (t) => ({
+                    ...t,
+                    meta: {
+                      ...t.meta,
+                      experiment_status: status,
+                      ...(exitCode !== undefined ? { experiment_exit_code: exitCode } : {}),
+                    },
+                  })
                 )
               ),
             };
@@ -412,12 +419,12 @@ export const useChat = create<ChatStore>((set) => ({
         for (const msg of tab.messages) {
           if (msg.role !== "assistant") continue;
           const am = msg as AssistantMessage;
-          if (messageHasTool(am, (t) => t.experimentUuid === uuid)) {
+          if (messageHasTool(am, (t) => t.meta.experiment_uuid === uuid)) {
             return {
               tabs: updateMessage(s.tabs, tab.id, am.id, (m) =>
                 updateToolInMessage(
                   m,
-                  (t) => t.experimentUuid === uuid,
+                  (t) => t.meta.experiment_uuid === uuid,
                   (t) => {
                     const lines = t.logLines ?? [];
                     // Keep last 50 lines to avoid unbounded growth.
@@ -448,6 +455,64 @@ export const useChat = create<ChatStore>((set) => ({
         }),
       })),
     })),
+
+  restorePersistedTabs: (tabs, activeTabId) =>
+    set(() => {
+      const normalised = tabs.map((t) => ({
+        ...t,
+        isStreaming: false,
+        messages: t.messages.map((m) =>
+          m.role === "assistant" ? { ...m, isStreaming: false } : m
+        ),
+      }));
+      const restoredActiveTabId =
+        normalised.find((t) => t.id === activeTabId)?.id ?? normalised[0]?.id ?? MAIN_TAB_ID;
+      return {
+        tabs: normalised,
+        activeTabId: restoredActiveTabId,
+        previousTabId: null,
+      };
+    }),
+
+  setTabAgentOptions: (tabId, options) =>
+    set((s) => ({
+      tabs: updateTab(s.tabs, tabId, (t) => ({
+        ...t,
+        agentOptions: options,
+      })),
+    })),
+
+  setTabHistoryMeta: (tabId, sessionUuid, startedAt) =>
+    set((s) => ({
+      tabs: updateTab(s.tabs, tabId, (t) => ({
+        ...t,
+        historySessionUuid: sessionUuid,
+        historyStartedAt: startedAt,
+      })),
+    })),
+
+  createTabWithMessages: (label, messages, sessionUuid, startedAt, agentOptions) => {
+    const id = crypto.randomUUID();
+    const clean: ChatMessage[] = messages.map((m) =>
+      m.role === "assistant" ? { ...m, isStreaming: false } : m
+    );
+    set((s) => ({
+      tabs: [
+        ...s.tabs,
+        {
+          id,
+          label,
+          messages: clean,
+          isStreaming: false,
+          isPinned: false,
+          kind: "chat",
+          historySessionUuid: sessionUuid,
+          historyStartedAt: startedAt,
+          agentOptions,
+        },
+      ],
+      previousTabId: s.activeTabId,
+      activeTabId: id,
+    }));
+  },
 }));
-
-

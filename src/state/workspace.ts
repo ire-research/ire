@@ -6,6 +6,8 @@ import type {
   UserConfig,
   WorkspaceState as WorkspaceInfo,
 } from "../ipc";
+import { useChatOptions } from "./chatOptions";
+import { useChat } from "./chat";
 
 type Phase =
   | { kind: "loading" }
@@ -63,6 +65,13 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => ({
         },
       },
     });
+    if (Array.isArray(state.tabs)) {
+      useChat.getState().restorePersistedTabs(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        state.tabs as any[],
+        state.active_tab_id ?? undefined,
+      );
+    }
   },
   hydrateFromUserConfig: (config) => {
     set({
@@ -71,10 +80,25 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => ({
   },
   toPersisted: () => {
     const { panelLayout } = get();
+    const { model, provider, effort } = useChatOptions.getState();
+    const { tabs, activeTabId } = useChat.getState();
+    const tabsToSave = tabs.map((tab) => ({
+      ...tab,
+      isStreaming: false,
+      messages: tab.messages.map((message) =>
+        message.role === "assistant" ? { ...message, isStreaming: false } : message
+      ),
+    }));
     return {
       version: 1,
       panel_layout: panelLayout,
+      model,
+      provider,
       last_opened: new Date().toISOString(),
+      effort,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tabs: tabsToSave as any[],
+      active_tab_id: activeTabId,
     };
   },
 }));

@@ -7,6 +7,7 @@ use tauri::{AppHandle, State};
 
 use crate::cc::discovery::{find_claude_binary, DiscoveryError};
 use crate::cc::session::SessionManager;
+use crate::codex::discovery::find_codex_binary;
 use crate::db::{migrations, models};
 use crate::events::{self, EventSource};
 use crate::mcp::{McpHandle, McpState};
@@ -19,34 +20,52 @@ use crate::workspace::state::{ActiveWorkspace, WorkspaceHandle, WorkspaceState};
 #[derive(Debug, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BinaryStatus {
-    Found { path: PathBuf, version: Option<String> },
+    Found {
+        path: PathBuf,
+        version: Option<String>,
+    },
     Missing,
 }
 
 #[derive(Debug, Serialize)]
 pub struct SetupStatus {
     pub binary: BinaryStatus,
+    pub codex_binary: BinaryStatus,
 }
 
 #[tauri::command]
 pub fn setup_status() -> SetupStatus {
     tracing::debug!("setup_status");
-    let binary = match find_claude_binary() {
+    let binary = binary_status("claude", find_claude_binary());
+    let codex_binary = binary_status("codex", find_codex_binary());
+    SetupStatus {
+        binary,
+        codex_binary,
+    }
+}
+
+fn binary_status(
+    name: &str,
+    result: Result<crate::binary::DiscoveredBinary, DiscoveryError>,
+) -> BinaryStatus {
+    match result {
         Ok(b) => {
-            tracing::debug!(path = ?b.path, version = ?b.version, "claude binary found");
-            BinaryStatus::Found { path: b.path, version: b.version }
+            tracing::debug!(binary = name, path = ?b.path, version = ?b.version, "binary found");
+            BinaryStatus::Found {
+                path: b.path,
+                version: b.version,
+            }
         }
         Err(DiscoveryError::NotFound) => {
-            tracing::debug!("claude binary not found");
+            tracing::debug!(binary = name, "binary not found");
             BinaryStatus::Missing
         }
         Err(DiscoveryError::NotExecutable(_)) => BinaryStatus::Missing,
         Err(DiscoveryError::Io(e)) => {
-            tracing::warn!(error = %e, "binary discovery io error");
+            tracing::warn!(binary = name, error = %e, "binary discovery io error");
             BinaryStatus::Missing
         }
-    };
-    SetupStatus { binary }
+    }
 }
 
 #[tauri::command]
@@ -60,6 +79,7 @@ pub fn open_workspace(
     tracing::info!(path = %path, "open_workspace");
     let path = PathBuf::from(path);
     ws_init::validate_existing(&path).map_err(|e| e.to_string())?;
+    ws_init::ensure_git(&path).map_err(|e| e.to_string())?;
     let sm = (*session).clone();
     let result = attach(&active, &mcp, sm, path.clone(), app);
     match &result {
@@ -108,7 +128,10 @@ pub fn close_workspace(
     // Terminate any in-flight CC subprocesses so their late chat-stream events
     // don't leak into the next workspace (the frontend listener is global).
     for pid in session.drain() {
-        tracing::info!(pid = pid, "terminating stale CC subprocess on workspace close");
+        tracing::info!(
+            pid = pid,
+            "terminating stale CC subprocess on workspace close"
+        );
         crate::commands::chat::kill_process(pid);
     }
 
@@ -145,7 +168,10 @@ fn attach(
     let socket = crate::mcp::rpc::socket_path(&ire);
     let task = crate::mcp::rpc::start(socket.clone(), path.clone(), session_manager, app.clone());
     crate::mcp::config::write_mcp_config(&ire, &socket).map_err(|e| e.to_string())?;
-    *mcp.0.lock().map_err(|e| e.to_string())? = Some(McpHandle { task, socket_path: socket });
+    *mcp.0.lock().map_err(|e| e.to_string())? = Some(McpHandle {
+        task,
+        socket_path: socket,
+    });
 
     let state = WorkspaceState::from_path(path.clone());
     *active.0.lock().map_err(|e| e.to_string())? = Some(WorkspaceHandle::new(state.clone(), lock));
@@ -169,7 +195,12 @@ fn emit_initial_state(app: &AppHandle, workspace_root: &Path) {
             this_week: String::new(),
         },
     );
-    events::emit_pulse_changed(app, EventSource::Hydrate, &pulse.research_question, &pulse.this_week);
+    events::emit_pulse_changed(
+        app,
+        EventSource::Hydrate,
+        &pulse.research_question,
+        &pulse.this_week,
+    );
 
     let notes = fs::read_to_string(wiki_root.join("notes.md")).unwrap_or_default();
     events::emit_notes_changed(app, EventSource::Hydrate, &notes);

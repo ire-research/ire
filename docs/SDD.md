@@ -1,6 +1,6 @@
 # Software Design Description: Integrated Research Environment (IRE)
 
-The Integrated Research Environment (IRE) is a local desktop application that streamlines machine-learning research workflows. It wraps Claude-Code (CC) inside a Tauri desktop app and gives it well-organised research context — literature, experiment logs, project state — by maintaining a persistent **LLM Wiki** on disk. IRE runs entirely locally and is project-centric: each workspace maps one-to-one to a directory containing both the user's source code and an `.ire/` data directory.
+The Integrated Research Environment (IRE) is a local desktop application that streamlines machine-learning research workflows. It wraps Claude Code (CC) and OpenAI Codex CLI inside a Tauri desktop app and gives the selected agent well-organised research context — literature, experiment logs, project state — by maintaining a persistent **LLM Wiki** on disk. IRE runs entirely locally and is project-centric: each workspace maps one-to-one to a directory containing both the user's source code and an `.ire/` data directory.
 
 This document describes the MVP architecture in enough detail to implement. The MVP feature non-goals live in [SCOPE.md](./SCOPE.md).
 
@@ -17,7 +17,7 @@ This document describes the MVP architecture in enough detail to implement. The 
 7. [Memory Layer](#7-memory-layer)
 8. [Pipelines](#8-pipelines)
 9. [Chat](#9-chat)
-10. [Claude-Code Subprocess Layer](#10-claude-code-subprocess-layer)
+10. [Agent Subprocess Layer](#10-agent-subprocess-layer)
 11. [MCP Server](#11-mcp-server)
 12. [SQLite Schema](#12-sqlite-schema)
 13. [Frontend](#13-frontend)
@@ -39,7 +39,7 @@ ML research workflows are fragmented across IDEs, reference managers, and AI int
 3. **Goal drift** — the primary objective gets buried under technical work or literature exploration.
 4. **Siloed knowledge** — meeting notes, papers, experiment logs, and code state are not unified.
 
-**Target user.** Academic / industrial ML researcher. Python-heavy, comfortable with Git and the terminal, uses LaTeX. Authenticates Claude-Code externally.
+**Target user.** Academic / industrial ML researcher. Python-heavy, comfortable with Git and the terminal, uses LaTeX. Authenticates Claude Code and/or Codex externally.
 
 **Two pain points from the user research that drive design** (from [VITTO.md](./VITTO.md)):
 - Models keep proposing methods that were already tried and rejected → IRE must record rejections as **structured, prominently re-injected** state, not buried prose.
@@ -60,8 +60,8 @@ ML research workflows are fragmented across IDEs, reference managers, and AI int
 ┌──────────────────────────────────────────────────────────────────────┐
 │ Rust backend (Tauri)                                                 │
 │   ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐   │
-│   │ Workspace    │  │ Wiki         │  │ CC subprocess manager    │   │
-│   │ + .lock      │  │ (atomic I/O) │  │ (NDJSON parser, --resume)│   │
+│   │ Workspace    │  │ Wiki         │  │ Agent subprocess manager │   │
+│   │ + .lock      │  │ (atomic I/O) │  │ (JSONL parser, resume)   │   │
 │   └──────────────┘  └──────────────┘  └──────────────────────────┘   │
 │   ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐   │
 │   │ Resource     │  │ SQLite       │  │ Experiment monitor       │   │
@@ -71,7 +71,7 @@ ML research workflows are fragmented across IDEs, reference managers, and AI int
                        ▲ stdio / NDJSON          ▲ stdio (MCP JSON-RPC)
                        │                         │
               ┌────────────────┐         ┌────────────────────────┐
-              │ Claude-Code    │ ◀─────▶ │ IRE MCP server         │
+              │ Claude/Codex   │ ◀─────▶ │ IRE MCP server         │
               │ CLI subprocess │  tools  │ (Node, stdio transport)│
               └────────────────┘         └────────────────────────┘
                        │
@@ -83,9 +83,9 @@ ML research workflows are fragmented across IDEs, reference managers, and AI int
 ```
 
 **Key points.**
-- CC is a headless subprocess. IRE is a thin IPC bridge: messages in, typed events out.
-- The MCP server is the *only* high-level surface CC uses to interact with IRE state. Plain filesystem tools (`Read`, `Edit`, etc.) are also enabled, but wiki / memory / experiment work goes through MCP for structure.
-- Experiments run as **detached** child processes spawned by the MCP server. CC's turn ends; IRE wakes CC up via `--resume` when the experiment finishes.
+- Claude Code and Codex are headless subprocesses selected per chat turn. IRE is a thin IPC bridge: messages in, typed events out.
+- The MCP server is the *only* high-level surface the selected agent uses to interact with IRE state. Plain filesystem tools are also enabled, but wiki / memory / experiment work goes through MCP for structure.
+- Experiments run as **detached** child processes spawned by the MCP server. The wake-up path resumes the same provider session that started the experiment: Claude Code via `--resume`, or Codex via `codex exec resume <thread_id>`.
 
 ---
 
@@ -105,7 +105,7 @@ ML research workflows are fragmented across IDEs, reference managers, and AI int
 | Filesystem | `std::fs` + `tempfile` for atomic writes | No `notify` watcher in MVP — wiki changes are mediated through IRE. |
 | Logging | `tracing` + `tracing-subscriber` | Console logging only; experiment stdout/stderr live beside each experiment plan. |
 
-CC is invoked as an external CLI binary; not a dependency in `Cargo.toml` or `package.json`. The Node MCP server's runtime (`node`) is also assumed installed (CC requires it anyway).
+Claude Code and Codex are invoked as external CLI binaries; neither is a dependency in `Cargo.toml` or `package.json`. The Node MCP server's runtime (`node`) is also assumed installed.
 
 ---
 
@@ -119,8 +119,8 @@ my_research_project/
 ├── .gitignore                       # IRE adds: .ire/wiki/local.db, .ire/wiki/experiments/*/*.log, .ire/.lock, .ire/workspace.json, .ire/cache/
 ├── .ire/
 │   ├── .lock                        # PID of running IRE instance (gitignored)
-│   ├── _SYSTEM.md                   # IRE framework context + wiki schema, injected first into every CC turn
-│   ├── workspace.json               # per-workspace UI layout (panel sizes); gitignored
+│   ├── _SYSTEM.md                   # IRE framework context + wiki schema, injected first into every agent turn
+│   ├── workspace.json               # per-workspace UI state (panel sizes, tabs, chat options); gitignored
 │   ├── cache/                       # raw extracted resource text (gitignored)
 │   └── wiki/                        # ALL TRACKED IN GIT
 │       ├── local.db                 # SQLite (gitignored)
@@ -135,7 +135,6 @@ my_research_project/
 │       │   └── <slug>.md            # One file per ingested paper/article
 │       └── experiments/
 │           └── <experiment_uuid>/
-│               ├── plan.md
 │               ├── stdout.log       # gitignored
 │               └── stderr.log       # gitignored
 └── ... user source code ...
@@ -194,12 +193,13 @@ See [§16](#16-source-tree-layout).
 │                                                      │
 │  [Open folder…]       [New workspace…]               │
 │                                                      │
-│  ● claude-code · authenticated  (or: not found)      │
-│    retry button if binary missing                    │
+│  ● claude-code · found  (or: not found)              │
+│  ● codex · found        (or: not found)              │
+│    retry button if a binary is missing               │
 └──────────────────────────────────────────────────────┘
 ```
 
-On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel.  `read_user_config` removes recent workspace paths that no longer exist, persists the cleaned config, and hydrates `recentWorkspaces` in the Zustand store before the setup screen mounts so the list is immediately populated.  If the binary is missing, a `retry` link re-invokes `refreshSetup`; there is no step-by-step wizard — the binary status is a status-bar indicator, not a blocking step.
+On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel. `read_user_config` removes recent workspace paths that no longer exist, persists the cleaned config, and hydrates `recentWorkspaces` in the Zustand store before the setup screen mounts so the list is immediately populated. If either binary is missing, a `retry` link re-invokes `refreshSetup`; there is no step-by-step wizard. Workspace open/create is enabled when at least one of Claude Code or Codex is found. The binaries detected at workspace open/init become the workspace session's `availableProviders`; the composer only exposes models for those providers until the workspace is closed and reopened.
 
 ### 5.2 Open existing
 
@@ -210,7 +210,7 @@ On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel.  
    - If present and PID alive: refuse, show "already open in another window".
    - If present and PID dead: reclaim (overwrite with current PID).
 4. Initialise SQLite (run pending migrations).
-5. Load `workspace.json` if present (restores pane layout + last CC session id).
+5. Load `workspace.json` if present (restores pane layout, open tabs, and chat options).
 6. Spawn the MCP server subprocess (long-lived, lives as long as the workspace is open).
 7. Emit `workspace-ready` event to the frontend.
 
@@ -307,16 +307,16 @@ CC is told in the system prompt:
 
 ### 7.4 Context injection rules
 
-When IRE spawns a CC turn, the system prompt is composed of:
+When IRE spawns an agent turn, the system prompt is composed of:
 
 1. `.ire/_SYSTEM.md` — static IRE framework context, wiki layout, behavioral rules, and schema. MCP tool descriptions are received automatically via `tools/list` and are not duplicated here. Seeded from `assets/seed/_SYSTEM.md` on workspace init; always injected first.
-2. All CC-facing prompt text — the resource summarizer role, the resource-confirm follow-up, and the experiment wake-up template — lives in `src-tauri/assets/prompts/`. Edit those files to change CC's behaviour; never hardcode prompts at call sites. The experiment workflow instructions are part of `.ire/_SYSTEM.md` (point 1 above).
+2. All agent-facing prompt text — the resource summarizer role, the resource-confirm follow-up, and the experiment wake-up template — lives in `src-tauri/assets/prompts/`. Edit those files to change agent behaviour; never hardcode prompts at call sites. The experiment workflow instructions are part of `.ire/_SYSTEM.md` (point 1 above).
 3. `wiki/_index.md` (catalog).
 4. `wiki/pulse.json`.
 5. `wiki/long-term.md` (full).
 6. The two most recent `short-term/YYYY-MM-DD.md` files.
 
-This is added via `--append-system-prompt`. Wiki/notes/resources are read on-demand by CC through MCP tools; they are not pre-injected.
+This is added via Claude Code's `--append-system-prompt` or Codex's `-c developer_instructions=<TOML string>`. Wiki/notes/resources are read on-demand through MCP tools; they are not pre-injected.
 
 ---
 
@@ -332,17 +332,17 @@ User edits the notes pane (raw text)
   → `workspace-event notes-changed { content }` is emitted; the workspace-data slice applies it and the notes pane re-renders.
 ```
 
-No CC turn is triggered. CC reads `notes.md` only if the user explicitly requests it, or if the context warrants it; it is never injected into the system prompt by default.
+No agent turn is triggered. The selected agent reads `notes.md` only if the user explicitly requests it, or if the context warrants it; it is never injected into the system prompt by default.
 
 ### 8.2 Ideas ingestion
 
-Ideas are stored directly in `wiki/ideas.json` through `read_ideas` / `save_ideas_json`. Clicking Add in `IdeasPane` opens an inline draft card; pressing Enter writes a new `{ id, text, trashed: false, order }` entry and reorders active ideas. Clicking the trash icon soft-deletes by setting `trashed: true`; trashed ideas remain in JSON but are hidden from the pane. Drag-to-reorder rewrites active `order` values. No CC turn is triggered.
+Ideas are stored directly in `wiki/ideas.json` through `read_ideas` / `save_ideas_json`. Clicking Add in `IdeasPane` opens an inline draft card; pressing Enter writes a new `{ id, text, trashed: false, order }` entry and reorders active ideas. Clicking the trash icon soft-deletes by setting `trashed: true`; trashed ideas remain in JSON but are hidden from the pane. Drag-to-reorder rewrites active `order` values. No agent turn is triggered.
 
 ### 8.3 Resource ingestion
 
 ```
 User queues one or more URLs/files → Ingest
-  → submit_resources(sources) Tauri command
+  → submit_resources(sources, options: { provider, model, effort }) Tauri command
   → Rust:
       1. URL resources: fetch URL with reqwest (20 s timeout, follow redirects)
       2. URL arXiv shortcut: if URL is arxiv.org/abs/<id> or arxiv.org/pdf/<id>,
@@ -365,16 +365,17 @@ User queues one or more URLs/files → Ingest
          'local_file', or 'batch')
       8. open a new resource chat tab (see §9.4), labelled by URL hostname, filename,
          or "<N> sources"
-      9. kick a CC turn in that tab with prompt:
+      9. kick an agent turn in that tab, using the composer-selected
+         provider/model/effort, with prompt:
            "Read <cache file(s)> (source: <source ref(s)>). Provide one comprehensive
             executive summary — what the material is, what is relevant to this project,
             why it matters, and how it could be used. Use bullet points.
             Do NOT write to the wiki yet."
 ```
 
-CC streams the summary into the resource tab. When the turn ends, **Confirm** and **Discard** buttons appear.
+The selected agent streams the summary into the resource tab. When the turn ends, **Confirm** and **Discard** buttons appear.
 
-**Confirm**: triggers a second CC turn in the same tab with the instruction to write the summary to `resources/<slug>.md` via the `wiki.write` MCP tool. Frontmatter follows the schema in `.ire/_SYSTEM.md`: `title`, `type: summary`, `sources: [<all original sources in order>]`, `updated: YYYY-MM-DD`, and `summary`. URL sources use the original URL; local file sources use `file:<sha256>:<filename>`. Body starts with a `#` heading matching the title, then the summary. The tab auto-closes when this second CC turn ends. The written file is indexed in SQLite by matching every stored source ref in `sources`, but no git commit is created by IRE.
+**Confirm**: triggers a second agent turn in the same tab with the instruction to write the summary to `resources/<slug>.md` via the `wiki.write` MCP tool. This turn reuses the provider/model/effort captured when the resource tab was created, so it resumes the same resource-summary session even if the global composer selection changed in another tab. Frontmatter follows the schema in `.ire/_SYSTEM.md`: `title`, `type: summary`, `sources: [<all original sources in order>]`, `updated: YYYY-MM-DD`, and `summary`. URL sources use the original URL; local file sources use `file:<sha256>:<filename>`. Body starts with a `#` heading matching the title, then the summary. The tab auto-closes when this second agent turn ends. The written file is indexed in SQLite by matching every stored source ref in `sources`, but no git commit is created by IRE.
 
 **Discard**: deletes `.ire/cache/<sha256>.txt` or `.ire/cache/<batch_sha>/`, marks the DB row `status=rejected`, closes the tab immediately. No wiki file is written.
 
@@ -382,22 +383,32 @@ CC streams the summary into the resource tab. When the turn ends, **Confirm** an
 
 ## 9. Chat
 
-IRE uses a **single unified agent** in the central pane. The agent always has access to all MCP tools (`wiki.*`, `memory.*`, `pulse.*`, `experiment.*`) and all CC built-ins (`Bash`, `Edit`, `Write`, `Read`, `Grep`, `Glob`, `WebFetch`). The experiment workflow instructions are part of `.ire/_SYSTEM.md` (injected on every turn per §7.4).
+IRE uses a **single unified agent surface** in the central pane. The user selects Claude Code or Codex via the model picker. The selected agent receives the same composed wiki system prompt and IRE MCP server configuration; frontend stream handling is shared through a common `StreamEvent` shape. The experiment workflow instructions are part of `.ire/_SYSTEM.md` (injected on every turn per §7.4).
 
 ### 9.1 Send message flow
 
 ```
 User types in central pane → Send
-  → chat_send({ message }) Tauri command
-  → Rust spawns:
+  → chat_send({ message, options: { provider, model, effort } }) Tauri command
+  → Rust spawns one of:
       claude -p "<message>"
         --output-format stream-json --verbose --include-partial-messages
-        --mcp-config .ire/mcp.json --strict-mcp-config
+        --mcp-config .ire/mcp.json
         --append-system-prompt "<composed per §7.4>"
         --resume <session_id_if_any>
-  → Rust parses NDJSON line-by-line, emits chat-stream events
-  → on `system.init`: capture session_id, persist to workspace.json
-  → on `result`: turn complete, frontend re-enables input
+      codex exec --json
+        -m <model>
+        -c model_reasoning_effort=<low|medium|high|xhigh>
+        -c developer_instructions="<composed per §7.4>"
+        -c mcp_servers.ire.command="node" -c mcp_servers.ire.args=[...]
+        -C <workspace>
+        --dangerously-bypass-approvals-and-sandbox
+        -- "<message>"
+      codex exec resume [OPTIONS] <thread_id> -- "<message>"
+        (uses current_dir=<workspace>; resume does not accept -C)
+  → Rust parses JSONL line-by-line, emits chat-stream events
+  → on `Init`: capture provider-scoped session/thread id
+  → on `Result`/`Done`: turn complete, frontend re-enables input
 ```
 
 ### 9.2 Experiment lifecycle (the wake-up pattern)
@@ -408,7 +419,6 @@ This is the core of [Q1's answer](./SCOPE.md#mvp): CC must not hang on the exper
 T0  User asks: "Run an ablation over learning rates [1e-3, 1e-4, 1e-5]."
 T1  CC plans, gets agreement, then calls MCP tool experiment.start({
        name: "lr-ablation",
-       plan_md: "<full plan as markdown>",
        command: "python scripts/ablate_lr.py --output runs/lr_ablation",
        working_dir: "<project root>",
        wake_prompt: "Experiment lr-ablation finished. Read its result.md and
@@ -416,19 +426,18 @@ T1  CC plans, gets agreement, then calls MCP tool experiment.start({
     })
 T2  MCP server forwards to IRE Rust backend over its private channel:
        - inserts experiment row (status=running, uuid, start_time, command, …)
-       - writes plan_md to .ire/wiki/experiments/<uuid>/plan.md
        - spawns the command as a DETACHED process group:
            Command::new("sh").args(["-c", &command])
                  .current_dir(working_dir)
                  .stdin(Stdio::null())
-                 .stdout(file .ire/wiki/experiments/<uuid>/stdout.log)
-                 .stderr(file .ire/wiki/experiments/<uuid>/stderr.log)
+    2. Backend spawns the process detached
+       - writes stdout/stderr to `.ire/wiki/experiments/<uuid>/{stdout,stderr}.log`)
                  .process_group(0)             // setsid
                  .env_remove("CLAUDECODE")
                  .spawn()
        - returns { uuid, status: "started" } to CC
 T3  CC's response to the user: "Started experiment <uuid>; I'll come back
-    when it's done." Then this CC turn ENDS naturally.
+    when it's done." Then this agent turn ENDS naturally.
 T4  Backend monitor task waits on the child PID (off-thread). Frontend
     receives experiment-status events (started, log lines, …) and renders
     a live tail.
@@ -436,24 +445,24 @@ T5  Process exits. Backend:
        - updates DB row (status, exit_code, end_time)
        - reads tail of stdout/stderr (last N kB)
        - composes wake-up message:
-           "<wake_prompt>\n\nExperiment uuid: <uuid>\nExit code: <n>\n
-            Plan: .ire/wiki/experiments/<uuid>/plan.md\n
+           "<wake_prompt>\n\nExperiment uuid:            Exit code: 0
+
             stdout tail: <…>\nstderr tail: <…>"
-       - spawns a CC turn with --resume <session_id> and that message
-T6  CC reads result files, calls wiki.write for any new findings,
+       - spawns the same provider with its resume id and that message
+T6  The agent reads result files, calls wiki.write for any new findings,
     memory.write_short_term for daily notes and transient dead ends,
     memory.write_long_term for durable conclusions, and pulse.update if
     the research question or weekly focus changed.
 ```
 
 **Subtleties.**
-- The user can keep using the chat pane during T3–T5. The next user message and the wake-up share the same session id; whichever arrives first runs first. We serialise CC turns: only one CC subprocess per session at a time. If a user message arrives while a wake-up is running, it queues; if a wake-up fires while the user is mid-turn, it queues. The pending-queue is shown in the UI ("1 wake-up pending").
+- The user can keep using the chat pane during T3–T5. The next user message and the wake-up share the same provider-scoped session id; whichever arrives first runs first. We serialise agent turns: only one subprocess per session at a time. If a user message arrives while a wake-up is running, it queues; if a wake-up fires while the user is mid-turn, it queues. The pending-queue is shown in the UI ("1 wake-up pending").
 - `process_group(0)` (Linux/macOS) ensures killing IRE doesn't kill running experiments. On Windows we use `CREATE_NEW_PROCESS_GROUP`.
 - Logs are streamed to disk; the UI tails them via `experiment-log-line` events.
 
 ### 9.3 Cancellation
 
-- **User cancels CC turn**: kill the CC subprocess; emit `chat-cancelled`. Session id is retained, so the next message can `--resume`.
+- **User cancels agent turn**: kill the running subprocess; emit `chat-cancelled`. Session id is retained, so the next message can resume when the provider matches.
 - **User resets session**: `chat_reset_session(tab_id)` clears the stored `session_id` for that tab. The frontend simultaneously clears the tab's message list. The next send starts a fresh CC session with no `--resume` flag.
 - **User cancels experiment**: SIGTERM the process group; on next monitor tick, mark `status=cancelled` and fire the wake-up with that fact.
 
@@ -466,14 +475,16 @@ IRE supports multiple independent chat tabs in the central pane.
 | Type | Created by | Closeable | Description |
 |---|---|---|---|
 | Main | On workspace open (id `"main"`) | No (pinned) | The primary research conversation. |
-| Chat | User clicks + button | Yes | Fresh CC session, independent conversation history. |
+| Chat | User clicks + button | Yes | Fresh provider-scoped agent session, independent conversation history. |
 | Resource | Backend resource ingestion (§8.3) | Auto-closes on Confirm/Discard | Dedicated to reviewing a single resource summary; shows Confirm / Discard instead of a free-form Composer when CC finishes. |
 | Preview | User clicks a resource in the Resources list | Yes | Renders a `ResourcePreviewPane` (edit/preview toggle + Submit) for the resource's wiki file. Clicking the same resource again focuses the existing tab rather than opening a duplicate. Submit persists edits to disk via `save_wiki_file`; the user commits when ready. |
 | Experiment | User clicks an experiment in the left-rail ExperimentsSection | Yes | Dedicated full view of a single experiment: metadata grid (status, runtime, command), live log tail (stdout only, scrolls to bottom automatically). Clicking the same experiment again focuses the existing tab rather than opening a duplicate. |
 
-**Session isolation.** Each tab carries its own `tab_id` (UUID for dynamically created tabs; `"main"` for the pinned tab). The backend `SessionManager` maintains a `HashMap<tab_id, PerTabSession>` where `PerTabSession` holds `{ session_id: Option<String>, running_pid: Option<u32> }`. This replaces the old single `ChatSession` global.
+**Session isolation.** Each tab carries its own `tab_id` (UUID for dynamically created tabs; `"main"` for the pinned tab). The backend `SessionManager` maintains a `HashMap<tab_id, PerTabSession>` where `PerTabSession` holds `{ session_id: Option<String>, session_provider: Option<String>, running_pid: Option<u32> }`. This replaces the old single `ChatSession` global and prevents cross-provider resume.
 
-**Event routing.** `chat-stream` events are wrapped as `{ tab_id, event }` before being emitted to the frontend. The frontend maintains a single global listener that routes each event to the correct tab's message list using the `tab_id` field. A `tab-created` event (payload: `{ tab_id, label, kind, resource_id? }`) is emitted by the backend whenever a new tab is opened programmatically (e.g. during resource ingestion). Preview tabs are created client-side only (no `tab-created` event) — the store's `openPreviewTab` action handles deduplication and activation.
+**Event routing.** `chat-stream` events are wrapped as `{ tab_id, stream_id, event_id, event }` before being emitted to the frontend. `stream_id` is stable for one spawned agent process and includes a fresh UUID (`{tab_id}:{stream_uuid}`), while `event_id` increments within that process; the frontend maintains a single global listener, routes each event to the correct tab's message list using `tab_id`, and ignores any already-seen `{tab_id, stream_id, event_id}` delivery. User-initiated turns keep their `assistantIdByTab` entry until a stream `Done`/`Error` event arrives; `ipc.chatSend` resolving is not treated as turn completion because Tauri event delivery can lag behind the command promise. A `tab-created` event (payload: `{ tab_id, label, kind, resource_id?, agent_options? }`) is emitted by the backend whenever a new tab is opened programmatically (e.g. during resource ingestion). Preview tabs are created client-side only (no `tab-created` event) — the store's `openPreviewTab` action handles deduplication and activation.
+
+**History persistence.** Chat tabs carry optional `historySessionUuid`, `historyStartedAt`, and `agentOptions` fields. The frontend creates the history UUID/start time on first send, stores the selected `{ provider, model, effort }` on the tab before each send, persists those fields in `.ire/workspace.json`, and passes the UUID plus tab agent metadata to `chat_history_save` so every completed turn upserts the same `chat_sessions` row with the provider/model that tab actually used. The History menu filters out any row whose UUID is currently open as a chat tab, so autosaved active chats are not shown as archived history after a send or workspace reopen. Closing the tab removes that UUID from the active-tab filter, making the saved row visible. Restoring a row from the history menu opens a chat tab with the same UUID/start time and deletes the archived row; the next completed turn or close re-saves it under the same UUID. Workspace close is best-effort only — completed turns are already durable before close/restart.
 
 **User-initiated turn (any tab)**
 
@@ -481,8 +492,8 @@ IRE supports multiple independent chat tabs in the central pane.
 User types → handleSend(tabId)
   → beginAssistantMessage(tabId)
   → ipc.chatSend(tabId, text)
-  → Rust: resume CC for tabId with --resume <session_id>
-  → events emitted as { tab_id, event }
+  → Rust: resume the selected provider for tabId with its provider-scoped session id
+  → events emitted as { tab_id, stream_id, event_id, event }
   → frontend routes to tabId's messages
   → Done → finishMessage(tabId)
 ```
@@ -490,12 +501,12 @@ User types → handleSend(tabId)
 **Backend-initiated turn (resource tab)**
 
 ```
-submit_resource() kicks CC with a new tab_id
-  → emits tab-created { tab_id, label, kind: "resource" }
+submit_resource() kicks the composer-selected agent with a new tab_id
+  → emits tab-created { tab_id, label, kind: "resource", agent_options }
   → frontend adds resource tab, switches to it
-  → CC emits { tab_id, Init } → frontend begins assistant message
-  → CC streams summary → Done → resourceStatus = "ready"
-  → Confirm / Discard buttons appear in the tab
+  → agent emits { tab_id, Init } → frontend begins assistant message
+  → agent streams summary → Done → resourceStatus = "ready"
+  → Confirm / Discard buttons appear in the tab; Confirm uses agent_options
 ```
 
 **IPC changes from single-session baseline**
@@ -505,37 +516,40 @@ submit_resource() kicks CC with a new tab_id
 | `chat_send` | `{ mode, message }` | `{ tab_id, message }` |
 | `chat_cancel` | `{}` | `{ tab_id }` |
 | `chat_reset_session` | `{}` | `{ tab_id }` |
-| `chat-stream` event | `StreamEvent` | `{ tab_id, event: StreamEvent }` |
-| `tab-created` event | — | `{ tab_id, label, kind, resource_id? }` |
+| `chat-stream` event | `StreamEvent` | `{ tab_id, stream_id, event_id, event: StreamEvent }` |
+| `tab-created` event | — | `{ tab_id, label, kind, resource_id?, agent_options? }` |
 
 ---
 
-## 10. Claude-Code Subprocess Layer
+## 10. Agent Subprocess Layer
 
-Implements the patterns from [docs/blueprints/claude-code-wrapper.md](./blueprints/claude-code-wrapper.md). Concretely:
+Claude Code implements the patterns from [docs/blueprints/claude-code-wrapper.md](./blueprints/claude-code-wrapper.md). Codex uses the same frontend event contract through a parallel backend module. Concretely:
 
-### 10.1 Binary discovery (`cc::discovery`)
+### 10.1 Binary discovery (`binary`, `cc::discovery`, `codex::discovery`)
 
-`find_claude_binary()` tries, in order:
-1. `which claude` on the current process PATH.
-2. `$SHELL -lc "command -v claude"` to load nvm/asdf/mise shims.
-3. A canned candidate-paths list (see blueprint §1).
+`find_claude_binary()` and `find_codex_binary()` share `binary::find_binary()`, which tries, in order:
+1. `which <name>` on the current process PATH.
+2. `$SHELL -lc "command -v <name>"` to load nvm/asdf/mise shims.
+3. Provider-specific candidate paths.
 
-Returns `Result<PathBuf, DiscoveryError>` with three error variants: `NotFound`, `NotExecutable`, `IoError`. The setup screen consumes this.
+Claude candidates include `.local/bin/claude`, `.claude/local/claude`, mise/asdf shims, npm locations, Homebrew locations, and all `$HOME/.nvm/versions/node/*/bin/claude`. Codex candidates include npm locations, Homebrew locations, all `$HOME/.nvm/versions/node/*/bin/codex`, and `%APPDATA%\npm\codex.cmd` on Windows.
 
-### 10.2 Spawn (`cc::spawn`)
+Returns `Result<DiscoveredBinary, DiscoveryError>` with three error variants: `NotFound`, `NotExecutable`, `Io`. The setup screen consumes both statuses.
 
-Non-negotiables:
+### 10.2 Spawn (`cc::spawn`, `codex::spawn`)
+
+Claude Code spawn non-negotiables:
 - `.env_remove("CLAUDECODE")` — prevent nested-session refusal.
 - `.stdin(Stdio::null())` — don't hang waiting for stdin.
 - `.current_dir(workspace_root)` — relative paths resolve correctly.
-- `.env("PATH", augmented_path(...))` — ensure node/git/python are visible.
 
 Always pair `--output-format stream-json` with `--verbose --include-partial-messages`.
 
-### 10.3 NDJSON parser (`cc::stream`)
+Codex spawn uses `codex exec`, `codex exec resume <thread_id>`, `--json`, `-m <model>`, `--dangerously-bypass-approvals-and-sandbox`, and `-c model_reasoning_effort=<low|medium|high|xhigh>`. Fresh turns also pass `-C <workspace>`; resumed turns run with `Command::current_dir(workspace_root)` because `codex exec resume` does not accept `-C`. The prompt is passed after a `--` separator so messages beginning with `-` are not parsed as Codex CLI flags. The composed system prompt is passed through `-c developer_instructions=<TOML string>`. `.ire/mcp.json` is translated into Codex config flags such as `-c mcp_servers.ire.command="node"`, `-c mcp_servers.ire.args=[...]`, and `-c mcp_servers.ire.env.IRE_WORKSPACE="..."`.
 
-Reads stdout line-by-line on a `spawn_blocking` thread; deserialises each line into `serde_json::Value`; dispatches to typed `StreamEvent`s emitted to the frontend on the `chat-stream` channel:
+### 10.3 JSONL parsers (`cc::stream`, `codex::stream`)
+
+Reads stdout line-by-line on a `spawn_blocking` thread; deserialises each line into `serde_json::Value`; dispatches provider-specific JSONL into typed `StreamEvent`s emitted to the frontend on the `chat-stream` channel. Each emitted payload includes `stream_id = "{tab_id}:{stream_uuid}"` and a per-process monotonic `event_id`; the frontend uses those fields to make event delivery idempotent without depending on OS PID uniqueness. When a provider stream already emits `Done`, the subprocess wrapper does not emit an additional synthetic `Done` after `wait()`:
 
 ```rust
 #[serde(tag = "kind")]
@@ -543,8 +557,8 @@ enum StreamEvent {
     Init { session_id: String },
     TextDelta { text: String },
     ThinkingDelta { text: String },
-    ToolStart { tool_id: String, tool_name: String, input_preview: Option<String>, input_full: Option<String> },
-    ToolDone { tool_id: String, output_preview: Option<String>, output_full: Option<String> },
+    ToolStart { tool: ToolCall },
+    ToolDone { tool_id: String, output: Option<ToolIo>, status: ToolStatus, meta: Value },
     AskUserQuestion { tool_id: String, questions: Vec<AskQuestion> },
     Result { text: Option<String>, session_id: String },
     Error { message: String },
@@ -552,7 +566,9 @@ enum StreamEvent {
 }
 ```
 
-Deduplicate `Result.text` against streamed `TextDelta`s using an `emitted_text: bool` flag (blueprint §3).
+`ToolCall` is the provider-neutral tool-card contract defined in `tool_cards.rs`: `{ tool_id, provider, kind, raw_name, title, input, output, status, meta }`. `kind` is one of `command`, `file_read`, `file_write`, `file_edit`, `file_search`, `web_fetch`, `wiki_read`, `wiki_write`, `wiki_append`, `wiki_rename`, `memory_write`, `pulse_update`, `experiment_start`, `experiment_status`, `experiment_tail_logs`, or `other`; `input`/`output` carry `{ preview, full, format }`; `meta` carries structured fields such as `path`, `paths`, `command`, `experiment_uuid`, `experiment_status`, `experiment_exit_code`, and `experiment_pid` when known. `ToolDone` updates an existing card by `tool_id` without replacing the canonical metadata already stored by the frontend.
+
+Claude deduplicates `Result.text` against streamed `TextDelta`s using an `emitted_text: bool` flag (blueprint §3). Both provider parsers set `emitted_done` when they emit terminal `Done`, so wrappers can suppress duplicate process-exit `Done` events. Claude and Codex both normalize native tool records into `ToolCall` before emitting `ToolStart`. Claude maps built-ins such as `Bash`, `Read`, `Write`, `Edit`/`MultiEdit`, `Grep`/`Glob`/`LS`, and `WebFetch`; MCP names such as `ire__wiki.read` and `mcp__ire__wiki__read` normalize through the same `wiki.*`, `memory.*`, `pulse.update`, and `experiment.*` mapping. Claude partial-message cursors are scoped to `message.id`, because Claude Code starts a new assistant message after tool execution and reuses content block index `0` for the final answer. Codex maps `thread.started` to `Init`, `item.agentMessage.delta` and completed `agent_message` items to `TextDelta`, `item.reasoning.textDelta` to `ThinkingDelta`, supported tool item start/completion events (`command_execution` / `commandExecution`, `file_change` / `fileChange`, `dynamic_tool_call` / `dynamicToolCall`, `mcp_tool_call`) to canonical `ToolStart`/`ToolDone`, preserving command/path/input metadata as tool `IN` details when the CLI emits those fields, and `turn.completed` to `Result` + `Done`. Codex may emit multiple completed `agent_message` items in one turn (for example text → tool → text), so duplicate suppression is tracked by Codex item id rather than by the turn-wide `emitted_text` flag. Unknown provider tools map to `kind: "other"` with the raw name and raw JSON details preserved. For `mcp_tool_call` items the raw name is `{server}__{tool}` (e.g. `ire__wiki.list`), input args come from the `arguments` field, and output is extracted from `result.content[].text`; a non-null string `error` field marks the call as failed.
 
 `AskUserQuestion` is emitted when CC's built-in `AskUserQuestion` tool fires. The parser
 intercepts that `tool_use` block, parses its `questions[]` payload
@@ -564,21 +580,27 @@ CC resumes the session and continues from there.
 
 ### 10.4 Session management
 
-Each chat tab (see §9.4) has its own `session_id`, stored inside `SessionManager`:
+Each chat tab (see §9.4) has its own provider-scoped `session_id`, stored inside `SessionManager`:
 
 ```rust
 // cc/session.rs
-struct PerTabSession { session_id: Option<String>, running_pid: Option<u32> }
+struct PerTabSession {
+    session_id: Option<String>,
+    session_provider: Option<String>,
+    model: Option<String>,
+    effort: Option<String>,
+    running_pid: Option<u32>,
+}
 pub struct SessionManager(Arc<Mutex<HashMap<String, PerTabSession>>>);
 ```
 
-`session_id` is captured from the first `Init` event for a given `tab_id` and stored in the map. Subsequent `chat_send` calls for that tab pass `--resume <session_id>`. Reset clears the `session_id` entry for the tab; the next send starts a fresh session with no `--resume` flag.
+`session_id` is captured from the first `Init` event for a given `tab_id` and provider, then stored in the map. The model and effort selected for each spawned turn are stored alongside that provider. Subsequent `chat_send` calls for that same tab and provider pass `--resume <session_id>` for Claude or `codex exec resume <thread_id>` for Codex. Switching providers in a tab starts a fresh provider session instead of cross-resuming with the wrong CLI. Reset clears the `session_id` entry for the tab; the next send starts a fresh session. `experiment.start` records the active `tab_id`, `session_id`, `session_provider`, `model`, and `effort` from the running turn before spawning the detached command; the monitor uses those values to fire the wake-up through the same provider and model settings instead of assuming Claude Code.
 
 ---
 
 ## 11. MCP Server
 
-A Node.js stdio MCP server bundled at `mcp/server.js`. Spawned by Tauri at workspace open and torn down on close. CC connects to it via `--mcp-config .ire/mcp.json` (generated at workspace open):
+A Node.js stdio MCP server bundled at `mcp/server.js`. Spawned by Tauri at workspace open and torn down on close. Claude Code connects to it via `--mcp-config .ire/mcp.json`; Codex receives the same config translated to `-c mcp_servers.*` flags. `.ire/mcp.json` is generated at workspace open:
 
 ```json
 {
@@ -610,7 +632,7 @@ The MCP server is a **thin RPC bridge** to the Rust backend over a Unix domain s
 | `memory.write_short_term({ content })` | Append to today's `short-term/YYYY-MM-DD.md`. Does not commit. |
 | `pulse.update({ research_question?, this_week? })` | Patch `pulse.json`. Does not commit. |
 | `resource.fetch({ url })` | Fetch URL, extract text, return it (does not save to wiki). |
-| `experiment.start({ name, plan_md, command, working_dir?, wake_prompt })` | Spawn detached subprocess, return `{ uuid }`. |
+| `experiment.start({ name, command, working_dir?, wake_prompt })` | Spawn detached subprocess, return `{ uuid }`. |
 | `experiment.status({ uuid })` | Return `{ status, exit_code?, started_at, ended_at? }`. |
 | `experiment.list({ limit? })` | Recent experiments. |
 | `experiment.tail_logs({ uuid, kb? })` | Tail of stdout/stderr. |
@@ -705,7 +727,7 @@ The Tauri window opens in windowed mode at 1280 × 820 so the primary rails, cen
 - `IdeasPane` renders active ideas sorted by `order`, opens an inline draft card on Add, saves the draft to `ideas.json` on Enter, and hides trashed ideas by persisting `trashed: true`.
 - `FocusPane` and `NotesPane` use **inline editing**: clicking a field activates a textarea in place; blur/Enter saves. No separate Edit/Preview toggle. `NotesPane` renders saved `notes.md` content as markdown in display mode rather than forcing each line into a bullet item.
 - Clicking an experiment row in `ExperimentsSection` opens (or re-focuses) an `experiment` tab in the centre column; the tab renders `ExperimentTabView` with a metadata grid and live log tail. Hovering an experiment row reveals an `edit_document` rename button between the experiment name and status pill; pressing Enter commits the inline rename through `experiment_rename`, while Escape or blur cancels. `ExperimentTabView` uses the same hover-revealed `edit_document` rename button beside the header name.
-- The top navbar shows the full workspace path on the far left as the project title. The bottom `StatusBar` polls `get_system_status` every 5 s and displays (left-to-right): workspace path + git branch + insertions/deletions, CPU model + usage %, GPU model + usage % + VRAM (or `n/a` when unavailable), RAM total GB, `username@hostname`, and a `claude-code · connected/disconnected` indicator pushed to the far right. The CC indicator is `connected` when `find_claude_binary()` succeeds, meaning the CLI is available for interaction; it does not require an active subprocess.
+- The top navbar shows the full workspace path on the far left as the project title. The bottom `StatusBar` polls `get_system_status` every 5 s and displays (left-to-right): workspace path + git branch + insertions/deletions, CPU model + usage %, GPU model + usage % + VRAM (or `n/a` when unavailable), RAM total GB, `username@hostname`, and right-aligned `Claude Code` / `codex` availability chips. `cc_connected` is true when `find_claude_binary()` succeeds; `codex_connected` is true when `find_codex_binary()` succeeds. These flags mean the CLI is available for interaction; they do not require an active subprocess.
 
 ### 13.2 Chat rendering
 
@@ -714,23 +736,23 @@ The Tauri window opens in windowed mode at 1280 × 820 so the primary rails, cen
 - The active tab uses `bg-surface-container-highest` and a 1 px top border in the `primary` colour token (light silver), visually merging with the content area below. The tab bar background is `bg-surface-container-low`.
 - Inactive tabs use `text-on-surface-variant` with no background fill. Hovering applies `bg-surface-container-highest` and `text-on-surface`.
 - The close button (×) is hidden until the tab row is **hovered** (`group-hover`). It does not appear simply because the tab is active. Pinned tabs (Main) have no close button.
-- A `+` button (Material Symbol `add`) at the right end of the bar opens a new chat tab.
+- A `+` button (Material Symbol `add`) after the tab handles opens a new chat tab. A history button lives in the same tab bar, fixed at the far right, so chat history remains available even when no chat tabs are open.
 - If there are more tabs than fit the bar width the row scrolls horizontally (scrollbar hidden via `.no-scrollbar`).
 - Each tab shows a Material Symbol icon left of the label: `chat` for chat tabs, `description` for resource/preview tabs, `science` for experiment tabs. A resource tab that is actively being summarised shows a `progress_activity` icon instead, with `animate-spin`.
 
 **Messages.** Assistant output is stored and rendered as ordered content blocks inside the latest assistant bubble. Text deltas, thinking deltas, tool cards, and experiment cards appear in the same chronological order as their `chat-stream` events; consecutive deltas of the same block type merge into the current block.
 - Both user text and assistant text blocks are rendered through `MessageMarkdown` (`react-markdown` + `remark-gfm` + `remark-math` + `rehype-katex`). GitHub-flavoured markdown — tables, fenced code, task lists — and LaTeX (`$…$`, `$$…$$`) display inline. KaTeX CSS is imported once in `main.tsx`. Inline HTML is intentionally **not** enabled (no `rehype-raw`); raw HTML in the model output is shown as text or inside a fenced code block, never injected into the DOM.
 - Thinking blocks render in chronological position as collapsed-by-default accordions whose only collapsed label is `thinking...`. Clicking the label expands or collapses the full thinking content. Content is plain text (not markdown-parsed) since thinking traces are rarely well-formed markdown.
-- Tool blocks render in chronological position as compact cards (`ToolCard`, defined inline in `MessageList.tsx`). Clicking expands a Claude-Code-style I/O panel with labeled `IN` and `OUT` monospace fields when the tool input/output is available. `experiment.start` tool calls render as `ExperimentCard` instead (see below).
-- Experiment cards are special: collapsed by default; clicking the header toggles a log body. The header contains: a status dot (blinking amber while `starting`/`running`, solid green for `completed`, solid red for `failed`/`cancelled`); a `⚗ <tool_name>` label; a text status badge; optionally a `PID <n>` label while running; optionally an `exit <n>` label when failed; a chevron (▸/▾); and a **Cancel** button (visible only while `starting` or `running` and only when the UUID is known). Expanded body shows the tool input (IN) and the last 10 live log lines (OUT) or "No output yet." if none have arrived. The Cancel button calls `e.stopPropagation()` so it does not toggle the card.
+- Tool blocks render in chronological position as compact canonical cards (`ToolCard` in `components/chat/ToolCard.tsx`). React renders from `tool.kind`, `tool.title`, `tool.input`, `tool.output`, `tool.status`, and `tool.meta`; provider-specific raw names are displayed only as preserved details and are not used for frontend branching. Clicking expands a shared I/O panel with labeled `IN` and `OUT` monospace fields when the tool input/output is available. `experiment_start` tool calls render as `ExperimentCard` instead (see below).
+- Experiment cards are special: collapsed by default; clicking the header toggles a log body. The header contains: a status dot (blinking amber while `starting`/`running`, solid green for `completed`, solid red for `failed`/`cancelled`); the canonical tool title; a text status badge; optionally a `PID <n>` label while running; optionally an `exit <n>` label when failed; a chevron (▸/▾); and a **Cancel** button (visible only while `starting` or `running` and only when the UUID is known). Expanded body shows the canonical tool input (IN) and the last 10 live log lines (OUT) or "No output yet." if none have arrived. The Cancel button calls `e.stopPropagation()` so it does not toggle the card.
 - **AskUserQuestion cards** (`AskQuestionCard`) render in chronological position when CC calls the built-in `AskUserQuestion` tool. The card is a wizard: one question per step, a fixed 380px stage so the surrounding chrome (header counter, prev/next arrows, progress dots) does not shift while the user navigates. Single-select picks auto-advance after 220 ms; multi-select and `Other` (which expands an inline text input) wait for an explicit Next. The last question's right-side button switches from `Next` (▸) to `Review`; the Review step lists every question with its current answer and an edit-pencil affordance — clicking a row opens an `EditModal` with that question pre-populated. Submit lives only on the Review step. On submit, the card formats answers as a `- **<header>**: <value>` markdown bullet list prefixed with `Answers to your questions:` and sends it through the normal `chat_send` path; CC resumes the session and continues from there. After submit the card locks into an "Answered" summary view (green check, `→ <answer>` per question). Step transitions use a 220 ms `cubic-bezier(.4,0,.2,1)` slide (outgoing panel slides left/right, incoming panel slides in from the opposite side).
 
 **Composer footer.** Below the textarea, a footer bar holds two dropdown selectors and the Send button. Both dropdowns share the same visual style (a small pill button that opens a menu above it):
-- The textarea starts at 52px high, grows with content, caps at 240px, then scrolls internally.
-- Each composer instance samples one placeholder sentence from the built-in research/discovery prompt list when it mounts, and keeps that placeholder stable until the composer is remounted.
-- **Model** — selects the Claude model; options come from `MODELS` in `state/chatOptions.ts` (Haiku 4.5, Sonnet 4.6, Opus 4.7). Default: Haiku 4.5.
-- **Effort** — selects the thinking-budget level; options come from `EFFORT_LEVELS` (Low → Med → High → XHigh → Max). Default: **Low**. Persisted to `.ire/workspace.json` (debounced 1 s) and rehydrated on workspace open.
-Both values are passed as `options: { model, effort }` on every `chat_send` invocation.
+- The textarea starts at 60px high, grows with content, caps at 240px, then scrolls internally.
+- The composer textarea always shows the fixed placeholder `Ask IRE to brainstorm directions, ingest resources, or run experiments...`. The no-tabs hero empty state shows the currently prepared sentence from the built-in research/discovery message list. A fresh sentence is prepared when the user clicks the hero's New chat button, so the next no-tabs hero appearance renders without a visible text swap.
+- **Model** — selects provider and model from grouped options in `MODELS` in `state/chatOptions.ts`, filtered by the workspace session's `availableProviders` captured from `setup_status` during workspace open/init. Claude Code models are Opus 4.7, Sonnet 4.6, and Haiku 4.5. Codex models are GPT-5.5, GPT-5.4, GPT-5.4-Mini, GPT-5.3-Codex, and GPT-5.2. Default when both providers are available: Claude Code / Sonnet 4.6. If only one provider is available, the selector shows only that provider's models and invalid persisted selections are coerced to that provider's default model. Font Awesome brand icons are loaded in `index.html` through `<script src="https://kit.fontawesome.com/a8c373c57e.js" crossorigin="anonymous"></script>` and rendered as `fa-brands fa-claude` / `fa-brands fa-openai`.
+- **Effort / Reasoning** — Claude Code shows Low → Med → High → XHigh → Max. Codex shows Low → Med → High → XHigh. The label reads `effort` for Claude Code and `reasoning` for Codex. Default: **Low**. Switching provider resets the level to Low so Codex never receives Claude-only `max`. Persisted to `.ire/workspace.json` (debounced 1 s) and rehydrated on workspace open.
+`model`, `provider`, and `effort` are passed as `options: { model, provider, effort }` on every `chat_send` invocation.
 
 **ExperimentTabView.** When the active tab has `kind === "experiment"`, the chat pane renders `ExperimentTabView` instead of the message list + composer. It shows: a name header with a status badge; a metadata grid (status + elapsed timer, runtime, command); and a scrollable log pane (stdout only, `h-48`, auto-scrolls to bottom). Elapsed time is updated every second via `setInterval` while the experiment is running, and frozen to the final elapsed on completion. Live log lines arrive via the `experiment-log-line` event. The pane polls `experiment_list` once on mount to load initial state and loads existing stdout via `experiment_logs`.
 
@@ -771,17 +793,34 @@ Typography uses bundled `geist` package font files (`Geist`, `Geist Mono`) refer
     }
   },
   "last_opened": "2026-05-06T10:14:00Z",
-  "effort": "low"
+  "model": "claude-sonnet-4-6",
+  "provider": "claude",
+  "effort": "low",
+  "tabs": [
+    {
+      "id": "main",
+      "label": "Chat",
+      "messages": [],
+      "isStreaming": false,
+      "isPinned": false,
+      "kind": "chat",
+      "historySessionUuid": "550e8400-e29b-41d4-a716-446655440000",
+      "historyStartedAt": "2026-05-06T10:14:00Z"
+    }
+  ],
+  "active_tab_id": "main"
 }
 ```
 
-Each entry under `panel_layout.groups.<group-id>` is the `Layout` map (`{ panel-id: percentage }`) that `react-resizable-panels` accepts as `defaultLayout` on `<Group>`. `panel_layout.collapsed.left/right` stores the independent top-navbar sidebar collapsed state; older layouts without this field infer it from `panel_layout.groups.body.left/right === 0`. Unknown / missing groups fall back to per-`<Panel>` `defaultSize` props. Persisted via `save_workspace_state` (debounced 1 s on layout or collapsed-state change). Hydrated by `read_workspace_state` from `SetupScreen.handlePick` immediately after `open_workspace`/`init_workspace`, before the workspace transitions to `phase = "ready"` so the panels mount with the correct sizes.
+Each entry under `panel_layout.groups.<group-id>` is the `Layout` map (`{ panel-id: percentage }`) that `react-resizable-panels` accepts as `defaultLayout` on `<Group>`. `panel_layout.collapsed.left/right` stores the independent top-navbar sidebar collapsed state; older layouts without this field infer it from `panel_layout.groups.body.left/right === 0`. Unknown / missing groups fall back to per-`<Panel>` `defaultSize` props. Persisted via `save_workspace_state` (debounced 1 s on layout, collapsed-state, model, provider, effort, tab, message, or active-tab change; also saved immediately before/after chat sends and before workspace close). Hydrated by `read_workspace_state` from `SetupScreen.handlePick` immediately after `open_workspace`/`init_workspace`, before the workspace transitions to `phase = "ready"` so the panels mount with the correct sizes and the composer restores the last selected model-effort pair.
 
-`effort` stores the last-used thinking-budget level (`"low"` | `"medium"` | `"high"` | `"xhigh"` | `"max"`). Defaults to `"low"` on first open. Persisted by `Layout` (debounced 1 s on change) and applied to `useChatOptions` during workspace hydration in `SetupScreen`.
+`model` and `provider` store the last selected agent model. `effort` stores the last selected thinking-budget / reasoning level (`"low"` | `"medium"` | `"high"` | `"xhigh"` | `"max"` for Claude Code, without `"max"` for Codex). Defaults are Claude Code / Sonnet 4.6 / `"low"` when both providers are available, or the first model for the only detected provider when the workspace is opened in Claude-only or Codex-only mode. `SetupScreen` validates the persisted tuple against `MODELS`, the provider-specific effort list, and the open-time `availableProviders` before applying it to `useChatOptions`.
+
+`tabs` stores the open central-column tabs as opaque frontend `Tab` JSON, including chat messages, preview wiki path, experiment UUID, optional chat-history metadata, and optional `agentOptions` for chat tabs and backend-created resource tabs. `active_tab_id` stores the selected tab. Streaming flags are normalized to `false` when writing and again when restoring, because backend agent `session_id`s and subprocesses are in-memory only and are reset on app close.
 
 Theme is **not** stored here — it is a user-level preference and lives in `~/.config/ire/config.json` (see [§13.7](#137-user-config-configireconfig.json)).
 
-Per-tab CC `session_id`s are intentionally **not** persisted in MVP: sessions live in the in-memory `SessionManager` and are reset on app close.
+Per-tab agent `session_id`s are intentionally **not** persisted in MVP: sessions live in the in-memory `SessionManager` and are reset on app close.
 
 ### 13.7 User config (`~/.config/ire/config.json`)
 
@@ -815,7 +854,7 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 
 | Command | Args | Returns |
 |---|---|---|
-| `setup_status` | — | `{ binary: BinaryStatus }` where `BinaryStatus` is `{ kind: "found"; path: string; version: string \| null } \| { kind: "missing" }` |
+| `setup_status` | — | `{ binary: BinaryStatus, codex_binary: BinaryStatus }` where `BinaryStatus` is `{ kind: "found"; path: string; version: string \| null } \| { kind: "missing" }` |
 | `open_workspace` | `{ path }` | `WorkspaceState` (`{ path, name }`) |
 | `init_workspace` | `{ path }` | `WorkspaceState` |
 | `close_workspace` | — | `{}` |
@@ -826,13 +865,13 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 | `save_ideas_json` | `{ ideas }` | `{}` (writes `ideas.json`) |
 | `read_pulse` | — | `{ research_question, this_week }` |
 | `save_pulse_field` | `{ field: "research_question" \| "this_week", content }` | `{}` (updates `pulse.json`) |
-| `submit_resource` | `{ url }` | `resource_id: string` |
-| `submit_local_resource` | `{ path }` | `resource_id: string` |
-| `submit_resources` | `{ sources: ({ kind: "url", url } \| { kind: "local_file", path })[] }` | `resource_id: string` |
+| `submit_resource` | `{ url, options: { model: string, provider: "claude" \| "codex", effort: EffortLevel } }` | `resource_id: string` |
+| `submit_local_resource` | `{ path, options: { model: string, provider: "claude" \| "codex", effort: EffortLevel } }` | `resource_id: string` |
+| `submit_resources` | `{ sources: ({ kind: "url", url } \| { kind: "local_file", path })[], options: { model: string, provider: "claude" \| "codex", effort: EffortLevel } }` | `resource_id: string` |
 | `discard_resource` | `{ resource_id }` | `{}` (deletes cache file, marks DB row `rejected`, emits `workspace-event resource-deleted`) |
 | `list_resources` | — | `ResourceItem[]` (only `summarized` entries) |
 | `get_resource_confirm_prompt` | — | `string` (the second-turn confirm prompt loaded from `assets/prompts/`) |
-| `chat_send` | `{ tab_id, message, options: { model: string, effort: EffortLevel } }` | `{}` (events follow) |
+| `chat_send` | `{ tab_id, message, options: { model: string, provider: "claude" \| "codex", effort: EffortLevel } }` | `{}` (events follow) |
 | `chat_cancel` | `{ tab_id }` | `{}` |
 | `chat_reset_session` | `{ tab_id }` | `{}` (forgets session id for that tab) |
 | `experiment_list` | `{ limit? }` | `[ExperimentRow]` |
@@ -840,9 +879,13 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 | `experiment_cancel` | `{ uuid }` | `{}` |
 | `experiment_delete` | `{ uuid }` | `{}` (refuses running experiments; removes `.ire/wiki/experiments/<uuid>/` and the DB row) |
 | `experiment_rename` | `{ uuid, name }` | `{}` (updates `experiments.name`) |
-| `get_system_status` | — | `SystemStatus` (workspace path, git branch/diff, CPU/GPU/RAM metrics, CC connected flag) |
+| `get_system_status` | — | `SystemStatus` (workspace path, git branch/diff, CPU/GPU/RAM metrics, `cc_connected`, `codex_connected`) |
 | `read_workspace_state` | — | `PersistedWorkspace` (panel layout from `.ire/workspace.json`) |
 | `save_workspace_state` | `{ state: PersistedWorkspace }` | `{}` (debounced from frontend; atomic write) |
+| `chat_history_save` | `{ session_uuid?, tab_label, provider, model, started_at, messages_json }` | `{}` (upserts `chat_sessions`; frontend usually passes stable UUID from the tab) |
+| `chat_history_list` | `{ limit? }` | `[ChatSessionRow]` ordered by `ended_at DESC` |
+| `chat_history_get` | `{ session_uuid }` | `messages_json: string \| null` |
+| `chat_history_delete` | `{ session_uuid }` | `{}` |
 | `read_user_config` | — | `UserConfig` (`{ theme?, recent_workspaces? }` from `~/.config/ire/config.json`) |
 | `save_user_config` | `{ config: UserConfig }` | `{}` (writes full config) |
 
@@ -850,7 +893,7 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 
 | Event | Payload |
 |---|---|
-| `chat-stream` | `{ tab_id: string, event: StreamEvent }` (see [§10.3](#103-ndjson-parser-ccstream) and [§9.4](#94-multi-tab-chat)) |
+| `chat-stream` | `{ tab_id: string, stream_id: string, event_id: number, event: StreamEvent }` (see [§10.3](#103-ndjson-parser-ccstream) and [§9.4](#94-multi-tab-chat)) |
 | `tab-created` | `{ tab_id: string, label: string, kind: "chat"\|"resource", resource_id?: string }` (preview tabs are created client-side only) |
 | `chat-cancelled` | `{ tab_id: string }` |
 | `experiment-starting` | `{ tab_id: string, uuid: string, pid?: number }` (fired when the detached process has been spawned; links the pending experiment card in `tab_id` to its assigned UUID and PID) |
@@ -900,8 +943,8 @@ Following the user's decision to **not** adopt the heavy thread-safety blueprint
    - Released on graceful shutdown; orphan-safe via stale reclaim.
 2. **In-process serialisation** of wiki writes via `tokio::Mutex<()>` held by `WikiStore`.
 3. **Atomic file replacement** for every wiki mutation: temp file in same dir → `fs::rename`. `sync_all` on the temp file before rename. (No directory fsync; the strong durability guarantees from the vault blueprint are deferred.)
-4. **CC turn serialisation per session**: one outstanding CC subprocess per session id; new sends queue.
-5. **Experiment subprocesses** are detached with their own process group; they outlive a CC subprocess crash.
+4. **Agent turn serialisation per session**: one outstanding agent subprocess per session id; new sends queue.
+5. **Experiment subprocesses** are detached with their own process group; they outlive an agent subprocess crash.
 
 What we explicitly **do not** do (vs. the vault blueprint): file-level advisory lock for the cache, fingerprint CAS, rename WAL with crash recovery, filesystem watcher with noise filtering. If we ever need them (e.g. to support multi-window per workspace), the blueprint is a ready reference.
 
@@ -930,7 +973,7 @@ ire/
 │   ├── state/                          # zustand stores
 │   │   ├── workspace.ts                # phase, mode, panelLayout, recentWorkspaces
 │   │   ├── chat.ts                     # tabs, messages, tool calls, experiment state
-│   │   ├── chatOptions.ts              # model + effort selection (MODELS, EFFORT_LEVELS)
+│   │   ├── chatOptions.ts              # provider + model + effort selection
 │   │   └── toasts.ts                   # error toast queue
 │   ├── hooks/
 │   │   └── useSystemStatus.ts          # polls get_system_status every 5 s
@@ -950,7 +993,7 @@ ire/
 │   │   │   └── AddResourceSection.tsx  # ordered URL/file buffer for resource ingestion
 │   │   ├── chat/
 │   │   │   ├── ChatPane.tsx            # tab router: chat / resource / preview / experiment
-│   │   │   ├── TabBar.tsx              # TDI tab bar with icons and + button
+│   │   │   ├── TabBar.tsx              # TDI tab bar with icons, + button, and right-side controls
 │   │   │   ├── MessageList.tsx         # message bubbles, ToolCard (inline), ExperimentCard
 │   │   │   ├── MessageMarkdown.tsx     # react-markdown + remark-gfm + KaTeX renderer
 │   │   │   ├── ExperimentCard.tsx      # experiment.start tool-call card with live log tail
@@ -958,7 +1001,7 @@ ire/
 │   │   │   ├── ResourcePreviewPane.tsx # edit/preview toggle for resource wiki files
 │   │   │   └── Composer.tsx            # floating textarea + model/effort pickers + Send
 │   │   └── setup/
-│   │       └── SetupScreen.tsx         # workspace picker + recent list + CC status
+│   │       └── SetupScreen.tsx         # workspace picker + recent list + agent binary status
 │   └── styles.css
 ├── src-tauri/
 │   ├── Cargo.toml
@@ -967,6 +1010,7 @@ ire/
 │   └── src/
 │       ├── main.rs
 │       ├── lib.rs                      # tauri::Builder, .manage, command registration
+│       ├── binary.rs                   # shared CLI binary discovery types/helpers
 │       ├── user_config.rs              # UserConfig struct, read/write, push_recent
 │       ├── events.rs                   # workspace-event emit helpers + EventSource (hydrate vs mutation)
 │       ├── commands/
@@ -974,6 +1018,7 @@ ire/
 │       │   ├── workspace.rs            # setup_status, open/init/close_workspace, workspace state, user config, emit_initial_state burst
 │       │   ├── wiki.rs                 # read/save wiki, notes, pulse, ideas
 │       │   ├── chat.rs                 # chat_send, chat_cancel, chat_reset_session
+│       │   ├── history.rs              # chat_history_save/list/get/delete
 │       │   ├── resources.rs            # submit/discard/list_resources, get_resource_confirm_prompt
 │       │   └── system.rs               # get_system_status
 │       ├── workspace/
@@ -1000,6 +1045,11 @@ ire/
 │       │   ├── spawn.rs                # Command setup
 │       │   ├── stream.rs               # NDJSON parser → StreamEvent
 │       │   └── session.rs              # SessionManager (per-tab session_id + PID)
+│       ├── codex/
+│       │   ├── mod.rs
+│       │   ├── discovery.rs            # find_codex_binary
+│       │   ├── spawn.rs                # codex exec Command setup
+│       │   └── stream.rs               # Codex JSONL parser → StreamEvent
 │       ├── prompts/
 │       │   └── mod.rs                  # load prompts from assets/prompts/ at runtime
 │       ├── mcp/
@@ -1030,13 +1080,13 @@ Each phase ends with a demoable milestone.
 
 **Phase 3 — CC subprocess layer.** Binary discovery + spawn + NDJSON parser + session management. A debug "Send" button next to the chat pane that sends a raw message and renders streaming text only (no tool cards yet). No MCP yet. *Milestone:* user can chat with CC inside the central pane, multi-turn via `--resume`. ✅
 
-**Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. CC config wired up via `--mcp-config`. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` handles atomic writes, index regeneration, typed `workspace-event` dispatch, and renames without creating git commits. System prompt composed from wiki context files on every CC turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and CC actually does it. ✅
+**Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. Agent MCP config is wired through Claude Code's `--mcp-config` or Codex's `-c mcp_servers.*` flags. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` handles atomic writes, index regeneration, typed `workspace-event` dispatch, and renames without creating git commits. System prompt composed from wiki context files on every agent turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and the selected agent actually does it. ✅
 
-**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML/local-file extractors. `submit_resources` accepts an ordered list of URL and local-file sources, extracts all text all-or-nothing, writes one cache file for a single source or `.ire/cache/<batch_sha>/source-NNN.txt` for multiple sources, inserts one DB row (with `url` holding a single source ref or a JSON-encoded array of source refs for batches), emits `tab-created`, and kicks one CC summarisation turn. The legacy `submit_resource` and `submit_local_resource` commands remain available for single-source callers. Confirm sends a second CC turn that writes `resources/<slug>.md` via `wiki.write`; `WikiStore::write` parses the new file's frontmatter `sources:` array, lists unindexed DB rows, links any row whose stored source refs (schema-aligned URL or `file:<sha256>:<filename>`) are all present in the file's `sources:` array, extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), and emits `workspace-event resource-changed { resource }` for each linked row — all before `wiki.write` returns, so the panel updates the moment the file is written. Discard calls `discard_resource` (deletes cache, marks `rejected`, emits `resource-deleted`). Notes and ideas write directly to disk without committing. The resources list shows only `summarized` resources with their title and non-null `wiki_path`; no status label is shown. *Milestone:* ingest one or more supported sources → one resource summary appears in the right pane. ✅
+**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML/local-file extractors. `submit_resources` accepts an ordered list of URL and local-file sources plus the composer-selected provider/model/effort, extracts all text all-or-nothing, writes one cache file for a single source or `.ire/cache/<batch_sha>/source-NNN.txt` for multiple sources, inserts one DB row (with `url` holding a single source ref or a JSON-encoded array of source refs for batches), emits `tab-created`, and kicks one selected-agent summarisation turn. The legacy `submit_resource` and `submit_local_resource` commands remain available for single-source callers. Confirm sends a second selected-agent turn that writes `resources/<slug>.md` via `wiki.write`; `WikiStore::write` parses the new file's frontmatter `sources:` array, lists unindexed DB rows, links any row whose stored source refs (schema-aligned URL or `file:<sha256>:<filename>`) are all present in the file's `sources:` array, extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), and emits `workspace-event resource-changed { resource }` for each linked row — all before `wiki.write` returns, so the panel updates the moment the file is written. Discard calls `discard_resource` (deletes cache, marks `rejected`, emits `resource-deleted`). Notes and ideas write directly to disk without committing. The resources list shows only `summarized` resources with their title and non-null `wiki_path`; no status label is shown. *Milestone:* ingest one or more supported sources → one resource summary appears in the right pane. ✅
 
-**Phase 6 — Experiments.** `experiment.start`, detached subprocess, monitor, wake-up turn composition. Experiment cards in chat with live log tail. *Milestone:* CC can run a Python script ablation, tell the user "I'll be back", and resume with results when the script exits. ✅
+**Phase 6 — Experiments.** `experiment.start`, detached subprocess, monitor, wake-up turn composition. Experiment cards in chat with live log tail. *Milestone:* an agent can run a Python script ablation, tell the user "I'll be back", and resume with results when the script exits. ✅
 
-**Phase 7 — Polish.** `workspace.json` persistence (theme + per-group panel layouts via `read_workspace_state` / `save_workspace_state`, debounced 1 s, hydrated before the Layout mounts). Error toast stack (top-right) wired to a frontend `useToasts` zustand store; subscribes to the backend `error` event and replaces silent `console.error` calls in user-facing flows. Cancel button on `ExperimentCard` (visible while status is `starting` or `running`) calls `experiment_cancel`. Inline focus editor saves `pulse.json` fields through `save_pulse_field`. *Milestone:* layout, theme, and focus survive restart; user-visible failures surface as toasts; experiments can be cancelled from the chat.
+**Phase 7 — Polish.** `workspace.json` persistence (per-group panel layouts, open tabs, and chat options via `read_workspace_state` / `save_workspace_state`, debounced 1 s, hydrated before the Layout mounts). Error toast stack (top-right) wired to a frontend `useToasts` zustand store; subscribes to the backend `error` event and replaces silent `console.error` calls in user-facing flows. Cancel button on `ExperimentCard` (visible while status is `starting` or `running`) calls `experiment_cancel`. Inline focus editor saves `pulse.json` fields through `save_pulse_field`. *Milestone:* layout, tabs, model/effort, and focus survive restart; user-visible failures surface as toasts; experiments can be cancelled from the chat.
 
 ---
 

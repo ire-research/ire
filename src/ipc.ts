@@ -21,6 +21,7 @@ export type BinaryStatus =
 
 export interface SetupStatus {
   binary: BinaryStatus;
+  codex_binary: BinaryStatus;
 }
 
 export interface WorkspaceState {
@@ -31,8 +32,13 @@ export interface WorkspaceState {
 export interface PersistedWorkspace {
   version: number;
   panel_layout?: PanelLayouts | null;
+  model?: string | null;
+  provider?: "claude" | "codex" | null;
   last_opened?: string | null;
   effort?: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  tabs?: any[] | null;
+  active_tab_id?: string | null;
 }
 
 export interface UserConfig {
@@ -79,12 +85,12 @@ export const ipc = {
     invoke("chat_cancel", { tabId }),
   chatResetSession: (tabId: string): Promise<void> =>
     invoke("chat_reset_session", { tabId }),
-  submitResource: (url: string): Promise<string> =>
-    invoke("submit_resource", { url }),
-  submitLocalResource: (path: string): Promise<string> =>
-    invoke("submit_local_resource", { path }),
-  submitResources: (sources: ResourceSourceInput[]): Promise<string> =>
-    invoke("submit_resources", { sources }),
+  submitResource: (url: string, options: ChatOptions): Promise<string> =>
+    invoke("submit_resource", { url, options }),
+  submitLocalResource: (path: string, options: ChatOptions): Promise<string> =>
+    invoke("submit_local_resource", { path, options }),
+  submitResources: (sources: ResourceSourceInput[], options: ChatOptions): Promise<string> =>
+    invoke("submit_resources", { sources, options }),
   discardResource: (resourceId: string): Promise<void> =>
     invoke("discard_resource", { resourceId }),
   getResourceConfirmPrompt: (): Promise<string> =>
@@ -106,6 +112,21 @@ export const ipc = {
     invoke("save_user_config", { config }),
   openInVscode: (path: string): Promise<void> =>
     invoke("open_in_vscode", { path }),
+  chatHistorySave: (
+    tabLabel: string,
+    provider: string,
+    model: string,
+    startedAt: string,
+    messagesJson: string,
+    sessionUuid?: string,
+  ): Promise<void> =>
+    invoke("chat_history_save", { sessionUuid, tabLabel, provider, model, startedAt, messagesJson }),
+  chatHistoryList: (limit?: number): Promise<import("./types").ChatSessionSummary[]> =>
+    invoke("chat_history_list", { limit }),
+  chatHistoryGet: (sessionUuid: string): Promise<string | null> =>
+    invoke("chat_history_get", { sessionUuid }),
+  chatHistoryDelete: (sessionUuid: string): Promise<void> =>
+    invoke("chat_history_delete", { sessionUuid }),
 };
 
 export function onWorkspaceEvent(

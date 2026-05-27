@@ -20,7 +20,12 @@ pub fn experiment_list(
 ) -> Result<Vec<ExperimentRow>, String> {
     let workspace_path = {
         let guard = active.0.lock().map_err(|e| e.to_string())?;
-        guard.as_ref().ok_or("no workspace open")?.state.path.clone()
+        guard
+            .as_ref()
+            .ok_or("no workspace open")?
+            .state
+            .path
+            .clone()
     };
     let ire_dir = workspace_path.join(".ire");
     db::list_experiments(&ire_dir, limit.unwrap_or(50)).map_err(|e| e.to_string())
@@ -34,7 +39,12 @@ pub fn experiment_logs(
 ) -> Result<LogsResult, String> {
     let workspace_path = {
         let guard = active.0.lock().map_err(|e| e.to_string())?;
-        guard.as_ref().ok_or("no workspace open")?.state.path.clone()
+        guard
+            .as_ref()
+            .ok_or("no workspace open")?
+            .state
+            .path
+            .clone()
     };
     let log_dir = workspace_path.join(".ire/wiki/experiments").join(&uuid);
     let max_bytes = kb.unwrap_or(64) * 1024;
@@ -53,7 +63,12 @@ pub fn experiment_cancel(
 ) -> Result<(), String> {
     let workspace_path = {
         let guard = active.0.lock().map_err(|e| e.to_string())?;
-        guard.as_ref().ok_or("no workspace open")?.state.path.clone()
+        guard
+            .as_ref()
+            .ok_or("no workspace open")?
+            .state
+            .path
+            .clone()
     };
     let ire_dir = workspace_path.join(".ire");
 
@@ -82,7 +97,12 @@ pub fn experiment_delete(
 ) -> Result<(), String> {
     let workspace_path = {
         let guard = active.0.lock().map_err(|e| e.to_string())?;
-        guard.as_ref().ok_or("no workspace open")?.state.path.clone()
+        guard
+            .as_ref()
+            .ok_or("no workspace open")?
+            .state
+            .path
+            .clone()
     };
     let ire_dir = workspace_path.join(".ire");
     let row = db::get_experiment(&ire_dir, &uuid)
@@ -111,7 +131,12 @@ pub fn experiment_rename(
 ) -> Result<(), String> {
     let workspace_path = {
         let guard = active.0.lock().map_err(|e| e.to_string())?;
-        guard.as_ref().ok_or("no workspace open")?.state.path.clone()
+        guard
+            .as_ref()
+            .ok_or("no workspace open")?
+            .state
+            .path
+            .clone()
     };
     let ire_dir = workspace_path.join(".ire");
     db::rename_experiment(&ire_dir, &uuid, &name).map_err(|e| e.to_string())?;
@@ -122,9 +147,15 @@ pub fn experiment_rename(
 }
 
 fn read_tail(path: &std::path::Path, max_bytes: u64) -> String {
-    let Ok(content) = fs::read(path) else { return String::new() };
+    let Ok(content) = fs::read(path) else {
+        return String::new();
+    };
     let len = content.len() as u64;
-    let start = if len > max_bytes { (len - max_bytes) as usize } else { 0 };
+    let start = if len > max_bytes {
+        (len - max_bytes) as usize
+    } else {
+        0
+    };
     String::from_utf8_lossy(&content[start..]).into_owned()
 }
 

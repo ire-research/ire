@@ -15,8 +15,18 @@ pub struct PersistedWorkspace {
     pub panel_layout: Option<serde_json::Value>,
     #[serde(default)]
     pub last_opened: Option<String>,
+    #[serde(default = "default_model")]
+    pub model: String,
+    #[serde(default = "default_provider")]
+    pub provider: String,
     #[serde(default = "default_effort")]
     pub effort: String,
+    /// All open tabs serialised as opaque JSON blobs. Rust has no need to
+    /// understand the Tab type hierarchy — it just stores and returns the JSON.
+    #[serde(default)]
+    pub tabs: Option<Vec<serde_json::Value>>,
+    #[serde(default)]
+    pub active_tab_id: Option<String>,
 }
 
 impl Default for PersistedWorkspace {
@@ -25,9 +35,21 @@ impl Default for PersistedWorkspace {
             version: default_version(),
             panel_layout: None,
             last_opened: None,
+            model: default_model(),
+            provider: default_provider(),
             effort: default_effort(),
+            tabs: None,
+            active_tab_id: None,
         }
     }
+}
+
+fn default_model() -> String {
+    "claude-sonnet-4-6".to_string()
+}
+
+fn default_provider() -> String {
+    "claude".to_string()
 }
 
 fn default_effort() -> String {
