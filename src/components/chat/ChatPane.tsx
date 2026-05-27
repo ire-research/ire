@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "../../state/chat";
-import { useChatOptions } from "../../state/chatOptions";
+import { defaultEffortForModel, useChatOptions } from "../../state/chatOptions";
 import { useWorkspace } from "../../state/workspace";
 import { toastError } from "../../state/toasts";
 import {
@@ -355,7 +355,11 @@ export function ChatPane() {
     // It will be re-saved to history when the tab is closed.
     ipc.chatHistoryDelete(sessionUuid).catch(() => {});
     const agentOptions: ChatOptions | undefined = provider && model
-      ? { provider: provider as Provider, model, effort: "low" }
+      ? {
+          provider: provider as Provider,
+          model,
+          effort: defaultEffortForModel(provider as Provider, model),
+        }
       : undefined;
     createTabWithMessages(tabLabel, messages, sessionUuid, startedAt, agentOptions);
   };

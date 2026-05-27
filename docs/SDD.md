@@ -392,6 +392,8 @@ User types in central pane → Send
   → chat_send({ message, options: { provider, model, effort } }) Tauri command
   → Rust spawns one of:
       claude -p "<message>"
+        --model <model>
+        [--effort <low|medium|high|xhigh|max>]
         --output-format stream-json --verbose --include-partial-messages
         --mcp-config .ire/mcp.json
         --append-system-prompt "<composed per §7.4>"
@@ -594,7 +596,7 @@ struct PerTabSession {
 pub struct SessionManager(Arc<Mutex<HashMap<String, PerTabSession>>>);
 ```
 
-`session_id` is captured from the first `Init` event for a given `tab_id` and provider, then stored in the map. The model and effort selected for each spawned turn are stored alongside that provider. Subsequent `chat_send` calls for that same tab and provider pass `--resume <session_id>` for Claude or `codex exec resume <thread_id>` for Codex. Switching providers in a tab starts a fresh provider session instead of cross-resuming with the wrong CLI. Reset clears the `session_id` entry for the tab; the next send starts a fresh session. `experiment.start` records the active `tab_id`, `session_id`, `session_provider`, `model`, and `effort` from the running turn before spawning the detached command; the monitor uses those values to fire the wake-up through the same provider and model settings instead of assuming Claude Code.
+`session_id` is captured from the first `Init` event for a given `tab_id` and provider, then stored in the map. The model and optional effort selected for each spawned turn are stored alongside that provider. Subsequent `chat_send` calls for that same tab and provider pass `--resume <session_id>` for Claude or `codex exec resume <thread_id>` for Codex. Switching providers in a tab starts a fresh provider session instead of cross-resuming with the wrong CLI. Reset clears the `session_id` entry for the tab; the next send starts a fresh session. `experiment.start` records the active `tab_id`, `session_id`, `session_provider`, `model`, and optional `effort` from the running turn before spawning the detached command; the monitor uses those values to fire the wake-up through the same provider and model settings instead of assuming Claude Code. Claude wake-ups omit `--effort` when the stored effort is `null`; Codex wake-ups fall back to Low if an old or malformed session lacks reasoning effort.
 
 ---
 
@@ -752,8 +754,8 @@ The Tauri window opens in windowed mode at 1280 × 820 so the primary rails, cen
 - The textarea starts at 60px high, grows with content, caps at 240px, then scrolls internally.
 - The composer textarea always shows the fixed placeholder `Ask IRE to brainstorm directions, ingest resources, or run experiments...`. The no-tabs hero empty state shows the currently prepared sentence from the built-in research/discovery message list. A fresh sentence is prepared when the user clicks the hero's New chat button, so the next no-tabs hero appearance renders without a visible text swap.
 - **Model** — selects provider and model from grouped options in `MODELS` in `state/chatOptions.ts`, filtered by the workspace session's `availableProviders` captured from `setup_status` during workspace open/init. Claude Code models are Opus 4.7, Sonnet 4.6, and Haiku 4.5. Codex models are GPT-5.5, GPT-5.4, GPT-5.4-Mini, GPT-5.3-Codex, and GPT-5.2. Default when both providers are available: Claude Code / Sonnet 4.6. If only one provider is available, the selector shows only that provider's models and invalid persisted selections are coerced to that provider's default model. Font Awesome brand icons are loaded in `index.html` through `<script src="https://kit.fontawesome.com/a8c373c57e.js" crossorigin="anonymous"></script>` and rendered as `fa-brands fa-claude` / `fa-brands fa-openai`.
-- **Effort / Reasoning** — Claude Code shows Low → Med → High → XHigh → Max. Codex shows Low → Med → High → XHigh. The label reads `effort` for Claude Code and `reasoning` for Codex. Default: **Low**. Switching provider resets the level to Low so Codex never receives Claude-only `max`. Persisted to `.ire/workspace.json` (debounced 1 s) and rehydrated on workspace open.
-`model`, `provider`, and `effort` are passed as `options: { model, provider, effort }` on every `chat_send` invocation.
+- **Effort / Reasoning** — Codex shows Low → Med → High → XHigh and labels the selector `reasoning`. Claude Code labels the selector `effort` and filters by model: Opus 4.7 shows Low → Med → High → XHigh → Max; Sonnet 4.6 shows Low → Med → High → Max; Haiku 4.5 has no effort selector and sends `effort: null`. Default for models with effort is **Low**. Switching provider or model coerces the saved effort to the first valid level for the new model, or `null` when the model has no effort. Persisted to `.ire/workspace.json` (debounced 1 s) and rehydrated on workspace open.
+`model`, `provider`, and `effort` are passed as `options: { model, provider, effort }` on every `chat_send` invocation; `effort` is nullable for Claude models that do not accept effort.
 
 **ExperimentTabView.** When the active tab has `kind === "experiment"`, the chat pane renders `ExperimentTabView` instead of the message list + composer. It shows: a name header with a status badge; a metadata grid (status + elapsed timer, runtime, command); and a scrollable log pane (stdout only, `h-48`, auto-scrolls to bottom). Elapsed time is updated every second via `setInterval` while the experiment is running, and frozen to the final elapsed on completion. Live log lines arrive via the `experiment-log-line` event. The pane polls `experiment_list` once on mount to load initial state and loads existing stdout via `experiment_logs`.
 
@@ -817,7 +819,7 @@ Icon button hover animation is split by app section. Top navbar icon buttons use
 
 Each entry under `panel_layout.groups.<group-id>` is the `Layout` map (`{ panel-id: percentage }`) that `react-resizable-panels` accepts as `defaultLayout` on `<Group>`. `panel_layout.collapsed.left/right` stores the independent top-navbar sidebar collapsed state; older layouts without this field infer it from `panel_layout.groups.body.left/right === 0`. Unknown / missing groups fall back to per-`<Panel>` `defaultSize` props. Persisted via `save_workspace_state` (debounced 1 s on layout, collapsed-state, model, provider, effort, tab, message, or active-tab change; also saved immediately before/after chat sends and before workspace close). Hydrated by `read_workspace_state` from `SetupScreen.handlePick` immediately after `open_workspace`/`init_workspace`, before the workspace transitions to `phase = "ready"` so the panels mount with the correct sizes and the composer restores the last selected model-effort pair.
 
-`model` and `provider` store the last selected agent model. `effort` stores the last selected thinking-budget / reasoning level (`"low"` | `"medium"` | `"high"` | `"xhigh"` | `"max"` for Claude Code, without `"max"` for Codex). Defaults are Claude Code / Sonnet 4.6 / `"low"` when both providers are available, or the first model for the only detected provider when the workspace is opened in Claude-only or Codex-only mode. `SetupScreen` validates the persisted tuple against `MODELS`, the provider-specific effort list, and the open-time `availableProviders` before applying it to `useChatOptions`.
+`model` and `provider` store the last selected agent model. `effort` stores the last selected thinking-budget / reasoning level or `null` for Claude models with no effort selector. Valid values are model-specific: Codex accepts `"low"` | `"medium"` | `"high"` | `"xhigh"`; Claude Opus accepts `"low"` | `"medium"` | `"high"` | `"xhigh"` | `"max"`; Claude Sonnet accepts `"low"` | `"medium"` | `"high"` | `"max"`; Claude Haiku stores `null`. Defaults are Claude Code / Sonnet 4.6 / `"low"` when both providers are available, or the first model for the only detected provider when the workspace is opened in Claude-only or Codex-only mode. `SetupScreen` validates the persisted provider/model against `MODELS` and `availableProviders`, then coerces persisted effort through `effortLevelsForModel`.
 
 `tabs` stores the open central-column tabs as opaque frontend `Tab` JSON, including chat messages, preview wiki path, experiment UUID, optional chat-history metadata, and optional `agentOptions` for chat tabs and backend-created resource tabs. `active_tab_id` stores the selected tab. Streaming flags are normalized to `false` when writing and again when restoring, because backend agent `session_id`s and subprocesses are in-memory only and are reset on app close.
 
@@ -868,13 +870,13 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 | `save_ideas_json` | `{ ideas }` | `{}` (writes `ideas.json`) |
 | `read_pulse` | — | `{ research_question, this_week }` |
 | `save_pulse_field` | `{ field: "research_question" \| "this_week", content }` | `{}` (updates `pulse.json`) |
-| `submit_resource` | `{ url, options: { model: string, provider: "claude" \| "codex", effort: EffortLevel } }` | `resource_id: string` |
-| `submit_local_resource` | `{ path, options: { model: string, provider: "claude" \| "codex", effort: EffortLevel } }` | `resource_id: string` |
-| `submit_resources` | `{ sources: ({ kind: "url", url } \| { kind: "local_file", path })[], options: { model: string, provider: "claude" \| "codex", effort: EffortLevel } }` | `resource_id: string` |
+| `submit_resource` | `{ url, options: { model: string, provider: "claude" \| "codex", effort: EffortLevel \| null } }` | `resource_id: string` |
+| `submit_local_resource` | `{ path, options: { model: string, provider: "claude" \| "codex", effort: EffortLevel \| null } }` | `resource_id: string` |
+| `submit_resources` | `{ sources: ({ kind: "url", url } \| { kind: "local_file", path })[], options: { model: string, provider: "claude" \| "codex", effort: EffortLevel \| null } }` | `resource_id: string` |
 | `discard_resource` | `{ resource_id }` | `{}` (deletes cache file, marks DB row `rejected`, emits `workspace-event resource-deleted`) |
 | `list_resources` | — | `ResourceItem[]` (only `summarized` entries) |
 | `get_resource_confirm_prompt` | — | `string` (the second-turn confirm prompt loaded from `assets/prompts/`) |
-| `chat_send` | `{ tab_id, message, options: { model: string, provider: "claude" \| "codex", effort: EffortLevel } }` | `{}` (events follow) |
+| `chat_send` | `{ tab_id, message, options: { model: string, provider: "claude" \| "codex", effort: EffortLevel \| null } }` | `{}` (events follow) |
 | `chat_cancel` | `{ tab_id }` | `{}` |
 | `chat_reset_session` | `{ tab_id }` | `{}` (forgets session id for that tab) |
 | `experiment_list` | `{ limit? }` | `[ExperimentRow]` |

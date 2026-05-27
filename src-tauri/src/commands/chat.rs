@@ -23,7 +23,8 @@ pub struct ChatOptions {
     pub model: String,
     #[serde(default = "default_provider")]
     pub provider: String,
-    pub effort: String,
+    #[serde(default)]
+    pub effort: Option<String>,
 }
 
 fn default_provider() -> String {
@@ -80,13 +81,18 @@ pub async fn chat_send(
         tab_id = %tab_id,
         provider = %provider,
         model = %options.model,
-        effort = %options.effort,
+        effort = ?options.effort,
         msg = %trunc(&message),
         "chat_send"
     );
 
     let result = tokio::task::spawn_blocking(move || {
-        session_clone.set_agent_options(&tab_id, &provider, &options.model, &options.effort);
+        session_clone.set_agent_options(
+            &tab_id,
+            &provider,
+            &options.model,
+            options.effort.as_deref(),
+        );
 
         let mut cmd = if provider == "codex" {
             build_codex_command(&CodexSpawnArgs {
@@ -94,7 +100,7 @@ pub async fn chat_send(
                 workspace: &workspace_path,
                 message: &message,
                 model: &options.model,
-                reasoning_effort: &options.effort,
+                reasoning_effort: options.effort.as_deref().unwrap_or("low"),
                 system_prompt: Some(&system_prompt),
                 mcp_config: mcp_config.as_deref(),
                 resume_id: resume_id.as_deref(),
@@ -108,7 +114,7 @@ pub async fn chat_send(
                 mcp_config: mcp_config.as_deref(),
                 system_prompt: Some(&system_prompt),
                 model: &options.model,
-                effort: &options.effort,
+                effort: options.effort.as_deref(),
             })
         };
 

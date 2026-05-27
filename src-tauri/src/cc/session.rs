@@ -14,7 +14,7 @@ pub struct ActiveSession {
     pub session_id: String,
     pub provider: String,
     pub model: String,
-    pub effort: String,
+    pub effort: Option<String>,
 }
 
 /// Holds per-tab CC session state. Clone is cheap (Arc clone).
@@ -53,7 +53,7 @@ impl SessionManager {
         session.session_provider = Some(provider.to_string());
     }
 
-    pub fn set_agent_options(&self, tab_id: &str, provider: &str, model: &str, effort: &str) {
+    pub fn set_agent_options(&self, tab_id: &str, provider: &str, model: &str, effort: Option<&str>) {
         let mut map = self.0.lock().unwrap();
         let session = map
             .entry(tab_id.to_string())
@@ -69,7 +69,7 @@ impl SessionManager {
             session.session_provider = Some(provider.to_string());
         }
         session.model = Some(model.to_string());
-        session.effort = Some(effort.to_string());
+        session.effort = effort.map(str::to_string);
     }
 
     pub fn get_pid(&self, tab_id: &str) -> Option<u32> {
@@ -114,13 +114,12 @@ impl SessionManager {
                 let sid = s.session_id.as_ref()?;
                 let provider = s.session_provider.clone()?;
                 let model = s.model.clone()?;
-                let effort = s.effort.clone()?;
                 Some(ActiveSession {
                     tab_id: tab_id.clone(),
                     session_id: sid.clone(),
                     provider,
                     model,
-                    effort,
+                    effort: s.effort.clone(),
                 })
             })
     }
