@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useWorkspaceData } from "../../state/workspaceData";
-import { Icon } from "../Icon";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faFileLines, iconClass } from "../../icons";
 import { AddResourceModal } from "../AddResourceModal";
 
 interface Props {
@@ -21,7 +22,7 @@ export function ResourcesSection({ onOpen }: Props) {
   return (
     <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
       <div className="sticky top-0 z-10 flex items-center gap-2 py-1 mb-2 bg-surface-container-low text-on-surface-variant text-[14px]">
-        <Icon name="description" className="w-[16px] h-[16px] shrink-0" />
+        <FontAwesomeIcon icon={faFileLines} className={`${iconClass.lg} shrink-0`} />
         <span className="flex-1">Resources</span>
         <button
           onClick={() => setModalOpen(true)}

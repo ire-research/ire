@@ -1,5 +1,6 @@
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faMicrochip, faGamepad, faDatabase, iconClass } from "../icons";
 import { useSystemStatus } from "../hooks/useSystemStatus";
-import { Icon } from "./Icon";
 
 function getUsageColor(usage: number): string {
   if (usage < 70) return "text-ok";
@@ -28,7 +29,7 @@ export function StatusBar() {
 
         {/* CPU item */}
         <div className="flex items-center gap-1.5 px-2 border-r border-outline-variant shrink-0 h-6">
-          <Icon name="memory" className="w-[11px] h-[11px]" />
+          <FontAwesomeIcon icon={faMicrochip} className={iconClass.xs} />
           <span>{status.cpu_model}</span>
           <span className="text-outline-variant">·</span>
           <span className={getUsageColor(status.cpu_usage_pct)}>{Math.round(status.cpu_usage_pct)}%</span>
@@ -36,7 +37,7 @@ export function StatusBar() {
 
         {/* GPU item */}
         <div className="flex items-center gap-1.5 px-2 border-r border-outline-variant shrink-0 h-6">
-          <Icon name="developer_board" className="w-[11px] h-[11px]" />
+          <FontAwesomeIcon icon={faGamepad} className={iconClass.xs} />
           {status.gpu_model !== null ? (
             <>
               <span>{status.gpu_model}</span>
@@ -54,7 +55,7 @@ export function StatusBar() {
 
         {/* RAM item */}
         <div className="flex items-center gap-1.5 px-2 border-r border-outline-variant shrink-0 h-6">
-          <Icon name="storage" className="w-[11px] h-[11px]" />
+          <FontAwesomeIcon icon={faDatabase} className={iconClass.xs} />
           <span>{status.ram_total_gb} GB RAM</span>
         </div>
 

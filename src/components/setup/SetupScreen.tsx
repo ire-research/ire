@@ -6,7 +6,8 @@ import {
   useChatOptions,
   type Provider,
 } from "../../state/chatOptions";
-import { Icon } from "../Icon";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faTrash, faChevronRight, faFolderOpen, faPlus, iconClass } from "../../icons";
 
 interface Props {
   status: SetupStatus;
@@ -178,9 +179,9 @@ export function SetupScreen({ status, onRefresh }: Props) {
                       aria-label={`Remove ${name} from recent workspaces`}
                       className="app-danger-icon-button opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity disabled:cursor-not-allowed disabled:opacity-40 shrink-0 ml-3 p-1"
                     >
-                      <Icon name="delete" className="w-[15px] h-[15px]" />
+                      <FontAwesomeIcon icon={faTrash} className={iconClass.md} />
                     </button>
-                    <Icon name="chevron_right" className="w-[16px] h-[16px] text-outline-variant group-hover:text-on-surface transition-colors shrink-0 ml-1" />
+                    <FontAwesomeIcon icon={faChevronRight} className={`${iconClass.lg} text-outline-variant group-hover:text-on-surface transition-colors shrink-0 ml-1`} />
                   </div>
                 );
               })
@@ -197,7 +198,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
               busy || !canOpenWorkspace ? "opacity-50 cursor-not-allowed" : ""
             }`}
           >
-            <Icon name="folder_open" className="w-[16px] h-[16px] text-on-surface-variant" />
+            <FontAwesomeIcon icon={faFolderOpen} className={`${iconClass.lg} text-on-surface-variant`} />
             Open folder…
           </button>
           <button
@@ -207,7 +208,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
               busy || !canOpenWorkspace ? "opacity-50 cursor-not-allowed" : ""
             }`}
           >
-            <Icon name="add" className="w-[16px] h-[16px] text-on-surface-variant" />
+            <FontAwesomeIcon icon={faPlus} className={`${iconClass.lg} text-on-surface-variant`} />
             New workspace…
           </button>
         </div>

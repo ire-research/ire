@@ -1,7 +1,9 @@
 import { useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faMessage, faSpinner, faFileLines, faFlask, faPencil, faPlus, iconClass } from "../../icons";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import type { Tab } from "../../types";
-import { Icon } from "../Icon";
 
 interface Props {
   tabs: Tab[];
@@ -13,15 +15,15 @@ interface Props {
   rightSlot?: ReactNode;
 }
 
-function tabIcon(tab: Tab): { icon: string; spin: boolean } {
-  if (tab.kind === "chat") return { icon: "chat", spin: false };
+function tabIcon(tab: Tab): { icon: IconDefinition; spin: boolean } {
+  if (tab.kind === "chat") return { icon: faMessage, spin: false };
   if (tab.kind === "resource") {
-    if (tab.resourceStatus === "summarizing") return { icon: "progress_activity", spin: true };
-    return { icon: "description", spin: false };
+    if (tab.resourceStatus === "summarizing") return { icon: faSpinner, spin: true };
+    return { icon: faFileLines, spin: false };
   }
-  if (tab.kind === "preview") return { icon: "description", spin: false };
-  if (tab.kind === "experiment") return { icon: "science", spin: false };
-  return { icon: "chat", spin: false };
+  if (tab.kind === "preview") return { icon: faFileLines, spin: false };
+  if (tab.kind === "experiment") return { icon: faFlask, spin: false };
+  return { icon: faMessage, spin: false };
 }
 
 export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename, rightSlot }: Props) {
@@ -62,12 +64,12 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename, 
               key={tab.id}
               className={
                 isActive
-                  ? "group flex items-center px-3 border-r border-outline-variant bg-surface-container-highest text-on-surface text-xs min-w-max cursor-pointer border-t border-t-primary"
-                  : "group flex items-center px-3 border-r border-outline-variant text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors text-xs min-w-max cursor-pointer"
+                  ? "group relative flex items-center px-3 border-r border-outline-variant bg-surface-container-highest text-on-surface text-xs min-w-28 cursor-pointer border-t border-t-primary overflow-hidden"
+                  : "group relative flex items-center px-3 border-r border-outline-variant text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors text-xs min-w-28 cursor-pointer overflow-hidden"
               }
               onClick={() => !isRenaming && onSelect(tab.id)}
             >
-              <Icon name={icon} className={`w-[14px] h-[14px] mr-1.5${spin ? " animate-spin" : ""}`} />
+              <FontAwesomeIcon icon={icon} className={`${iconClass.sm} mr-1.5${spin ? " animate-spin" : ""}`} />
               {isRenaming ? (
                 <input
                   ref={inputRef}
@@ -81,26 +83,28 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename, 
                 />
               ) : (
                 <>
-                  <span>{tab.label}</span>
-                  {tab.kind === "chat" && (
+                  <span className="flex-1 truncate min-w-0">{tab.label}</span>
+                  <div className="absolute right-0 top-0 bottom-0 flex items-center gap-px px-1 opacity-0 group-hover:opacity-100 transition-opacity bg-surface-container-highest">
+                    {tab.kind === "chat" && (
+                      <button
+                        className="flex items-center justify-center w-[18px] h-[18px] text-on-surface-variant hover:text-on-surface hover:bg-white/[0.08] rounded-sm transition-colors"
+                        title="Rename chat"
+                        onClick={(e) => startRename(e, tab)}
+                      >
+                        <FontAwesomeIcon icon={faPencil} className={iconClass.sm} />
+                      </button>
+                    )}
                     <button
-                      className="app-icon-button opacity-0 group-hover:opacity-100 ml-1 shrink-0"
-                      title="Rename chat"
-                      onClick={(e) => startRename(e, tab)}
+                      className="flex items-center justify-center w-[18px] h-[18px] text-on-surface-variant hover:text-on-surface hover:bg-white/[0.08] rounded-sm transition-colors text-[18px] leading-none"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClose(tab.id);
+                      }}
+                      aria-label={`Close ${tab.label}`}
                     >
-                      <Icon name="edit_document" className="w-[12px] h-[12px]" />
+                      ×
                     </button>
-                  )}
-                  <button
-                    className="app-icon-button opacity-0 group-hover:opacity-100 text-[10px] ml-1 px-0.5"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onClose(tab.id);
-                    }}
-                    aria-label={`Close ${tab.label}`}
-                  >
-                    ×
-                  </button>
+                  </div>
                 </>
               )}
             </div>
@@ -112,7 +116,9 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename, 
           role="button"
           aria-label="New tab"
         >
-          <Icon name="add" className="w-[16px] h-[16px]" />
+          <span className="flex items-center justify-center w-6 h-6 rounded text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors">
+            <FontAwesomeIcon icon={faPlus} className={iconClass.md} />
+          </span>
         </div>
       </div>
       {rightSlot && <div className="relative flex items-center shrink-0">{rightSlot}</div>}

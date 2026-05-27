@@ -17,7 +17,8 @@ import { TabBar } from "./TabBar";
 import { HistoryPanel } from "./HistoryPanel";
 import { ResourcePreviewPane } from "./ResourcePreviewPane";
 import { ExperimentTabView } from "./ExperimentTabView";
-import { Icon } from "../Icon";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faMessage, faClockRotateLeft, iconClass } from "../../icons";
 import type { AskAnswer, AskBlockState, ChatMessage, ChatOptions, Provider, Tab } from "../../types";
 
 const seenStreamEventIds = new Map<string, number>();
@@ -386,7 +387,7 @@ export function ChatPane() {
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => setHistoryOpen((o) => !o)}
           >
-            <i className="fa-solid fa-clock-rotate-left text-[13px]" />
+            <FontAwesomeIcon icon={faClockRotateLeft} className={iconClass.lg} />
           </button>
           <HistoryPanel
             isOpen={historyOpen}
@@ -431,7 +432,7 @@ export function ChatPane() {
             className="inline-flex items-center gap-2 bg-on-surface text-background text-[12px] px-4 py-1.5 rounded-lg hover:opacity-85 transition-opacity mt-10"
             onClick={handleNewTab}
           >
-            <Icon name="chat" className="w-[12px] h-[12px]" />
+            <FontAwesomeIcon icon={faMessage} className={iconClass.md} />
             New chat
           </button>
         </div>

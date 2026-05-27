@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { ipc, onExperimentLogLine } from "../../ipc";
 import { toastError } from "../../state/toasts";
 import type { ExperimentRow } from "../../types";
-import { Icon } from "../Icon";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faPencil, iconClass } from "../../icons";
 
 interface Props {
   uuid: string;
@@ -165,7 +166,7 @@ export function ExperimentTabView({ uuid, name }: Props) {
               title="Rename experiment"
               onClick={startRename}
             >
-              <Icon name="edit_document" className="w-[14px] h-[14px]" />
+              <FontAwesomeIcon icon={faPencil} className={iconClass.md} />
             </button>
           </>
         )}

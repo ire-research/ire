@@ -2,7 +2,8 @@ import { useRef, useState } from "react";
 import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
 import type { ExperimentRow } from "../../types";
-import { Icon } from "../Icon";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faFlask, faPencil, faTrash, iconClass } from "../../icons";
 
 interface Props {
   experiments: ExperimentRow[];
@@ -75,7 +76,7 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
   return (
     <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
       <div className="sticky top-0 z-10 flex items-center gap-2 py-1 mb-2 bg-surface-container-low text-on-surface-variant text-[14px]">
-        <Icon name="science" className="w-[16px] h-[16px] shrink-0" />
+        <FontAwesomeIcon icon={faFlask} className={`${iconClass.lg} shrink-0`} />
         Experiments
       </div>
       <div className="space-y-0.5">
@@ -112,7 +113,7 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
                       title="Rename experiment"
                       onClick={(e) => startRename(e, exp)}
                     >
-                      <Icon name="edit_document" className="w-[14px] h-[14px]" />
+                      <FontAwesomeIcon icon={faPencil} className={iconClass.md} />
                     </button>
                     <span className={`text-[10px] uppercase border ${pill.borderColor} px-1 rounded ${pill.textColor} ${pill.bgColor} shrink-0`}>
                       {pill.text}
@@ -123,7 +124,7 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
                       disabled={deletingUuid === exp.uuid}
                       onClick={(e) => handleDelete(e, exp.uuid)}
                     >
-                      <Icon name="delete" className="w-[14px] h-[14px]" />
+                      <FontAwesomeIcon icon={faTrash} className={iconClass.md} />
                     </button>
                   </>
                 )}

@@ -7,7 +7,8 @@ import {
   type Provider,
   useChatOptions,
 } from "../../state/chatOptions";
-import { Icon } from "../Icon";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faChevronDown, faArrowUp, faClaude, faOpenai, iconClass } from "../../icons";
 
 interface ComposerProps {
   onSend?: (text: string) => void;
@@ -117,7 +118,7 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
           }`}
           onClick={() => handleModelSelect(entry)}
         >
-          <i className={`fa-brands ${sectionProvider === "claude" ? "fa-claude" : "fa-openai"} text-[12px] text-on-surface-variant/80 text-center`} />
+          <FontAwesomeIcon icon={sectionProvider === "claude" ? faClaude : faOpenai} className="text-[12px] text-on-surface-variant/80 text-center" />
           <span>{entry.label}</span>
           <span className="text-[11px] text-primary">{entry.id === model ? "✓" : ""}</span>
         </button>
@@ -148,7 +149,7 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
             >
               <span className="text-[10px] text-on-surface-variant/60 mr-0.5">model</span>
               {modelLabel}
-              <Icon name="expand_more" className="w-[12px] h-[12px]" />
+              <FontAwesomeIcon icon={faChevronDown} className={iconClass.sm} />
             </button>
             <div className={`${modelOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 min-w-[230px] overflow-hidden z-50`}>
               {claudeModels.length > 0 && (
@@ -169,7 +170,7 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
                 {provider === "codex" ? "reasoning" : "effort"}
               </span>
               {effortLabel}
-              <Icon name="expand_more" className="w-[12px] h-[12px]" />
+              <FontAwesomeIcon icon={faChevronDown} className={iconClass.sm} />
             </button>
             <div className={`${effortOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 min-w-[140px] overflow-hidden z-50`}>
               <div className="px-3 pt-2 pb-1.5 text-[10px] font-medium uppercase tracking-normal text-on-surface-variant/60">
@@ -206,7 +207,7 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
                 onClick={handleSend}
                 disabled={!text.trim() || disabled}
               >
-                Send <Icon name="arrow_upward" className="w-[14px] h-[14px]" />
+                Send <FontAwesomeIcon icon={faArrowUp} className={iconClass.md} />
               </button>
             </>
           )}
