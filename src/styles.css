@@ -1,3 +1,5 @@
+@import '@fontsource/syne/latin-700.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -14,6 +16,11 @@
   .app-danger-icon-button {
     @apply inline-flex items-center justify-center rounded text-on-surface-variant hover:bg-surface-container-high hover:text-error transition-colors;
   }
+}
+
+@keyframes hero-tagline-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 @font-face {
