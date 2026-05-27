@@ -23,23 +23,25 @@ import type { AskAnswer, AskBlockState, ChatMessage, ChatOptions, Provider, Tab 
 const seenStreamEventIds = new Map<string, number>();
 
 const HERO_MESSAGES = [
-  "Advancing science...",
-  "Answering big questions...",
-  "Accelerating discovery...",
-  "Exploring the unknown...",
-  "Pushing knowledge forward...",
-  "Investigating new ideas...",
-  "Connecting the dots...",
-  "Uncovering new knowledge...",
-  "Discovering what matters...",
-  "Research without limits...",
-  "Think deeper...",
-  "Explore further...",
-  "Discover faster...",
+  "advancing science...",
+  "answering big questions...",
+  "accelerating discovery...",
+  "exploring the unknown...",
+  "pushing knowledge forward...",
+  "investigating new ideas...",
+  "connecting the dots...",
+  "uncovering new knowledge...",
+  "discovering what matters...",
+  "research without limits...",
+  "think deeper...",
+  "explore further...",
+  "discover faster...",
 ];
 
-function randomHeroMessage() {
-  return HERO_MESSAGES[Math.floor(Math.random() * HERO_MESSAGES.length)];
+let heroMessageIdx = Math.floor(Math.random() * HERO_MESSAGES.length);
+function nextHeroMessage() {
+  heroMessageIdx = (heroMessageIdx + 1) % HERO_MESSAGES.length;
+  return HERO_MESSAGES[heroMessageIdx];
 }
 
 function shouldProcessStreamEvent(tabId: string, streamId?: string, eventId?: number): boolean {
@@ -85,7 +87,13 @@ export function ChatPane() {
 
   const [previewContent, setPreviewContent] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [heroMessage, setHeroMessage] = useState(randomHeroMessage);
+  const [heroMessage, setHeroMessage] = useState(() => HERO_MESSAGES[heroMessageIdx]);
+
+  useEffect(() => {
+    if (tabs.length > 0) return;
+    const t = setInterval(() => setHeroMessage(nextHeroMessage()), 3500);
+    return () => clearInterval(t);
+  }, [tabs.length]);
 
   useEffect(() => {
     if (activeTab?.kind !== "preview" || !activeTab.wikiPath) return;
@@ -296,7 +304,7 @@ export function ChatPane() {
 
   const handleNewTab = () => {
     if (tabs.length === 0) {
-      setHeroMessage(randomHeroMessage());
+      setHeroMessage(nextHeroMessage());
     }
     createTab();
   };
@@ -398,19 +406,32 @@ export function ChatPane() {
     return (
       <section className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
         {tabBar}
-        <div className="flex-1 flex flex-col items-center justify-center gap-7 text-center px-10">
-          <div className="flex flex-col items-center gap-3">
-            <h1 className="text-xl font-semibold text-on-surface-variant tracking-tight">Integrated Research Environment (IRE)</h1>
-            <p className="text-[13px] text-on-surface-variant max-w-sm leading-relaxed">
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-10">
+          <div className="flex flex-col items-center">
+            <h1
+              className="font-syne font-bold tracking-[0.18em] leading-none pl-[0.18em] select-none"
+              style={{ fontSize: 96, color: '#050507' }}
+            >
+              IRE
+            </h1>
+            <p className="font-mono text-[11px] tracking-[0.09em] text-outline mt-2.5">
+              Integrated Research Environment
+            </p>
+            <div className="w-full h-px bg-outline-variant mt-5" />
+            <p
+              key={heroMessage}
+              className="font-mono text-[11px] tracking-[0.09em] text-outline mt-5"
+              style={{ animation: 'hero-tagline-in 400ms ease forwards' }}
+            >
               {heroMessage}
             </p>
           </div>
           <button
             id="ire-new-chat-btn"
-            className="inline-flex items-center gap-2 bg-on-surface-variant text-background text-[13px] font-medium px-4 py-2 rounded-lg hover:opacity-85 transition-opacity"
+            className="inline-flex items-center gap-2 bg-on-surface text-background text-[12px] px-4 py-1.5 rounded-lg hover:opacity-85 transition-opacity mt-10"
             onClick={handleNewTab}
           >
-            <Icon name="chat" className="w-[14px] h-[14px]" />
+            <Icon name="chat" className="w-[12px] h-[12px]" />
             New chat
           </button>
         </div>

@@ -11,6 +11,7 @@
     "dev:tauri": "env -u GTK_PATH -u GTK_EXE_PREFIX -u GTK_IM_MODULE_FILE -u GDK_PIXBUF_MODULEDIR -u GDK_PIXBUF_MODULE_FILE -u GIO_MODULE_DIR -u GSETTINGS_SCHEMA_DIR -u LOCPATH npm run tauri -- dev"
   },
   "dependencies": {
+    "@fontsource/syne": "^5.2.7",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2",
