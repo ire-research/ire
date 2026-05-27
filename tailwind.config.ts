@@ -74,6 +74,7 @@ export default {
       fontFamily: {
         sans: ["Geist", "system-ui", "sans-serif"],
         mono: ["Geist Mono", "monospace"],
+        syne: ["Syne", "sans-serif"],
       },
       keyframes: {
         "dot-bounce": {
