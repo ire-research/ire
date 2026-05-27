@@ -64,7 +64,10 @@ impl SessionManager {
                 effort: None,
                 running_pid: None,
             });
-        session.session_provider = Some(provider.to_string());
+        if session.session_provider.as_deref() != Some(provider) {
+            session.session_id = None;
+            session.session_provider = Some(provider.to_string());
+        }
         session.model = Some(model.to_string());
         session.effort = Some(effort.to_string());
     }

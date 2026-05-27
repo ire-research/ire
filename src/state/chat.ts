@@ -54,8 +54,6 @@ interface ChatStore {
   createTabWithMessages: (label: string, messages: ChatMessage[], sessionUuid?: string, startedAt?: string) => void;
 }
 
-let seq = 0;
-
 function updateTab(tabs: Tab[], tabId: string, updater: (t: Tab) => Tab): Tab[] {
   return tabs.map((t) => (t.id === tabId ? updater(t) : t));
 }
@@ -95,7 +93,7 @@ function appendTextBlock(msg: AssistantMessage, kind: "text" | "thinking", chunk
     const updatedLast: AssistantContentBlock = { ...last, text: last.text + chunk };
     return { ...msg, blocks: [...msg.blocks.slice(0, -1), updatedLast] };
   }
-  return { ...msg, blocks: [...msg.blocks, { id: String(seq++), kind, text: chunk }] };
+  return { ...msg, blocks: [...msg.blocks, { id: crypto.randomUUID(), kind, text: chunk }] };
 }
 
 function messageHasTool(msg: AssistantMessage, predicate: (t: ToolCallState) => boolean): boolean {
@@ -204,7 +202,7 @@ export const useChat = create<ChatStore>((set) => ({
     }),
 
   addUserMessage: (tabId, text) => {
-    const id = String(seq++);
+    const id = crypto.randomUUID();
     set((s) => ({
       tabs: updateTab(s.tabs, tabId, (t) => ({
         ...t,
@@ -215,7 +213,7 @@ export const useChat = create<ChatStore>((set) => ({
   },
 
   beginAssistantMessage: (tabId) => {
-    const id = String(seq++);
+    const id = crypto.randomUUID();
     set((s) => ({
       tabs: updateTab(s.tabs, tabId, (t) => ({
         ...t,
@@ -275,7 +273,7 @@ export const useChat = create<ChatStore>((set) => ({
     set((s) => ({
       tabs: updateMessage(s.tabs, tabId, msgId, (m) => ({
         ...m,
-        blocks: [...m.blocks, { id: String(seq++), kind: "tool", tool }],
+        blocks: [...m.blocks, { id: crypto.randomUUID(), kind: "tool", tool }],
       })),
     })),
 
@@ -286,7 +284,7 @@ export const useChat = create<ChatStore>((set) => ({
         blocks: [
           ...m.blocks,
           {
-            id: String(seq++),
+            id: crypto.randomUUID(),
             kind: "ask",
             ask: {
               tool_id: toolId,

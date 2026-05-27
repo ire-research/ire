@@ -254,6 +254,8 @@ pub fn insert_chat_session(
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
          ON CONFLICT(session_uuid) DO UPDATE SET \
              tab_label      = excluded.tab_label, \
+             provider       = excluded.provider, \
+             model          = excluded.model, \
              ended_at       = excluded.ended_at, \
              message_count  = excluded.message_count, \
              first_user_msg = excluded.first_user_msg, \
