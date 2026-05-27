@@ -3,7 +3,8 @@ import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
 import { useWorkspaceData } from "../../state/workspaceData";
 import type { IdeaItem } from "../../types";
-import { Icon } from "../Icon";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faLightbulb, faPlus, faTrash, iconClass } from "../../icons";
 
 export function IdeasPane() {
   const ideas = useWorkspaceData((s) => s.ideas);
@@ -95,7 +96,7 @@ export function IdeasPane() {
   return (
     <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
       <div className="sticky top-0 z-10 flex items-center gap-2 py-1 mb-2 bg-surface-container-low">
-        <Icon name="lightbulb" className="w-[16px] h-[16px] shrink-0 text-on-surface-variant" />
+        <FontAwesomeIcon icon={faLightbulb} className={`${iconClass.lg} shrink-0 text-on-surface-variant`} />
         <span className="text-[14px] text-on-surface-variant flex-1">
           Ideas
         </span>
@@ -104,7 +105,7 @@ export function IdeasPane() {
           onClick={handleAddClick}
           title="Add idea"
         >
-          <Icon name="add" className="w-[14px] h-[14px]" />
+          <FontAwesomeIcon icon={faPlus} className={iconClass.md} />
         </button>
       </div>
 
@@ -137,7 +138,7 @@ export function IdeasPane() {
                 title="Remove idea"
                 onClick={() => handleTrash(idea.id)}
               >
-                <Icon name="delete" className="w-[14px] h-[14px]" />
+                <FontAwesomeIcon icon={faTrash} className={iconClass.md} />
               </button>
             </div>
           ))}

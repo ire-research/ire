@@ -4,7 +4,7 @@ export type Provider = "claude" | "codex";
 export interface ChatOptions {
   model: string;
   provider: Provider;
-  effort: EffortLevel;
+  effort: EffortLevel | null;
 }
 
 export type ExperimentStatus = "starting" | "running" | "completed" | "failed" | "cancelled";

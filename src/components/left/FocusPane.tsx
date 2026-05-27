@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
 import { useWorkspaceData } from "../../state/workspaceData";
-import { Icon } from "../Icon";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faCrosshairs, faPenToSquare, iconClass } from "../../icons";
 
 export function FocusPane() {
   const pulse = useWorkspaceData((s) => s.pulse);
@@ -61,7 +62,7 @@ export function FocusPane() {
     <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
       {/* Header */}
       <div className="sticky top-0 z-10 flex items-center gap-2 px-0 py-1 mb-2 bg-surface-container-low">
-        <Icon name="target" className="w-[16px] h-[16px] shrink-0 text-on-surface-variant" />
+        <FontAwesomeIcon icon={faCrosshairs} className={`${iconClass.lg} shrink-0 text-on-surface-variant`} />
         <span className="text-[14px] text-on-surface-variant">Focus</span>
       </div>
 
@@ -74,7 +75,7 @@ export function FocusPane() {
             className="app-icon-button opacity-0 group-hover/rq:opacity-100 transition-opacity p-0.5"
             title="Edit research question"
           >
-            <Icon name="edit_document" className="w-[14px] h-[14px]" />
+            <FontAwesomeIcon icon={faPenToSquare} className={iconClass.md} />
           </button>
         </div>
         {editingField === "research_question" ? (
@@ -106,7 +107,7 @@ export function FocusPane() {
             className="app-icon-button opacity-0 group-hover/tw:opacity-100 transition-opacity p-0.5"
             title="Edit this week"
           >
-            <Icon name="edit_document" className="w-[14px] h-[14px]" />
+            <FontAwesomeIcon icon={faPenToSquare} className={iconClass.md} />
           </button>
         </div>
         {editingField === "this_week" ? (

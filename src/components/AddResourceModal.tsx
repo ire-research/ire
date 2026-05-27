@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faLink, faXmark, faCircleExclamation, iconClass } from "../icons";
 import { ipc, pickResourceFiles, type ResourceSourceInput } from "../ipc";
 import { useChatOptions } from "../state/chatOptions";
-import { Icon } from "./Icon";
 
 type QueuedSource =
   | { id: string; kind: "url"; url: string }
@@ -113,13 +114,13 @@ export function AddResourceModal({ onClose }: Props) {
 
         {/* Header */}
         <div className="flex items-center gap-2 px-4 pt-3.5 pb-3 border-b border-outline-variant shrink-0">
-          <Icon name="add_link" className="w-[16px] h-[16px] shrink-0 text-on-surface-variant" />
+          <FontAwesomeIcon icon={faLink} className={`${iconClass.lg} shrink-0 text-on-surface-variant`} />
           <span className="flex-1 text-[13px] font-medium text-on-surface">Add resources</span>
           <button
             onClick={onClose}
             className="app-icon-button w-6 h-6"
           >
-            <Icon name="close" className="w-[14px] h-[14px]" />
+            <FontAwesomeIcon icon={faXmark} className={iconClass.md} />
           </button>
         </div>
 
@@ -170,7 +171,7 @@ export function AddResourceModal({ onClose }: Props) {
                     className={`flex-1 min-w-0 text-[12px] truncate ${failed ? "text-error" : "text-on-surface-variant"}`}
                     title={sourceDisplay(source)}
                   >
-                    {failed && <Icon name="error" className="w-[12px] h-[12px] inline mr-1" />}
+                    {failed && <FontAwesomeIcon icon={faCircleExclamation} className={`${iconClass.sm} inline mr-1`} />}
                     {sourceDisplay(source)}
                   </p>
                   <button
@@ -179,7 +180,7 @@ export function AddResourceModal({ onClose }: Props) {
                     disabled={loading}
                     className="app-icon-button p-1 disabled:opacity-50 shrink-0"
                   >
-                    <Icon name="close" className="w-[12px] h-[12px]" />
+                    <FontAwesomeIcon icon={faXmark} className={iconClass.sm} />
                   </button>
                 </div>
               );

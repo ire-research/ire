@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faFileLines, faPenToSquare, faMagnifyingGlass, faLink, faTerminal, faWrench, faChevronDown, iconClass } from "../../icons";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import type { ToolCallState, ToolFormat, ToolKind } from "../../types";
-import { Icon } from "../Icon";
 
 interface Props {
   tool: ToolCallState;
@@ -44,7 +46,7 @@ export function ToolCard({ tool }: Props) {
               IRE
             </span>
           ) : (
-            <Icon name={iconForKind(tool.kind)} className="w-[15px] h-[15px] text-on-surface-variant/60" />
+            <FontAwesomeIcon icon={iconForKind(tool.kind)} className={`${iconClass.md} text-on-surface-variant/60`} />
           )}
         </div>
 
@@ -67,9 +69,9 @@ export function ToolCard({ tool }: Props) {
 
         {/* Expand chevron */}
         {canExpand && (
-          <Icon
-            name="expand_more"
-            className={`w-[13px] h-[13px] text-on-surface-variant ml-auto shrink-0 opacity-0 group-hover:opacity-60 transition-all duration-150 ${expanded ? "rotate-180 !opacity-60" : ""}`}
+          <FontAwesomeIcon
+            icon={faChevronDown}
+            className={`${iconClass.sm} text-on-surface-variant ml-auto shrink-0 opacity-0 group-hover:opacity-60 transition-all duration-150 ${expanded ? "rotate-180 !opacity-60" : ""}`}
           />
         )}
       </div>
@@ -194,21 +196,15 @@ function labelForKind(kind: ToolKind, rawName: string): string {
   return kind;
 }
 
-function iconForKind(kind: ToolKind): string {
+function iconForKind(kind: ToolKind): IconDefinition {
   switch (kind) {
-    case "file_read":
-      return "description";
+    case "file_read": return faFileLines;
     case "file_write":
-    case "file_edit":
-      return "edit_document";
-    case "file_search":
-      return "search";
-    case "web_fetch":
-      return "add_link";
-    case "command":
-      return "terminal";
-    default:
-      return "build";
+    case "file_edit": return faPenToSquare;
+    case "file_search": return faMagnifyingGlass;
+    case "web_fetch": return faLink;
+    case "command": return faTerminal;
+    default: return faWrench;
   }
 }
 

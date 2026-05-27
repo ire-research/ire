@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  CLAUDE_EFFORT_LEVELS,
-  CODEX_EFFORT_LEVELS,
   MODELS,
+  effortLevelsForModel,
   type ModelEntry,
   type Provider,
   useChatOptions,
 } from "../../state/chatOptions";
-import { Icon } from "../Icon";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faChevronDown, faArrowUp, faClaude, faOpenai, iconClass } from "../../icons";
 
 interface ComposerProps {
   onSend?: (text: string) => void;
@@ -28,14 +28,19 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
 
   const { model, provider, effort, availableProviders, setModel, setEffort } = useChatOptions();
   const modelLabel = MODELS.find((m) => m.id === model)?.label ?? model;
-  const effortLevels = provider === "codex" ? CODEX_EFFORT_LEVELS : CLAUDE_EFFORT_LEVELS;
+  const effortLevels = effortLevelsForModel(provider, model);
   const effortLabel = effortLevels.find((l) => l.value === effort)?.label ?? effort;
+  const showEffortPicker = effortLevels.length > 0;
   const claudeModels = availableProviders.includes("claude")
     ? MODELS.filter((m) => m.provider === "claude")
     : [];
   const codexModels = availableProviders.includes("codex")
     ? MODELS.filter((m) => m.provider === "codex")
     : [];
+
+  useEffect(() => {
+    if (!showEffortPicker) setEffortOpen(false);
+  }, [showEffortPicker]);
 
   useEffect(() => {
     if (!modelOpen) return;
@@ -92,6 +97,7 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
   };
 
   const toggleEffortOpen = () => {
+    if (!showEffortPicker) return;
     setEffortOpen((open) => !open);
     setModelOpen(false);
   };
@@ -117,7 +123,7 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
           }`}
           onClick={() => handleModelSelect(entry)}
         >
-          <i className={`fa-brands ${sectionProvider === "claude" ? "fa-claude" : "fa-openai"} text-[12px] text-on-surface-variant/80 text-center`} />
+          <FontAwesomeIcon icon={sectionProvider === "claude" ? faClaude : faOpenai} className="text-[12px] text-on-surface-variant/80 text-center" />
           <span>{entry.label}</span>
           <span className="text-[11px] text-primary">{entry.id === model ? "✓" : ""}</span>
         </button>
@@ -148,7 +154,7 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
             >
               <span className="text-[10px] text-on-surface-variant/60 mr-0.5">model</span>
               {modelLabel}
-              <Icon name="expand_more" className="w-[12px] h-[12px]" />
+              <FontAwesomeIcon icon={faChevronDown} className={iconClass.sm} />
             </button>
             <div className={`${modelOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 min-w-[230px] overflow-hidden z-50`}>
               {claudeModels.length > 0 && (
@@ -160,33 +166,35 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
             </div>
           </div>
           {/* Effort picker */}
-          <div className="relative" ref={effortRef}>
-            <button
-              className="flex items-center gap-1 px-2 py-1 text-on-surface-variant hover:bg-surface-container-high rounded hover:text-on-surface transition-colors text-[11px] border border-outline-variant/50"
-              onClick={toggleEffortOpen}
-            >
-              <span className="text-[10px] text-on-surface-variant/60 mr-0.5">
-                {provider === "codex" ? "reasoning" : "effort"}
-              </span>
-              {effortLabel}
-              <Icon name="expand_more" className="w-[12px] h-[12px]" />
-            </button>
-            <div className={`${effortOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 min-w-[140px] overflow-hidden z-50`}>
-              <div className="px-3 pt-2 pb-1.5 text-[10px] font-medium uppercase tracking-normal text-on-surface-variant/60">
-                {provider === "codex" ? "Reasoning" : "Effort"}
+          {showEffortPicker && (
+            <div className="relative" ref={effortRef}>
+              <button
+                className="flex items-center gap-1 px-2 py-1 text-on-surface-variant hover:bg-surface-container-high rounded hover:text-on-surface transition-colors text-[11px] border border-outline-variant/50"
+                onClick={toggleEffortOpen}
+              >
+                <span className="text-[10px] text-on-surface-variant/60 mr-0.5">
+                  {provider === "codex" ? "reasoning" : "effort"}
+                </span>
+                {effortLabel}
+                <FontAwesomeIcon icon={faChevronDown} className={iconClass.sm} />
+              </button>
+              <div className={`${effortOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 min-w-[140px] overflow-hidden z-50`}>
+                <div className="px-3 pt-2 pb-1.5 text-[10px] font-medium uppercase tracking-normal text-on-surface-variant/60">
+                  {provider === "codex" ? "Reasoning" : "Effort"}
+                </div>
+                {effortLevels.map((lvl) => (
+                  <button
+                    key={lvl.value}
+                    className={`w-full grid grid-cols-[1fr_14px] items-center gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-surface-container-highest transition-colors ${lvl.value === effort ? "font-medium text-on-surface" : "text-on-surface-variant"}`}
+                    onClick={() => { setEffort(lvl.value); setEffortOpen(false); }}
+                  >
+                    <span>{lvl.label}</span>
+                    <span className="text-[11px] text-primary">{lvl.value === effort ? "✓" : ""}</span>
+                  </button>
+                ))}
               </div>
-              {effortLevels.map((lvl) => (
-                <button
-                  key={lvl.value}
-                  className={`w-full grid grid-cols-[1fr_14px] items-center gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-surface-container-highest transition-colors ${lvl.value === effort ? "font-medium text-on-surface" : "text-on-surface-variant"}`}
-                  onClick={() => { setEffort(lvl.value); setEffortOpen(false); }}
-                >
-                  <span>{lvl.label}</span>
-                  <span className="text-[11px] text-primary">{lvl.value === effort ? "✓" : ""}</span>
-                </button>
-              ))}
             </div>
-          </div>
+          )}
         </div>
         {/* Right: hint + send/stop */}
         <div className="flex items-center gap-2">
@@ -206,7 +214,7 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
                 onClick={handleSend}
                 disabled={!text.trim() || disabled}
               >
-                Send <Icon name="arrow_upward" className="w-[14px] h-[14px]" />
+                Send <FontAwesomeIcon icon={faArrowUp} className={iconClass.md} />
               </button>
             </>
           )}
