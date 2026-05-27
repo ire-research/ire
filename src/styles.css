@@ -2,6 +2,20 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .topbar-icon-button {
+    @apply inline-flex items-center justify-center text-on-surface-variant hover:text-on-surface transition-colors;
+  }
+
+  .app-icon-button {
+    @apply inline-flex items-center justify-center rounded text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface transition-colors;
+  }
+
+  .app-danger-icon-button {
+    @apply inline-flex items-center justify-center rounded text-on-surface-variant hover:bg-surface-container-high hover:text-error transition-colors;
+  }
+}
+
 @font-face {
   font-family: "Geist";
   src: url("../node_modules/geist/dist/fonts/geist-sans/Geist-Regular.woff2") format("woff2");

@@ -71,7 +71,7 @@ export function FocusPane() {
           <span className="text-[11px] text-on-surface-variant font-medium">Research question</span>
           <button
             onClick={() => setEditingField("research_question")}
-            className="opacity-0 group-hover/rq:opacity-100 transition-opacity p-0.5 text-on-surface-variant hover:text-on-surface"
+            className="app-icon-button opacity-0 group-hover/rq:opacity-100 transition-opacity p-0.5"
             title="Edit research question"
           >
             <Icon name="edit_document" className="w-[14px] h-[14px]" />
@@ -103,7 +103,7 @@ export function FocusPane() {
           <span className="text-[11px] text-on-surface-variant font-medium">This week</span>
           <button
             onClick={() => setEditingField("this_week")}
-            className="opacity-0 group-hover/tw:opacity-100 transition-opacity p-0.5 text-on-surface-variant hover:text-on-surface"
+            className="app-icon-button opacity-0 group-hover/tw:opacity-100 transition-opacity p-0.5"
             title="Edit this week"
           >
             <Icon name="edit_document" className="w-[14px] h-[14px]" />

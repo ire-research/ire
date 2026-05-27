@@ -111,7 +111,7 @@ export function HistoryPanel({ isOpen, onClose, excludeSessionUuids, onRestore }
               </span>
             </button>
             <button
-              className="opacity-0 group-hover:opacity-100 transition-opacity pr-2.5 py-2 text-on-surface-variant/50 hover:text-error shrink-0"
+              className="app-danger-icon-button opacity-0 group-hover:opacity-100 transition-opacity mr-1.5 p-1 shrink-0"
               title="Delete session"
               onClick={(e) => handleDelete(s.session_uuid, e)}
             >

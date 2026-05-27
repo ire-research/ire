@@ -373,7 +373,7 @@ export function ChatPane() {
       rightSlot={
         <>
           <button
-            className="flex h-8 w-8 items-center justify-center text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors"
+            className="app-icon-button h-8 w-8"
             title="Chat history"
             onMouseDown={(e) => e.stopPropagation()}
             onClick={() => setHistoryOpen((o) => !o)}
