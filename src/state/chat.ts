@@ -51,7 +51,7 @@ interface ChatStore {
   setTabAgentOptions: (tabId: string, options: ChatOptions) => void;
   setTabHistoryMeta: (tabId: string, sessionUuid: string, startedAt: string) => void;
   /** Open a new chat tab pre-populated with historical messages (read from history). */
-  createTabWithMessages: (label: string, messages: ChatMessage[], sessionUuid?: string, startedAt?: string) => void;
+  createTabWithMessages: (label: string, messages: ChatMessage[], sessionUuid?: string, startedAt?: string, agentOptions?: ChatOptions) => void;
 }
 
 function updateTab(tabs: Tab[], tabId: string, updater: (t: Tab) => Tab): Tab[] {
@@ -491,7 +491,7 @@ export const useChat = create<ChatStore>((set) => ({
       })),
     })),
 
-  createTabWithMessages: (label, messages, sessionUuid, startedAt) => {
+  createTabWithMessages: (label, messages, sessionUuid, startedAt, agentOptions) => {
     const id = crypto.randomUUID();
     const clean: ChatMessage[] = messages.map((m) =>
       m.role === "assistant" ? { ...m, isStreaming: false } : m
@@ -508,6 +508,7 @@ export const useChat = create<ChatStore>((set) => ({
           kind: "chat",
           historySessionUuid: sessionUuid,
           historyStartedAt: startedAt,
+          agentOptions,
         },
       ],
       previousTabId: s.activeTabId,

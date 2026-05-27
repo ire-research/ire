@@ -18,7 +18,7 @@ import { HistoryPanel } from "./HistoryPanel";
 import { ResourcePreviewPane } from "./ResourcePreviewPane";
 import { ExperimentTabView } from "./ExperimentTabView";
 import { Icon } from "../Icon";
-import type { AskAnswer, AskBlockState, ChatMessage, Tab } from "../../types";
+import type { AskAnswer, AskBlockState, ChatMessage, ChatOptions, Provider, Tab } from "../../types";
 
 const seenStreamEventIds = new Map<string, number>();
 
@@ -336,7 +336,7 @@ export function ChatPane() {
     }
   };
 
-  const handleRestore = async (sessionUuid: string, tabLabel: string, startedAt?: string) => {
+  const handleRestore = async (sessionUuid: string, tabLabel: string, startedAt?: string, provider?: string, model?: string) => {
     const json = await ipc
       .chatHistoryGet(sessionUuid)
       .catch((e) => { toastError("load history", e); return null; });
@@ -345,7 +345,10 @@ export function ChatPane() {
     // Remove from history — the session is now active again as a tab.
     // It will be re-saved to history when the tab is closed.
     ipc.chatHistoryDelete(sessionUuid).catch(() => {});
-    createTabWithMessages(tabLabel, messages, sessionUuid, startedAt);
+    const agentOptions: ChatOptions | undefined = provider && model
+      ? { provider: provider as Provider, model, effort: "low" }
+      : undefined;
+    createTabWithMessages(tabLabel, messages, sessionUuid, startedAt, agentOptions);
   };
 
   const handleDiscardResource = () => {

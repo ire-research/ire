@@ -33,7 +33,7 @@ pub fn find_binary(
     for cand in candidates {
         if cand.is_file() {
             if !is_executable(&cand) {
-                return Err(DiscoveryError::NotExecutable(cand));
+                continue;
             }
             return finalize(cand);
         }

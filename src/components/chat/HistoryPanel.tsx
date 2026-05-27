@@ -6,7 +6,7 @@ interface Props {
   isOpen: boolean;
   onClose: () => void;
   excludeSessionUuids: string[];
-  onRestore: (sessionUuid: string, tabLabel: string, startedAt: string) => void;
+  onRestore: (sessionUuid: string, tabLabel: string, startedAt: string, provider: string, model: string) => void;
 }
 
 function formatTime(iso: string): string {
@@ -94,7 +94,7 @@ export function HistoryPanel({ isOpen, onClose, excludeSessionUuids, onRestore }
             <button
               className="flex-1 flex items-center gap-2.5 px-3 py-2 text-left min-w-0"
               onClick={() => {
-                onRestore(s.session_uuid, s.tab_label, s.started_at);
+                onRestore(s.session_uuid, s.tab_label, s.started_at, s.provider, s.model);
                 onClose();
               }}
             >
