@@ -76,6 +76,11 @@ export function defaultModelForProvider(provider: Provider): string {
   return MODELS.find((entry) => entry.provider === provider)?.id ?? DEFAULT_CHAT_OPTIONS.model;
 }
 
+/** Smallest/cheapest model per provider — used for background chat-title generation. */
+export function lightweightModelForProvider(provider: Provider): string {
+  return provider === "codex" ? "gpt-5.2" : "claude-haiku-4-5-20251001";
+}
+
 export function optionsForAvailableProviders(
   model: string | null | undefined,
   provider: string | null | undefined,

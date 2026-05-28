@@ -112,6 +112,8 @@ export const ipc = {
     invoke("save_user_config", { config }),
   openInVscode: (path: string): Promise<void> =>
     invoke("open_in_vscode", { path }),
+  generateChatTitle: (message: string, model: string, provider: string): Promise<string> =>
+    invoke("generate_chat_title", { message, model, provider }),
   chatHistorySave: (
     tabLabel: string,
     provider: string,

@@ -310,7 +310,7 @@ CC is told in the system prompt:
 When IRE spawns an agent turn, the system prompt is composed of:
 
 1. `.ire/_SYSTEM.md` — static IRE framework context, wiki layout, behavioral rules, and schema. MCP tool descriptions are received automatically via `tools/list` and are not duplicated here. Seeded from `assets/seed/_SYSTEM.md` on workspace init; always injected first.
-2. All agent-facing prompt text — the resource summarizer role, the resource-confirm follow-up, and the experiment wake-up template — lives in `src-tauri/assets/prompts/`. Edit those files to change agent behaviour; never hardcode prompts at call sites. The experiment workflow instructions are part of `.ire/_SYSTEM.md` (point 1 above).
+2. All agent-facing prompt text — the resource summarizer role, the resource-confirm follow-up, the experiment wake-up template, and the chat-title generator — lives in `src-tauri/assets/prompts/`. Edit those files to change agent behaviour; never hardcode prompts at call sites. The experiment workflow instructions are part of `.ire/_SYSTEM.md` (point 1 above).
 3. `wiki/_index.md` (catalog).
 4. `wiki/pulse.json`.
 5. `wiki/long-term.md` (full).
@@ -412,6 +412,10 @@ User types in central pane → Send
   → on `Init`: capture provider-scoped session/thread id
   → on `Result`/`Done`: turn complete, frontend re-enables input
 ```
+
+#### Auto-title (first message of a new chat)
+
+When the user sends the **first** message in a brand-new chat tab whose label is still the default `"Chat"` (skips renamed and history-restored tabs), `ChatPane.handleSend` fires `generate_chat_title({ message, model, provider })` in the background — it does not block or affect the normal `chat_send`. The model is the smallest of the selected provider (`claude-haiku-4-5-20251001` / `gpt-5.2`, via `lightweightModelForProvider`). The Rust command spawns a one-shot subprocess (reusing `build_command`/`build_codex_command`) with **no** system prompt, MCP config, session resume, or effort, collects the emitted text via the normal stream dispatch, and returns a cleaned single-line title (`assets/prompts/chat_title.md`). On resolve the frontend calls `renameTab`, which the `TabBar` `TabLabel` component types over the old label (40 ms/char typewriter). Any failure is silent — the label stays `"Chat"`.
 
 ### 9.2 Experiment lifecycle (the wake-up pattern)
 
@@ -879,6 +883,7 @@ Directory picking is **not** a Tauri command. The frontend calls Tauri's dialog 
 | `chat_send` | `{ tab_id, message, options: { model: string, provider: "claude" \| "codex", effort: EffortLevel \| null } }` | `{}` (events follow) |
 | `chat_cancel` | `{ tab_id }` | `{}` |
 | `chat_reset_session` | `{ tab_id }` | `{}` (forgets session id for that tab) |
+| `generate_chat_title` | `{ message, model, provider }` | `string` (one-shot lightweight-model completion; no system prompt/MCP/tools/session — see §auto-title) |
 | `experiment_list` | `{ limit? }` | `[ExperimentRow]` |
 | `experiment_logs` | `{ uuid, kb? }` | `{ stdout, stderr }` |
 | `experiment_cancel` | `{ uuid }` | `{}` |
@@ -1022,7 +1027,7 @@ ire/
 │       │   ├── mod.rs
 │       │   ├── workspace.rs            # setup_status, open/init/close_workspace, workspace state, user config, emit_initial_state burst
 │       │   ├── wiki.rs                 # read/save wiki, notes, pulse, ideas
-│       │   ├── chat.rs                 # chat_send, chat_cancel, chat_reset_session
+│       │   ├── chat.rs                 # chat_send, chat_cancel, chat_reset_session, generate_chat_title
 │       │   ├── history.rs              # chat_history_save/list/get/delete
 │       │   ├── resources.rs            # submit/discard/list_resources, get_resource_confirm_prompt
 │       │   └── system.rs               # get_system_status

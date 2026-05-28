@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faMessage, faSpinner, faFileLines, faFlask, faPencil, faPlus, iconClass } from "../../icons";
@@ -24,6 +24,30 @@ function tabIcon(tab: Tab): { icon: IconDefinition; spin: boolean } {
   if (tab.kind === "preview") return { icon: faFileLines, spin: false };
   if (tab.kind === "experiment") return { icon: faFlask, spin: false };
   return { icon: faMessage, spin: false };
+}
+
+/** Renders a tab label, typewriter-animating when the label changes while mounted
+ *  (e.g. a background-generated chat title typing over "Untitled"). Does not animate on
+ *  first mount, nor on manual rename — the inline rename input unmounts this span,
+ *  so it remounts fresh on commit with the prev ref re-seeded. */
+function TabLabel({ label }: { label: string }) {
+  const [display, setDisplay] = useState(label);
+  const prev = useRef(label);
+
+  useEffect(() => {
+    if (prev.current === label) return;
+    prev.current = label;
+    let i = 0;
+    setDisplay("");
+    const id = setInterval(() => {
+      i++;
+      setDisplay(label.slice(0, i));
+      if (i >= label.length) clearInterval(id);
+    }, 40);
+    return () => clearInterval(id);
+  }, [label]);
+
+  return <span className="flex-1 truncate min-w-0">{display}</span>;
 }
 
 export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename, rightSlot }: Props) {
@@ -64,8 +88,8 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename, 
               key={tab.id}
               className={
                 isActive
-                  ? "group relative flex items-center px-3 border-r border-outline-variant bg-surface-container-highest text-on-surface text-xs min-w-28 cursor-pointer border-t border-t-primary overflow-hidden"
-                  : "group relative flex items-center px-3 border-r border-outline-variant text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors text-xs min-w-28 cursor-pointer overflow-hidden"
+                  ? "group relative flex items-center px-3 border-r border-outline-variant bg-surface-container-highest text-on-surface text-xs w-32 shrink-0 cursor-pointer border-t border-t-primary overflow-hidden"
+                  : "group relative flex items-center px-3 border-r border-outline-variant text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors text-xs w-32 shrink-0 cursor-pointer overflow-hidden"
               }
               onClick={() => !isRenaming && onSelect(tab.id)}
             >
@@ -83,7 +107,7 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename, 
                 />
               ) : (
                 <>
-                  <span className="flex-1 truncate min-w-0">{tab.label}</span>
+                  <TabLabel label={tab.label} />
                   <div className="absolute right-0 top-0 bottom-0 flex items-center gap-px px-1 opacity-0 group-hover:opacity-100 transition-opacity bg-surface-container-highest">
                     {tab.kind === "chat" && (
                       <button
