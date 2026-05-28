@@ -1,0 +1,5 @@
+// codex --model gpt-5.2 exec --json "hello"
+{"type":"thread.started","thread_id":"019e7052-f6c8-70d2-9d72-94ceabae4844"}
+{"type":"turn.started"}
+{"type":"item.completed","item":{"id":"item_0","type":"agent_message","text":"Hello — what are you working on in `/Users/gciro/repos/ire` today?"}}
+{"type":"turn.completed","usage":{"input_tokens":16115,"cached_input_tokens":7424,"output_tokens":23,"reasoning_output_tokens":0}}
