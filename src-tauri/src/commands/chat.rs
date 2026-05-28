@@ -192,6 +192,106 @@ pub async fn chat_send(
     result
 }
 
+/// Generate a short descriptive title for a brand-new chat from its first user
+/// message. One-shot: spawns a fresh lightweight-model subprocess (no system
+/// prompt, no MCP, no session resume, no tools) and returns the collected text.
+#[tauri::command]
+pub async fn generate_chat_title(
+    active: State<'_, ActiveWorkspace>,
+    message: String,
+    model: String,
+    provider: String,
+) -> Result<String, String> {
+    let workspace_path = {
+        let guard = active.0.lock().map_err(|e| e.to_string())?;
+        guard
+            .as_ref()
+            .ok_or("no workspace open")?
+            .state
+            .path
+            .clone()
+    };
+
+    if provider != "claude" && provider != "codex" {
+        return Err(format!("unsupported provider: {provider}"));
+    }
+
+    let bin = if provider == "codex" {
+        find_codex_binary().map_err(|e| e.to_string())?.path
+    } else {
+        find_claude_binary().map_err(|e| e.to_string())?.path
+    };
+
+    let prompt = crate::prompts::chat_title(&message);
+
+    let title = tokio::task::spawn_blocking(move || {
+        let mut cmd = if provider == "codex" {
+            build_codex_command(&CodexSpawnArgs {
+                bin: &bin,
+                workspace: &workspace_path,
+                message: &prompt,
+                model: &model,
+                reasoning_effort: "low",
+                system_prompt: None,
+                mcp_config: None,
+                resume_id: None,
+            })
+        } else {
+            build_command(&SpawnArgs {
+                bin: &bin,
+                workspace: &workspace_path,
+                message: &prompt,
+                resume_id: None,
+                mcp_config: None,
+                system_prompt: None,
+                model: &model,
+                effort: None,
+            })
+        };
+
+        let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+        let stdout = child.stdout.take().ok_or("no stdout")?;
+        let mut state = StreamState::default();
+        let mut collected = String::new();
+
+        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                let mut collect = |event: StreamEvent| match event {
+                    StreamEvent::TextDelta { text } => collected.push_str(&text),
+                    StreamEvent::Result { text: Some(text), .. } => collected.push_str(&text),
+                    _ => {}
+                };
+                if provider == "codex" {
+                    codex_stream::dispatch(&json, &mut state, &mut collect);
+                } else {
+                    cc_stream::dispatch(&json, &mut state, &mut collect);
+                }
+            }
+        }
+        let _ = child.wait();
+        Ok::<String, String>(collected)
+    })
+    .await
+    .map_err(|e| format!("task error: {e}"))??;
+
+    let cleaned = clean_title(&title);
+    if cleaned.is_empty() {
+        return Err("empty title".to_string());
+    }
+    tracing::info!(title = %cleaned, "generate_chat_title");
+    Ok(cleaned)
+}
+
+/// Normalise raw model output into a single-line, quote-free, length-capped title.
+fn clean_title(raw: &str) -> String {
+    let first_line = raw.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
+    let trimmed = first_line
+        .trim()
+        .trim_matches(|c| c == '"' || c == '\'' || c == '`')
+        .trim();
+    trimmed.chars().take(60).collect()
+}
+
 #[tauri::command]
 pub fn chat_cancel(session: State<'_, SessionManager>, tab_id: String) -> Result<(), String> {
     tracing::debug!(tab_id = %tab_id, "chat_cancel");
@@ -270,3 +370,15 @@ pub(crate) fn kill_process(pid: u32) {
 // Suppress dead-code lint for platforms where neither cfg applies.
 #[cfg(not(any(unix, windows)))]
 pub(crate) fn kill_process(_pid: u32) {}
+
+#[cfg(test)]
+mod tests {
+    use super::clean_title;
+
+    #[test]
+    fn clean_title_strips_quotes_and_takes_first_line() {
+        assert_eq!(clean_title("\"Quantum Error Correction\""), "Quantum Error Correction");
+        assert_eq!(clean_title("  Tuning a Sampler  \nextra"), "Tuning a Sampler");
+        assert_eq!(clean_title(""), "");
+    }
+}
