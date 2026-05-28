@@ -10,7 +10,9 @@ export interface ModelEntry {
 }
 
 export const MODELS: ModelEntry[] = [
+  { id: "claude-opus-4-8",           label: "Opus 4.8",      provider: "claude" },
   { id: "claude-opus-4-7",           label: "Opus 4.7",      provider: "claude" },
+  { id: "claude-opus-4-6",           label: "Opus 4.6",      provider: "claude" },
   { id: "claude-sonnet-4-6",         label: "Sonnet 4.6",    provider: "claude" },
   { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5",     provider: "claude" },
   { id: "gpt-5.5",                   label: "GPT-5.5",       provider: "codex" },
@@ -34,8 +36,6 @@ export const CODEX_EFFORT_LEVELS: { value: EffortLevel; label: string }[] = [
   { value: "high",   label: "High"  },
   { value: "xhigh",  label: "XHigh" },
 ];
-
-export const EFFORT_LEVELS = CLAUDE_EFFORT_LEVELS;
 
 export const DEFAULT_CHAT_OPTIONS = {
   model: "claude-sonnet-4-6",
