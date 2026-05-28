@@ -18,9 +18,19 @@ export function FocusPane() {
     setDraftTw(pulse.this_week);
   }, [pulse]);
 
+  const autoResize = (el: HTMLTextAreaElement) => {
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  };
+
   useEffect(() => {
-    if (editingField === "research_question") rqRef.current?.focus();
-    else if (editingField === "this_week") twRef.current?.focus();
+    if (editingField === "research_question" && rqRef.current) {
+      rqRef.current.focus();
+      autoResize(rqRef.current);
+    } else if (editingField === "this_week" && twRef.current) {
+      twRef.current.focus();
+      autoResize(twRef.current);
+    }
   }, [editingField]);
 
   const handleSave = async (field: "research_question" | "this_week") => {
@@ -53,7 +63,8 @@ export function FocusPane() {
   const handleKeyDown = (e: React.KeyboardEvent, field: "research_question" | "this_week") => {
     if (e.key === "Escape") {
       handleCancel(field);
-    } else if (e.key === "Enter" && e.ctrlKey) {
+    } else if (e.key === "Enter") {
+      e.preventDefault();
       handleSave(field);
     }
   };
@@ -81,9 +92,11 @@ export function FocusPane() {
         {editingField === "research_question" ? (
           <textarea
             ref={rqRef}
+            rows={1}
             className="w-full bg-transparent border border-outline-variant rounded text-[14px] text-on-surface leading-relaxed px-1 py-0.5 focus:outline-none focus:border-outline resize-none"
             value={draftRq}
-            onChange={(e) => setDraftRq(e.target.value)}
+            onChange={(e) => setDraftRq(e.target.value.replace(/\n/g, " "))}
+            onInput={(e) => autoResize(e.currentTarget)}
             onBlur={() => handleSave("research_question")}
             onKeyDown={(e) => handleKeyDown(e, "research_question")}
           />
@@ -113,9 +126,11 @@ export function FocusPane() {
         {editingField === "this_week" ? (
           <textarea
             ref={twRef}
+            rows={1}
             className="w-full bg-transparent border border-outline-variant rounded text-[14px] text-on-surface leading-relaxed px-1 py-0.5 focus:outline-none focus:border-outline resize-none"
             value={draftTw}
-            onChange={(e) => setDraftTw(e.target.value)}
+            onChange={(e) => setDraftTw(e.target.value.replace(/\n/g, " "))}
+            onInput={(e) => autoResize(e.currentTarget)}
             onBlur={() => handleSave("this_week")}
             onKeyDown={(e) => handleKeyDown(e, "this_week")}
           />

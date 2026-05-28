@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useChat } from "../../state/chat";
-import { defaultEffortForModel, useChatOptions } from "../../state/chatOptions";
+import { defaultEffortForModel, lightweightModelForProvider, useChatOptions } from "../../state/chatOptions";
 import { useWorkspace } from "../../state/workspace";
 import { toastError } from "../../state/toasts";
 import {
@@ -268,6 +268,11 @@ export function ChatPane() {
   const handleSend = async (text: string) => {
     if (!activeTab || activeTab.isStreaming) return;
 
+    // Auto-name a brand-new, still-default chat from its first message (best-effort).
+    const shouldTitle =
+      activeTab.kind === "chat" && activeTab.messages.length === 0 && activeTab.label === "Untitled";
+    const titleTabId = activeTabId;
+
     // Ensure a stable session UUID exists for this tab before the first message.
     getSessionMeta(activeTabId);
     setTabAgentOptions(activeTabId, { model, provider, effort });
@@ -276,6 +281,13 @@ export function ChatPane() {
     const aid = beginAssistantMessage(activeTabId);
     assistantIdByTab.current.set(activeTabId, aid);
     setStreaming(activeTabId, true);
+
+    if (shouldTitle) {
+      ipc
+        .generateChatTitle(text, lightweightModelForProvider(provider), provider)
+        .then((title) => { if (title) renameTab(titleTabId, title); })
+        .catch(() => {}); // best-effort; leave label as "Untitled" on failure
+    }
 
     try {
       await ipc

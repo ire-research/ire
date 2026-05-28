@@ -117,7 +117,7 @@ function findPendingExperimentMsgId(tabs: Tab[], tabId: string): string | null {
 
 export const MAIN_TAB: Tab = {
   id: MAIN_TAB_ID,
-  label: "Chat",
+  label: "Untitled",
   messages: [],
   isStreaming: false,
   isPinned: false,
@@ -137,7 +137,7 @@ export const useChat = create<ChatStore>((set) => ({
       tabs: updateTab(s.tabs, tabId, (t) => ({ ...t, label })),
     })),
 
-  createTab: (label = "Chat") => {
+  createTab: (label = "Untitled") => {
     const id = crypto.randomUUID();
     set((s) => ({
       tabs: [...s.tabs, { id, label, messages: [], isStreaming: false, isPinned: false, kind: "chat" }],
