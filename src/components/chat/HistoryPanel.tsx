@@ -105,9 +105,11 @@ export function HistoryPanel({ isOpen, onClose, excludeSessionUuids, onRestore }
                 className="text-[13px] text-on-surface-variant/80 shrink-0"
               />
               <span className="flex-1 min-w-0 text-[12px] text-on-surface truncate">
-                {s.first_user_msg ?? (
-                  <span className="text-on-surface-variant italic">Untitled</span>
-                )}
+                {s.tab_label !== "Untitled"
+                  ? s.tab_label
+                  : (s.first_user_msg ?? (
+                    <span className="text-on-surface-variant italic">Untitled</span>
+                  ))}
               </span>
               <span className="text-[11px] text-on-surface-variant/60 shrink-0 whitespace-nowrap">
                 {formatTime(s.ended_at)}
