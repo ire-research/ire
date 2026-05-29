@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useChat } from "../../state/chat";
 import { defaultEffortForModel, lightweightModelForProvider, useChatOptions } from "../../state/chatOptions";
 import { useWorkspace } from "../../state/workspace";
-import { useWorkspaceData } from "../../state/workspaceData";
 import { toastError } from "../../state/toasts";
 import {
   ipc,
@@ -16,7 +15,7 @@ import { MessageList } from "./MessageList";
 import { Composer } from "./Composer";
 import { TabBar } from "./TabBar";
 import { HistoryPanel } from "./HistoryPanel";
-import { ResourcePreviewPane } from "./ResourcePreviewPane";
+import { ResourcePreviewPane, resourcePreviewTitle } from "./ResourcePreviewPane";
 import { ExperimentTabView } from "./ExperimentTabView";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faMessage, faClockRotateLeft, iconClass } from "../../icons";
@@ -88,8 +87,6 @@ export function ChatPane() {
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
 
-  const resources = useWorkspaceData((s) => s.resources);
-
   const [previewContent, setPreviewContent] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [heroMessage, setHeroMessage] = useState(() => HERO_MESSAGES[heroMessageIdx]);
@@ -105,21 +102,12 @@ export function ChatPane() {
     if (activeTab.draftContent) {
       setPreviewContent(activeTab.draftContent);
     } else if (activeTab.wikiPath) {
-      ipc.readWikiFile(activeTab.wikiPath).then((f) => setPreviewContent(f.content));
+      ipc.readWikiFile(activeTab.wikiPath).then((f) => {
+        setPreviewContent(f.content);
+        renameTab(activeTab.id, resourcePreviewTitle(f.content));
+      });
     }
   }, [activeTab?.id]);
-
-  // Resolve actual sources for the active preview tab from the resource store.
-  const previewSources = (() => {
-    if (activeTab?.kind !== "preview") return undefined;
-    const res = activeTab.resourceId
-      ? resources.find((r) => r.resource_id === activeTab.resourceId)
-      : activeTab.wikiPath
-        ? resources.find((r) => r.wiki_path === activeTab.wikiPath)
-        : undefined;
-    if (!res) return undefined;
-    return [res.source_label];
-  })();
 
   // Maps tab_id → in-flight assistant message id.
   const assistantIdByTab = useRef<Map<string, string>>(new Map());
@@ -374,7 +362,7 @@ export function ChatPane() {
     if (!activeTab.resourceId) return;
     try {
       const content = await ipc.readResourceDraft(activeTab.resourceId);
-      openDraftPreviewTab(activeTab.label, content, activeTab.resourceId);
+      openDraftPreviewTab(resourcePreviewTitle(content), content, activeTab.resourceId);
     } catch {
       toastError("view draft", "Draft not ready yet — the agent may still be writing.");
     }
@@ -484,7 +472,7 @@ export function ChatPane() {
       <section className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
         {tabBar}
         <div className="flex-1 overflow-hidden relative">
-          <ResourcePreviewPane title={activeTab.label} content={previewContent} actualSources={previewSources} />
+          <ResourcePreviewPane title={activeTab.label} content={previewContent} />
         </div>
       </section>
     );

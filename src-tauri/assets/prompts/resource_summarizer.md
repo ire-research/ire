@@ -7,12 +7,12 @@ Use the source ref(s) from the task exactly as written in the `sources:` frontma
 
 ```
 ---
-title: "<human-readable title>"
+title: <human-readable title>
 sources:
   - <source ref 1>
   - <source ref 2 if applicable>
 updated: <today YYYY-MM-DD>
-TL;DR: "<one-line summary or 'Not relevant'>"
+TL;DR: <one-line summary or 'Not relevant'>
 ---
 
 # <title>
@@ -28,7 +28,7 @@ TL;DR: "<one-line summary or 'Not relevant'>"
 
 (Omit this section entirely if not relevant.)
 
-## Why Relevant
+## Relevance
 
 - <specific reason tied to the current research question>
 - <another specific reason, if any>

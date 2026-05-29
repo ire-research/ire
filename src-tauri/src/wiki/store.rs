@@ -50,6 +50,18 @@ impl WikiStore {
         Ok(())
     }
 
+    /// Remove `rel_path` from the wiki and regenerate `_index.md`.
+    pub fn delete(&self, rel_path: &str) -> Result<()> {
+        let path = self.wiki_root.join(rel_path);
+        if path.exists() {
+            fs::remove_file(&path)
+                .with_context(|| format!("remove {}", path.display()))?;
+        }
+        let index_content = index::build(&self.wiki_root)?;
+        atomic_write(&self.wiki_root.join("_index.md"), &index_content)?;
+        Ok(())
+    }
+
     /// Atomically rename `from` to `to` inside the wiki, update `_index.md`,
     /// and dispatch the matching `workspace-event` variant for `to`.
     pub fn rename(&self, from: &str, to: &str, app: &AppHandle) -> Result<()> {

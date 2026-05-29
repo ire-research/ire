@@ -765,6 +765,16 @@ pub fn discard_resource(
     cleanup_resource_cache(&workspace_path, &resource_id);
 
     let ire_dir = workspace_path.join(".ire");
+
+    if let Ok(Some(row)) = models::get_resource(&ire_dir, &resource_id) {
+        if let Some(wiki_path) = row.wiki_path {
+            let store = crate::wiki::WikiStore::new(workspace_path.clone());
+            if let Err(e) = store.delete(&wiki_path) {
+                tracing::warn!(wiki_path = %wiki_path, error = %e, "discard_resource: failed to delete wiki file");
+            }
+        }
+    }
+
     models::update_resource_status(&ire_dir, &resource_id, "rejected")
         .map_err(|e| e.to_string())?;
 

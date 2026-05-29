@@ -135,7 +135,7 @@ export const useChat = create<ChatStore>((set) => ({
   previousTabId: null,
 
   addTab: (tab) =>
-    set((s) => ({ tabs: [...s.tabs, tab] })),
+    set((s) => (s.tabs.some((t) => t.id === tab.id) ? s : { tabs: [...s.tabs, tab] })),
 
   renameTab: (tabId, label) =>
     set((s) => ({
