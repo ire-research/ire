@@ -124,6 +124,10 @@ export const MAIN_TAB: Tab = {
   kind: "chat",
 };
 
+// Tracks when each assistant message started streaming, keyed by message id.
+// Used to compute runtime when finishMessage is called. Not persisted.
+const messageStartTimes = new Map<string, number>();
+
 export const useChat = create<ChatStore>((set) => ({
   tabs: [MAIN_TAB],
   activeTabId: MAIN_TAB_ID,
@@ -214,6 +218,7 @@ export const useChat = create<ChatStore>((set) => ({
 
   beginAssistantMessage: (tabId) => {
     const id = crypto.randomUUID();
+    messageStartTimes.set(id, Date.now());
     set((s) => ({
       tabs: updateTab(s.tabs, tabId, (t) => ({
         ...t,
@@ -237,9 +242,18 @@ export const useChat = create<ChatStore>((set) => ({
     })),
 
   finishMessage: (tabId, msgId) =>
-    set((s) => ({
-      tabs: updateMessage(s.tabs, tabId, msgId, (m) => ({ ...m, isStreaming: false })),
-    })),
+    set((s) => {
+      const startTime = messageStartTimes.get(msgId);
+      messageStartTimes.delete(msgId);
+      const runtime = startTime !== undefined ? (Date.now() - startTime) / 1000 : undefined;
+      return {
+        tabs: updateMessage(s.tabs, tabId, msgId, (m) => ({
+          ...m,
+          isStreaming: false,
+          ...(runtime !== undefined ? { runtime } : {}),
+        })),
+      };
+    }),
 
   setMessageError: (tabId, msgId, error) =>
     set((s) => ({
