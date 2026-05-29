@@ -50,6 +50,7 @@ pub enum ResourceSourceInput {
 struct PreparedSource {
     source_ref: String,
     source_label: String,
+    local_content_sha256: Option<String>,
     cache_rel: String,
     text: String,
     content_type: String,
@@ -112,7 +113,6 @@ pub async fn submit_resource(
             source_ref: url.clone(),
             cache_rel: format!(".ire/cache/{sha256}.txt"),
         }],
-        hostname_from_url(&url),
         options,
     )?;
 
@@ -140,14 +140,14 @@ pub async fn submit_local_resource(
             .clone()
     };
 
+    let source_ref = path.clone();
     let path_buf = PathBuf::from(path);
     let workspace_clone = workspace_path.clone();
 
-    let (sha256, source_ref, source_label, content_type) = tokio::task::spawn_blocking(
-        move || -> Result<(String, String, String, String), String> {
+    let (sha256, source_ref, content_type) =
+        tokio::task::spawn_blocking(move || -> Result<(String, String, String), String> {
             let result = extract_local_file(&path_buf).map_err(|e| e.to_string())?;
             let sha256 = sha256_hex_bytes(&result.bytes);
-            let source_ref = format!("file:{sha256}:{}", result.filename);
 
             write_resource_cache(&workspace_clone, &sha256, &result.text)?;
 
@@ -162,11 +162,10 @@ pub async fn submit_local_resource(
             )
             .map_err(|e| e.to_string())?;
 
-            Ok((sha256, source_ref, result.filename, result.content_type))
-        },
-    )
-    .await
-    .map_err(|e| e.to_string())??;
+            Ok((sha256, source_ref, result.content_type))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
 
     tracing::debug!(sha256 = %sha256, content_type = %content_type, "local resource cached");
 
@@ -179,7 +178,6 @@ pub async fn submit_local_resource(
             source_ref,
             cache_rel: format!(".ire/cache/{sha256}.txt"),
         }],
-        source_label,
         options,
     )?;
 
@@ -212,8 +210,8 @@ pub async fn submit_resources(
     };
 
     let workspace_clone = workspace_path.clone();
-    let (resource_id, summary_sources, tab_label) = tokio::task::spawn_blocking(
-        move || -> Result<(String, Vec<SummarySource>, String), String> {
+    let (resource_id, summary_sources) =
+        tokio::task::spawn_blocking(move || -> Result<(String, Vec<SummarySource>), String> {
             let prepared = prepare_sources(&sources)?;
             let source_refs: Vec<String> = prepared.iter().map(|s| s.source_ref.clone()).collect();
             let resource_id = batch_resource_id(&prepared, &source_refs)?;
@@ -264,11 +262,10 @@ pub async fn submit_resources(
                 })
                 .collect();
 
-            Ok((resource_id, summary_sources, source_label))
-        },
-    )
-    .await
-    .map_err(|e| e.to_string())??;
+            Ok((resource_id, summary_sources))
+        })
+        .await
+        .map_err(|e| e.to_string())??;
 
     start_resource_summary(
         app_handle,
@@ -276,7 +273,6 @@ pub async fn submit_resources(
         workspace_path,
         resource_id.clone(),
         summary_sources,
-        tab_label,
         options,
     )?;
 
@@ -307,6 +303,7 @@ fn prepare_sources(sources: &[ResourceSourceInput]) -> Result<Vec<PreparedSource
                 PreparedSource {
                     source_ref: trimmed.to_string(),
                     source_label: hostname_from_url(trimmed),
+                    local_content_sha256: None,
                     cache_rel: String::new(),
                     text: result.text,
                     content_type: result.content_type,
@@ -319,8 +316,9 @@ fn prepare_sources(sources: &[ResourceSourceInput]) -> Result<Vec<PreparedSource
                     .map_err(|e| format!("source {source_number}: {e}"))?;
                 let sha256 = sha256_hex_bytes(&result.bytes);
                 PreparedSource {
-                    source_ref: format!("file:{sha256}:{}", result.filename),
+                    source_ref: path.clone(),
                     source_label: result.filename,
+                    local_content_sha256: Some(sha256),
                     cache_rel: String::new(),
                     text: result.text,
                     content_type: result.content_type,
@@ -348,8 +346,8 @@ fn batch_resource_id(
         return Ok(sha256_hex(&prepared[0].source_ref));
     }
     if prepared.len() == 1 && prepared[0].source_type == "local_file" {
-        if let Some(source_id) = prepared[0].source_ref.split(':').nth(1) {
-            return Ok(source_id.to_string());
+        if let Some(source_id) = &prepared[0].local_content_sha256 {
+            return Ok(source_id.clone());
         }
     }
     let serialized = serde_json::to_string(source_refs).map_err(|e| e.to_string())?;
@@ -403,7 +401,6 @@ fn start_resource_summary(
     workspace_path: PathBuf,
     sha256: String,
     sources: Vec<SummarySource>,
-    tab_label: String,
     options: ChatOptions,
 ) -> Result<(), String> {
     if options.provider != "claude" && options.provider != "codex" {
@@ -422,7 +419,7 @@ fn start_resource_summary(
             "tab-created",
             serde_json::json!({
                 "tab_id": &tab_id,
-                "label": &tab_label,
+                "label": "Ingest",
                 "kind": "resource",
                 "resource_id": &sha256,
                 "agent_options": {
@@ -442,12 +439,13 @@ fn start_resource_summary(
     let provider = options.provider.clone();
     let model = options.model.clone();
     let effort = options.effort.clone();
+    let sha256_for_log = sha256.clone();
 
     tokio::spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
             let mcp_config = workspace_clone2.join(".ire/mcp.json");
             let system_prompt = build_resource_system_prompt(&workspace_clone2);
-            let prompt = build_resource_summary_prompt(&sources_clone);
+            let prompt = build_resource_summary_prompt(&sha256, &sources_clone);
 
             let mcp_config = if mcp_config.exists() {
                 Some(mcp_config)
@@ -544,24 +542,25 @@ fn start_resource_summary(
         }
     });
 
-    tracing::info!(tab_id = %tab_id, sha256 = %sha256, "resource summary started");
+    tracing::info!(tab_id = %tab_id, sha256 = %sha256_for_log, "resource summary started");
     Ok(())
 }
 
-fn build_resource_summary_prompt(sources: &[SummarySource]) -> String {
+fn build_resource_summary_prompt(resource_id: &str, sources: &[SummarySource]) -> String {
+    let draft_path = format!(".ire/cache/{resource_id}_draft.md");
+    let today = chrono::Utc::now().format("%Y-%m-%d");
+
     if sources.len() == 1 {
         let source = &sources[0];
         return format!(
-            "Read {} (source: {}). \
-             Provide an executive summary — what this resource is, what is relevant to this project, \
-             why it matters, and how it could be used. Use bullet points.\n\
-             Do NOT write to the wiki yet.",
+            "Read {} (source: {}).\nDraft path: {draft_path}\nToday: {today}\n\
+             Follow the resource analyst instructions in your system prompt.",
             source.cache_rel, source.source_ref
         );
     }
 
-    let mut prompt = String::from(
-        "Read all of these cached source files in order and synthesize them into one resource:\n",
+    let mut prompt = format!(
+        "Read all cached source files in order.\nDraft path: {draft_path}\nToday: {today}\n\nSources:\n"
     );
     for (index, source) in sources.iter().enumerate() {
         prompt.push_str(&format!(
@@ -571,13 +570,179 @@ fn build_resource_summary_prompt(sources: &[SummarySource]) -> String {
             source.source_ref
         ));
     }
-    prompt.push_str(
-        "\nProvide one comprehensive executive summary across all sources — what the combined material is, \
-         what is relevant to this project, why it matters, and how it could be used. Use bullet points. \
-         Preserve the source order when referring to sources.\n\
-         Do NOT write to the wiki yet.",
-    );
+    prompt.push_str("\nFollow the resource analyst instructions in your system prompt.");
     prompt
+}
+
+#[tauri::command]
+pub fn read_resource_draft(
+    active: State<'_, ActiveWorkspace>,
+    resource_id: String,
+) -> Result<String, String> {
+    let workspace_path = {
+        let guard = active.0.lock().map_err(|e| e.to_string())?;
+        guard
+            .as_ref()
+            .ok_or("no workspace open")?
+            .state
+            .path
+            .clone()
+    };
+    let draft_path = workspace_path
+        .join(".ire/cache")
+        .join(format!("{resource_id}_draft.md"));
+    let content = fs::read_to_string(&draft_path).map_err(|e| e.to_string())?;
+    normalize_resource_draft_sources(&workspace_path, &resource_id, &content)
+}
+
+#[tauri::command]
+pub fn confirm_resource(
+    app: tauri::AppHandle,
+    active: State<'_, ActiveWorkspace>,
+    resource_id: String,
+) -> Result<(), String> {
+    let workspace_path = {
+        let guard = active.0.lock().map_err(|e| e.to_string())?;
+        guard
+            .as_ref()
+            .ok_or("no workspace open")?
+            .state
+            .path
+            .clone()
+    };
+
+    let draft_path = workspace_path
+        .join(".ire/cache")
+        .join(format!("{resource_id}_draft.md"));
+    let content = fs::read_to_string(&draft_path).map_err(|e| e.to_string())?;
+    let content = normalize_resource_draft_sources(&workspace_path, &resource_id, &content)?;
+
+    let (fm, _) = crate::wiki::frontmatter::parse(&content);
+    let title = fm
+        .as_ref()
+        .and_then(|m| m.get("title"))
+        .map(|t| sanitize_wiki_filename(t))
+        .unwrap_or_else(|| resource_id[..8.min(resource_id.len())].to_string());
+
+    let wiki_path = format!("resources/{title}.md");
+    let store = crate::wiki::WikiStore::new(workspace_path.clone());
+    store
+        .write(&wiki_path, &content, &app)
+        .map_err(|e| e.to_string())?;
+
+    cleanup_resource_cache(&workspace_path, &resource_id);
+    let _ = fs::remove_file(&draft_path);
+
+    Ok(())
+}
+
+fn sanitize_wiki_filename(title: &str) -> String {
+    title
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+fn normalize_resource_draft_sources(
+    workspace_path: &Path,
+    resource_id: &str,
+    content: &str,
+) -> Result<String, String> {
+    let ire_dir = workspace_path.join(".ire");
+    let Some(row) = models::get_resource(&ire_dir, resource_id).map_err(|e| e.to_string())? else {
+        return Ok(content.to_string());
+    };
+    let source_refs = stored_source_refs(&row.url);
+    if source_refs.is_empty() {
+        return Ok(content.to_string());
+    }
+    Ok(replace_frontmatter_sources(content, &source_refs))
+}
+
+fn stored_source_refs(value: &str) -> Vec<String> {
+    serde_json::from_str::<Vec<String>>(value).unwrap_or_else(|_| vec![value.to_string()])
+}
+
+fn replace_frontmatter_sources(content: &str, source_refs: &[String]) -> String {
+    if !content.starts_with("---\n") || source_refs.is_empty() {
+        return content.to_string();
+    }
+
+    let rest = &content[4..];
+    let Some(end) = rest.find("\n---") else {
+        return content.to_string();
+    };
+
+    let fm_text = &rest[..end];
+    let suffix = &rest[end..];
+    let lines: Vec<&str> = fm_text.lines().collect();
+    let mut next_lines = Vec::new();
+    let mut inserted = false;
+    let mut i = 0;
+
+    let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+
+    while i < lines.len() {
+        let line = lines[i];
+
+        if frontmatter_key(line) == Some("updated") {
+            i += 1;
+            continue;
+        }
+
+        if frontmatter_key(line) == Some("sources") {
+            if !inserted {
+                push_sources_block(&mut next_lines, source_refs);
+                next_lines.push(format!("updated: {today}"));
+                inserted = true;
+            }
+            i += 1;
+            while i < lines.len() && is_sources_continuation(lines[i]) {
+                i += 1;
+            }
+            continue;
+        }
+
+        next_lines.push(line.to_string());
+        if !inserted && frontmatter_key(line) == Some("title") {
+            push_sources_block(&mut next_lines, source_refs);
+            next_lines.push(format!("updated: {today}"));
+            inserted = true;
+        }
+        i += 1;
+    }
+
+    if !inserted {
+        push_sources_block(&mut next_lines, source_refs);
+        next_lines.push(format!("updated: {today}"));
+    }
+
+    format!("---\n{}{}", next_lines.join("\n"), suffix)
+}
+
+fn frontmatter_key(line: &str) -> Option<&str> {
+    line.split_once(':').map(|(key, _)| key.trim())
+}
+
+fn is_sources_continuation(line: &str) -> bool {
+    line.trim_start().starts_with("- ") || line.starts_with(' ') || line.starts_with('\t')
+}
+
+fn push_sources_block(lines: &mut Vec<String>, source_refs: &[String]) {
+    lines.push("sources:".to_string());
+    for source_ref in source_refs {
+        lines.push(format!("  - {source_ref}"));
+    }
 }
 
 #[tauri::command]
@@ -600,6 +765,16 @@ pub fn discard_resource(
     cleanup_resource_cache(&workspace_path, &resource_id);
 
     let ire_dir = workspace_path.join(".ire");
+
+    if let Ok(Some(row)) = models::get_resource(&ire_dir, &resource_id) {
+        if let Some(wiki_path) = row.wiki_path {
+            let store = crate::wiki::WikiStore::new(workspace_path.clone());
+            if let Err(e) = store.delete(&wiki_path) {
+                tracing::warn!(wiki_path = %wiki_path, error = %e, "discard_resource: failed to delete wiki file");
+            }
+        }
+    }
+
     models::update_resource_status(&ire_dir, &resource_id, "rejected")
         .map_err(|e| e.to_string())?;
 
@@ -631,7 +806,104 @@ fn build_resource_system_prompt(workspace_root: &Path) -> String {
     parts.join("\n\n---\n\n")
 }
 
-#[tauri::command]
-pub fn get_resource_confirm_prompt() -> &'static str {
-    prompts::resource_confirm()
+#[cfg(test)]
+mod tests {
+    use super::{
+        batch_resource_id, build_resource_summary_prompt, prepare_sources,
+        replace_frontmatter_sources, ResourceSourceInput,
+    };
+
+    #[test]
+    fn local_file_source_ref_uses_exact_input_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("paper.txt");
+        std::fs::write(&file, "paper text").unwrap();
+        let path = file.to_string_lossy().to_string();
+
+        let prepared =
+            prepare_sources(&[ResourceSourceInput::LocalFile { path: path.clone() }]).unwrap();
+
+        assert_eq!(prepared[0].source_ref, path);
+        assert!(!prepared[0].source_ref.starts_with("file:"));
+        assert_eq!(
+            batch_resource_id(&prepared, &[prepared[0].source_ref.clone()]).unwrap(),
+            prepared[0]
+                .local_content_sha256
+                .as_ref()
+                .unwrap()
+                .to_string()
+        );
+    }
+
+    #[test]
+    fn summary_prompt_uses_exact_local_path_as_source() {
+        let path = "/Users/me/Documents/paper.pdf";
+        let prompt = build_resource_summary_prompt(
+            "abc123",
+            &[super::SummarySource {
+                source_ref: path.to_string(),
+                cache_rel: ".ire/cache/abc123.txt".to_string(),
+            }],
+        );
+
+        assert!(prompt.contains("(source: /Users/me/Documents/paper.pdf)"));
+        assert!(!prompt.contains("file:abc123"));
+    }
+
+    #[test]
+    fn replace_frontmatter_sources_overwrites_uuid_source() {
+        let content = "---\ntitle: \"Paper\"\nsources:\n  - .ire/cache/012345abcdef.txt\nupdated: 2026-05-29\nTL;DR: \"Relevant\"\n---\n\n# Paper\n";
+        let source_refs = vec!["/Users/me/Documents/paper.pdf".to_string()];
+
+        let normalized = replace_frontmatter_sources(content, &source_refs);
+
+        assert!(normalized.contains("sources:\n  - /Users/me/Documents/paper.pdf\nupdated:"));
+        assert!(!normalized.contains(".ire/cache/012345abcdef.txt"));
+    }
+
+    #[test]
+    fn replace_frontmatter_sources_preserves_two_source_order() {
+        let content = "---\ntitle: \"Pair\"\nsources:\n  - wrong-a\n  - wrong-b\nupdated: 2026-05-28\nTL;DR: \"Relevant\"\n---\n\n# Pair\n";
+        let source_refs = vec![
+            "/Users/me/Documents/a.pdf".to_string(),
+            "https://example.com/b".to_string(),
+        ];
+
+        let normalized = replace_frontmatter_sources(content, &source_refs);
+
+        assert!(normalized.contains(
+            "sources:\n  - /Users/me/Documents/a.pdf\n  - https://example.com/b\nupdated:"
+        ));
+        assert!(!normalized.contains("wrong-a"));
+        assert!(!normalized.contains("wrong-b"));
+    }
+
+    #[test]
+    fn replace_frontmatter_sources_preserves_multiple_source_order() {
+        let content = "---\ntitle: \"Batch\"\nsources: [.ire/cache/batch/source-001.txt]\nupdated: 2026-05-28\nTL;DR: \"Relevant\"\n---\n\n# Batch\n";
+        let source_refs = vec![
+            "https://example.com/a".to_string(),
+            "/Users/me/Documents/b.pdf".to_string(),
+            "https://example.com/c".to_string(),
+        ];
+
+        let normalized = replace_frontmatter_sources(content, &source_refs);
+
+        assert!(normalized.contains(
+            "sources:\n  - https://example.com/a\n  - /Users/me/Documents/b.pdf\n  - https://example.com/c\nupdated:"
+        ));
+        assert!(!normalized.contains(".ire/cache/batch/source-001.txt"));
+    }
+
+    #[test]
+    fn replace_frontmatter_sources_inserts_after_title_when_missing() {
+        let content =
+            "---\ntitle: \"Paper\"\nupdated: 2026-05-29\nTL;DR: \"Relevant\"\n---\n\n# Paper\n";
+        let source_refs = vec!["/Users/me/Documents/paper.pdf".to_string()];
+
+        let normalized = replace_frontmatter_sources(content, &source_refs);
+
+        assert!(normalized
+            .contains("title: \"Paper\"\nsources:\n  - /Users/me/Documents/paper.pdf\nupdated:"));
+    }
 }

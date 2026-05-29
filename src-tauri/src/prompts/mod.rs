@@ -3,7 +3,6 @@
 //! to change CC's behaviour — never hardcode prompts elsewhere.
 
 const RESOURCE_SUMMARIZER: &str = include_str!("../../assets/prompts/resource_summarizer.md");
-const RESOURCE_CONFIRM: &str = include_str!("../../assets/prompts/resource_confirm.md");
 const EXPERIMENT_WAKEUP: &str = include_str!("../../assets/prompts/experiment_wakeup.md");
 const CHAT_TITLE: &str = include_str!("../../assets/prompts/chat_title.md");
 
@@ -14,10 +13,6 @@ pub fn resource_summarizer() -> &'static str {
 /// Prompt for the lightweight model that names a new chat from its first message.
 pub fn chat_title(user_message: &str) -> String {
     CHAT_TITLE.trim_end().replace("{user_message}", user_message)
-}
-
-pub fn resource_confirm() -> &'static str {
-    RESOURCE_CONFIRM.trim_end()
 }
 
 pub struct WakeupArgs<'a> {
