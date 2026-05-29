@@ -203,6 +203,9 @@ export function ChatPane() {
     }));
 
     reg(onTabCreated((payload) => {
+      if (payload.agent_options) {
+        useChatOptions.getState().setOptions(payload.agent_options);
+      }
       const newTab: Tab = {
         id: payload.tab_id,
         label: payload.kind === "resource" ? "Ingest" : payload.label,
