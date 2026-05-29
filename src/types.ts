@@ -139,6 +139,7 @@ export interface Tab {
   historyStartedAt?: string;
   resourceId?: string;
   resourceStatus?: ResourceStatus;
+  draftContent?: string;
   wikiPath?: string;
   experimentUuid?: string;
 }

@@ -15,13 +15,15 @@ mod workspace;
 
 use cc::session::SessionManager;
 use commands::chat::{chat_cancel, chat_reset_session, chat_send, generate_chat_title};
-use commands::history::{chat_history_delete, chat_history_get, chat_history_list, chat_history_save};
 use commands::experiments::{
     experiment_cancel, experiment_delete, experiment_list, experiment_logs, experiment_rename,
 };
+use commands::history::{
+    chat_history_delete, chat_history_get, chat_history_list, chat_history_save,
+};
 use commands::resources::{
-    discard_resource, get_resource_confirm_prompt, submit_local_resource, submit_resource,
-    submit_resources,
+    confirm_resource, discard_resource, read_resource_draft, submit_local_resource,
+    submit_resource, submit_resources,
 };
 use commands::system::get_system_status;
 use commands::wiki::{
@@ -75,7 +77,8 @@ pub fn run() {
             submit_local_resource,
             submit_resources,
             discard_resource,
-            get_resource_confirm_prompt,
+            read_resource_draft,
+            confirm_resource,
             experiment_list,
             experiment_logs,
             experiment_cancel,

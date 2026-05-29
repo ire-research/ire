@@ -50,6 +50,18 @@ impl WikiStore {
         Ok(())
     }
 
+    /// Remove `rel_path` from the wiki and regenerate `_index.md`.
+    pub fn delete(&self, rel_path: &str) -> Result<()> {
+        let path = self.wiki_root.join(rel_path);
+        if path.exists() {
+            fs::remove_file(&path)
+                .with_context(|| format!("remove {}", path.display()))?;
+        }
+        let index_content = index::build(&self.wiki_root)?;
+        atomic_write(&self.wiki_root.join("_index.md"), &index_content)?;
+        Ok(())
+    }
+
     /// Atomically rename `from` to `to` inside the wiki, update `_index.md`,
     /// and dispatch the matching `workspace-event` variant for `to`.
     pub fn rename(&self, from: &str, to: &str, app: &AppHandle) -> Result<()> {
@@ -165,6 +177,10 @@ impl WikiStore {
 }
 
 fn parse_sources_array(value: &str) -> Vec<&str> {
+    if let Ok(refs) = serde_json::from_str::<Vec<&str>>(value.trim()) {
+        return refs;
+    }
+
     value
         .trim()
         .trim_start_matches('[')
@@ -239,5 +255,18 @@ mod tests {
     fn parse_sources_array_handles_inline_frontmatter() {
         let refs = parse_sources_array(r#"[https://example.com/a, "file:abc:paper.pdf"]"#);
         assert_eq!(refs, vec!["https://example.com/a", "file:abc:paper.pdf"]);
+    }
+
+    #[test]
+    fn parse_sources_array_handles_block_frontmatter() {
+        let content =
+            "---\nsources:\n  - /Users/me/Documents/paper.pdf\n  - https://example.com/a\n---\n";
+        let (fm, _) = crate::wiki::frontmatter::parse(content);
+        let fm = fm.unwrap();
+        let refs = parse_sources_array(fm.get("sources").unwrap());
+        assert_eq!(
+            refs,
+            vec!["/Users/me/Documents/paper.pdf", "https://example.com/a"]
+        );
     }
 }

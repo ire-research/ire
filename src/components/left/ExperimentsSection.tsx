@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
 import type { ExperimentRow } from "../../types";
@@ -29,7 +29,26 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
   const [deletingUuid, setDeletingUuid] = useState<string | null>(null);
   const [renamingUuid, setRenamingUuid] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [tooltip, setTooltip] = useState<{ label: string; x: number; y: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const spanRefs = useRef<Map<string, HTMLSpanElement | null>>(new Map());
+
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+
+  const handleMouseEnter = (uuid: string, label: string) => {
+    const span = spanRefs.current.get(uuid);
+    if (!span || span.scrollWidth <= span.clientWidth) return;
+    const rect = span.getBoundingClientRect();
+    timerRef.current = setTimeout(() => {
+      setTooltip({ label, x: rect.left, y: rect.bottom + 4 });
+    }, 250);
+  };
+
+  const handleMouseLeave = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setTooltip(null);
+  };
 
   const handleDelete = async (e: React.MouseEvent, uuid: string) => {
     e.stopPropagation();
@@ -88,6 +107,7 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
               <div
                 key={exp.uuid}
                 className="group w-full flex items-center px-2 py-1.5 rounded hover:bg-surface-container-high transition-colors"
+                onMouseLeave={handleMouseLeave}
               >
                 {isRenaming ? (
                   <input
@@ -104,9 +124,15 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
                   <>
                     <button
                       className="flex-1 min-w-0 cursor-pointer text-left"
+                      onMouseEnter={() => handleMouseEnter(exp.uuid, exp.name)}
                       onClick={() => onOpen(exp.uuid, exp.name)}
                     >
-                      <span className="font-mono text-[13px] text-on-surface truncate block">{exp.name}</span>
+                      <span
+                        ref={(el) => { spanRefs.current.set(exp.uuid, el); }}
+                        className="font-mono text-[13px] text-on-surface truncate block"
+                      >
+                        {exp.name}
+                      </span>
                     </button>
                     <button
                       className="app-icon-button opacity-0 group-hover:opacity-100 mx-1 h-5 w-5 shrink-0"
@@ -135,6 +161,14 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
           <p className="text-[13px] text-on-surface-variant italic">no experiments yet</p>
         )}
       </div>
+      {tooltip && (
+        <div
+          className="fixed z-50 px-2 py-1 bg-surface-container-high border border-outline/30 text-on-surface text-[13px] rounded shadow-md whitespace-nowrap pointer-events-none"
+          style={{ left: tooltip.x, top: tooltip.y }}
+        >
+          {tooltip.label}
+        </div>
+      )}
     </div>
   );
 }

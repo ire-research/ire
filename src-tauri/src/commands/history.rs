@@ -29,8 +29,7 @@ pub fn chat_history_save(
     let ended_at = chrono::Local::now().to_rfc3339();
 
     // Parse minimally to extract count and first user message.
-    let msgs: Vec<serde_json::Value> =
-        serde_json::from_str(&messages_json).unwrap_or_default();
+    let msgs: Vec<serde_json::Value> = serde_json::from_str(&messages_json).unwrap_or_default();
     let message_count = msgs.len() as i64;
 
     // Skip saving empty sessions.
@@ -66,8 +65,7 @@ pub fn chat_history_list(
     limit: Option<u32>,
 ) -> Result<Vec<models::ChatSessionRow>, String> {
     let dir = ire_dir(&active)?;
-    models::list_chat_sessions(&dir, limit.unwrap_or(50) as usize)
-        .map_err(|e| e.to_string())
+    models::list_chat_sessions(&dir, limit.unwrap_or(50) as usize).map_err(|e| e.to_string())
 }
 
 /// Return the full `messages_json` blob for a single session.
@@ -77,8 +75,7 @@ pub fn chat_history_get(
     session_uuid: String,
 ) -> Result<Option<String>, String> {
     let dir = ire_dir(&active)?;
-    models::get_chat_session_messages(&dir, &session_uuid)
-        .map_err(|e| e.to_string())
+    models::get_chat_session_messages(&dir, &session_uuid).map_err(|e| e.to_string())
 }
 
 /// Permanently delete a chat session.
@@ -88,6 +85,5 @@ pub fn chat_history_delete(
     session_uuid: String,
 ) -> Result<(), String> {
     let dir = ire_dir(&active)?;
-    models::delete_chat_session(&dir, &session_uuid)
-        .map_err(|e| e.to_string())
+    models::delete_chat_session(&dir, &session_uuid).map_err(|e| e.to_string())
 }

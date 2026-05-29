@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faLink, faXmark, faCircleExclamation, iconClass } from "../icons";
+import { faLink, faXmark, faCircleExclamation, faChevronDown, faClaude, faOpenai, iconClass } from "../icons";
 import { ipc, pickResourceFiles, type ResourceSourceInput } from "../ipc";
-import { useChatOptions } from "../state/chatOptions";
+import { MODELS, effortLevelsForModel, useChatOptions, type ModelEntry, type Provider } from "../state/chatOptions";
 
 type QueuedSource =
   | { id: string; kind: "url"; url: string }
@@ -34,18 +34,46 @@ interface Props {
 }
 
 export function AddResourceModal({ onClose }: Props) {
-  const { model, provider, effort } = useChatOptions();
+  const { model: globalModel, provider: globalProvider, effort: globalEffort } = useChatOptions();
+
   const [url, setUrl] = useState("");
   const [sources, setSources] = useState<QueuedSource[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [failedIndex, setFailedIndex] = useState<number | null>(null);
 
+  // Local model/effort — initialized from the composer's current values.
+  const [selectedModel, setSelectedModel] = useState(globalModel);
+  const [selectedProvider, setSelectedProvider] = useState<Provider>(globalProvider);
+  const [selectedEffort, setSelectedEffort] = useState(globalEffort);
+  const [modelOpen, setModelOpen] = useState(false);
+  const [effortOpen, setEffortOpen] = useState(false);
+  const modelRef = useRef<HTMLDivElement>(null);
+  const effortRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  useEffect(() => {
+    if (!modelOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (modelRef.current && !modelRef.current.contains(e.target as Node)) setModelOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [modelOpen]);
+
+  useEffect(() => {
+    if (!effortOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (effortRef.current && !effortRef.current.contains(e.target as Node)) setEffortOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [effortOpen]);
 
   const clearError = () => { setError(null); setFailedIndex(null); };
 
@@ -92,7 +120,7 @@ export function AddResourceModal({ onClose }: Props) {
     setLoading(true);
     clearError();
     try {
-      await ipc.submitResources(sources.map(toInput), { model, provider, effort });
+      await ipc.submitResources(sources.map(toInput), { model: selectedModel, provider: selectedProvider, effort: selectedEffort });
       onClose();
     } catch (e) {
       const message = String(e);
@@ -103,23 +131,51 @@ export function AddResourceModal({ onClose }: Props) {
     }
   };
 
+  const handleModelSelect = (entry: ModelEntry) => {
+    setSelectedModel(entry.id);
+    setSelectedProvider(entry.provider);
+    const levels = effortLevelsForModel(entry.provider, entry.id);
+    setSelectedEffort(levels.some((l) => l.value === selectedEffort) ? selectedEffort : (levels[0]?.value ?? null));
+    setModelOpen(false);
+  };
+
+  const effortLevels = effortLevelsForModel(selectedProvider, selectedModel);
+  const modelLabel = MODELS.find((m) => m.id === selectedModel)?.label ?? selectedModel;
+  const effortLabel = effortLevels.find((l) => l.value === selectedEffort)?.label ?? selectedEffort;
+  const claudeModels = MODELS.filter((m) => m.provider === "claude");
+  const codexModels = MODELS.filter((m) => m.provider === "codex");
   const hasQueue = sources.length > 0;
+
+  const ProviderSection = ({ label, provider: sectionProvider, models }: { label: string; provider: Provider; models: ModelEntry[] }) => (
+    <div className="py-2 first:pt-2 last:pb-2 border-t border-outline-variant/50 first:border-t-0">
+      <div className="px-3 pb-1.5 text-[10px] font-medium uppercase tracking-normal text-on-surface-variant/60">{label}</div>
+      {models.map((entry) => (
+        <button
+          key={entry.id}
+          className={`w-full grid grid-cols-[18px_1fr_14px] items-center gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-surface-container-highest transition-colors ${entry.id === selectedModel ? "font-medium text-on-surface" : "text-on-surface-variant"}`}
+          onClick={() => handleModelSelect(entry)}
+        >
+          <FontAwesomeIcon icon={sectionProvider === "claude" ? faClaude : faOpenai} className="text-[12px] text-on-surface-variant/80 text-center" />
+          <span>{entry.label}</span>
+          <span className="text-[11px] text-primary">{entry.id === selectedModel ? "✓" : ""}</span>
+        </button>
+      ))}
+    </div>
+  );
 
   return (
     <div
       className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="w-[360px] bg-surface-container border border-outline-variant rounded-lg flex flex-col overflow-hidden shadow-2xl">
+      {/* overflow-visible so upward dropdowns in the footer aren't clipped */}
+      <div className="w-[360px] bg-surface-container border border-outline-variant rounded-lg flex flex-col overflow-visible shadow-2xl">
 
         {/* Header */}
         <div className="flex items-center gap-2 px-4 pt-3.5 pb-3 border-b border-outline-variant shrink-0">
           <FontAwesomeIcon icon={faLink} className={`${iconClass.lg} shrink-0 text-on-surface-variant`} />
           <span className="flex-1 text-[13px] font-medium text-on-surface">Add resources</span>
-          <button
-            onClick={onClose}
-            className="app-icon-button w-6 h-6"
-          >
+          <button onClick={onClose} className="app-icon-button w-6 h-6">
             <FontAwesomeIcon icon={faXmark} className={iconClass.md} />
           </button>
         </div>
@@ -190,19 +246,66 @@ export function AddResourceModal({ onClose }: Props) {
 
         {/* Footer — only when non-empty */}
         {hasQueue && (
-          <div className="flex items-center gap-2.5 px-4 py-3.5 border-t border-outline-variant shrink-0">
-            <p className="flex-1 min-w-0 text-[11px] text-on-surface-variant">
-              One summary resource will be created from all queued sources.
-            </p>
-            <button
-              onClick={handleSubmit}
-              disabled={loading}
-              className={`border border-outline text-on-surface px-4 py-1.5 rounded text-[12px] hover:bg-surface-container-high transition-colors shrink-0 disabled:opacity-50 ${
-                loading ? "ingest-loading-button" : ""
-              }`}
-            >
-              {loading ? "Ingesting…" : "Ingest"}
-            </button>
+          <div className="flex flex-col gap-2.5 px-4 py-3.5 border-t border-outline-variant shrink-0">
+            {/* Existing row: description + ingest button */}
+            <div className="flex items-center gap-2.5">
+              <p className="flex-1 min-w-0 text-[11px] text-on-surface-variant">
+                One summary resource will be created from all queued sources.
+              </p>
+              <button
+                onClick={handleSubmit}
+                disabled={loading}
+                className={`border border-outline text-on-surface px-4 py-1.5 rounded text-[12px] hover:bg-surface-container-high transition-colors shrink-0 disabled:opacity-50 ${loading ? "ingest-loading-button" : ""}`}
+              >
+                {loading ? "Ingesting…" : "Ingest"}
+              </button>
+            </div>
+
+            {/* New row: model + effort pills, centered */}
+            <div className="flex items-center justify-center gap-[10px]">
+              {/* Model picker */}
+              <div className="relative" ref={modelRef}>
+                <button
+                  className="flex items-center gap-1 px-2 py-1 text-on-surface-variant hover:bg-surface-container-high rounded hover:text-on-surface transition-colors text-[11px] border border-outline-variant/50"
+                  onClick={() => { setModelOpen((o) => !o); setEffortOpen(false); }}
+                >
+                  <span className="text-[10px] text-on-surface-variant/60 mr-0.5">model</span>
+                  {modelLabel}
+                  <FontAwesomeIcon icon={faChevronDown} className={iconClass.sm} />
+                </button>
+                <div className={`${modelOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 min-w-[230px] overflow-hidden z-50`}>
+                  <ProviderSection label="Claude Code" provider="claude" models={claudeModels} />
+                  {codexModels.length > 0 && <ProviderSection label="Codex" provider="codex" models={codexModels} />}
+                </div>
+              </div>
+
+              {/* Effort picker */}
+              {effortLevels.length > 0 && (
+                <div className="relative" ref={effortRef}>
+                  <button
+                    className="flex items-center gap-1 px-2 py-1 text-on-surface-variant hover:bg-surface-container-high rounded hover:text-on-surface transition-colors text-[11px] border border-outline-variant/50"
+                    onClick={() => { setEffortOpen((o) => !o); setModelOpen(false); }}
+                  >
+                    <span className="text-[10px] text-on-surface-variant/60 mr-0.5">effort</span>
+                    {effortLabel}
+                    <FontAwesomeIcon icon={faChevronDown} className={iconClass.sm} />
+                  </button>
+                  <div className={`${effortOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 min-w-[140px] overflow-hidden z-50`}>
+                    <div className="px-3 pt-2 pb-1.5 text-[10px] font-medium uppercase tracking-normal text-on-surface-variant/60">Effort</div>
+                    {effortLevels.map((lvl) => (
+                      <button
+                        key={lvl.value}
+                        className={`w-full grid grid-cols-[1fr_14px] items-center gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-surface-container-highest transition-colors ${lvl.value === selectedEffort ? "font-medium text-on-surface" : "text-on-surface-variant"}`}
+                        onClick={() => { setSelectedEffort(lvl.value); setEffortOpen(false); }}
+                      >
+                        <span>{lvl.label}</span>
+                        <span className="text-[11px] text-primary">{lvl.value === selectedEffort ? "✓" : ""}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
