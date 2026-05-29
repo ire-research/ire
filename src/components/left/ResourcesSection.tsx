@@ -78,7 +78,7 @@ export function ResourcesSection({ onOpen }: Props) {
               <button
                 className="flex-1 min-w-0 text-left"
                 onMouseEnter={() => handleMouseEnter(resource.resourceId, resource.label)}
-                onClick={() => onOpen(resource.label, resource.wikiPath)}
+                onClick={() => onOpen("Resource", resource.wikiPath)}
               >
                 <span
                   ref={(el) => { spanRefs.current.set(resource.resourceId, el); }}
@@ -103,7 +103,7 @@ export function ResourcesSection({ onOpen }: Props) {
       </div>
       {tooltip && (
         <div
-          className="fixed z-50 px-2 py-1 bg-surface-container-high border border-outline/30 text-on-surface text-[13px] rounded shadow-md max-w-[240px] whitespace-normal pointer-events-none"
+          className="fixed z-50 px-2 py-1 bg-surface-container-high border border-outline/30 text-on-surface text-[13px] rounded shadow-md whitespace-nowrap pointer-events-none"
           style={{ left: tooltip.x, top: tooltip.y }}
         >
           {tooltip.label}

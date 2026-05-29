@@ -15,7 +15,7 @@ import { MessageList } from "./MessageList";
 import { Composer } from "./Composer";
 import { TabBar } from "./TabBar";
 import { HistoryPanel } from "./HistoryPanel";
-import { ResourcePreviewPane } from "./ResourcePreviewPane";
+import { ResourcePreviewPane, resourcePreviewTitle } from "./ResourcePreviewPane";
 import { ExperimentTabView } from "./ExperimentTabView";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faMessage, faClockRotateLeft, iconClass } from "../../icons";
@@ -82,6 +82,7 @@ export function ChatPane() {
     setTabAgentOptions,
     setTabHistoryMeta,
     createTabWithMessages,
+    openDraftPreviewTab,
   } = useChat();
 
   const activeTab = tabs.find((t) => t.id === activeTabId) ?? tabs[0];
@@ -97,8 +98,15 @@ export function ChatPane() {
   }, [tabs.length]);
 
   useEffect(() => {
-    if (activeTab?.kind !== "preview" || !activeTab.wikiPath) return;
-    ipc.readWikiFile(activeTab.wikiPath).then((f) => setPreviewContent(f.content));
+    if (activeTab?.kind !== "preview") return;
+    if (activeTab.draftContent) {
+      setPreviewContent(activeTab.draftContent);
+    } else if (activeTab.wikiPath) {
+      ipc.readWikiFile(activeTab.wikiPath).then((f) => {
+        setPreviewContent(f.content);
+        renameTab(activeTab.id, resourcePreviewTitle(f.content));
+      });
+    }
   }, [activeTab?.id]);
 
   // Maps tab_id → in-flight assistant message id.
@@ -186,14 +194,8 @@ export function ChatPane() {
             .catch((e) => toastError("save state", e));
 
           const currentTab = useChat.getState().tabs.find((t) => t.id === tab_id);
-          if (currentTab?.kind === "resource") {
-            if (currentTab.resourceStatus === "summarizing") {
-              setResourceStatus(tab_id, "ready");
-            } else if (currentTab.resourceStatus === "confirmed") {
-              // CC wrote the wiki file; WikiStore::write linked the DB row and
-              // emitted `resource-changed` already, so just close the tab.
-              closeTab(tab_id);
-            }
+          if (currentTab?.kind === "resource" && currentTab.resourceStatus === "summarizing") {
+            setResourceStatus(tab_id, "ready");
           }
           break;
         }
@@ -201,9 +203,12 @@ export function ChatPane() {
     }));
 
     reg(onTabCreated((payload) => {
+      if (payload.agent_options) {
+        useChatOptions.getState().setOptions(payload.agent_options);
+      }
       const newTab: Tab = {
         id: payload.tab_id,
-        label: payload.label,
+        label: payload.kind === "resource" ? "Ingest" : payload.label,
         messages: [],
         isStreaming: false,
         isPinned: false,
@@ -273,6 +278,10 @@ export function ChatPane() {
       activeTab.kind === "chat" && activeTab.messages.length === 0 && activeTab.label === "Untitled";
     const titleTabId = activeTabId;
 
+    if (activeTab.kind === "resource" && activeTab.resourceStatus === "ready") {
+      setResourceStatus(activeTabId, "summarizing");
+    }
+
     // Ensure a stable session UUID exists for this tab before the first message.
     getSessionMeta(activeTabId);
     setTabAgentOptions(activeTabId, { model, provider, effort });
@@ -341,19 +350,24 @@ export function ChatPane() {
   const handleConfirmResource = async () => {
     if (!activeTab.resourceId) return;
     setResourceStatus(activeTabId, "confirmed");
-    const aid = beginAssistantMessage(activeTabId);
-    assistantIdByTab.current.set(activeTabId, aid);
-    setStreaming(activeTabId, true);
     try {
-      const prompt = await ipc.getResourceConfirmPrompt();
-      await ipc
-        .saveWorkspaceState(useWorkspace.getState().toPersisted())
-        .catch((e) => toastError("save chat options", e));
-      await ipc.chatSend(activeTabId, prompt, activeTab.agentOptions ?? { model, provider, effort });
+      await ipc.confirmResource(activeTab.resourceId);
+      // WikiStore::write emits resource-changed, which triggers tab close via the
+      // Done handler path — but since there's no streaming here, close directly.
+      closeTab(activeTabId);
     } catch (err) {
-      const msgId = assistantIdByTab.current.get(activeTabId);
-      if (msgId) setMessageError(activeTabId, msgId, String(err));
-      setStreaming(activeTabId, false);
+      toastError("confirm resource", String(err));
+      setResourceStatus(activeTabId, "ready");
+    }
+  };
+
+  const handleViewDraft = async () => {
+    if (!activeTab.resourceId) return;
+    try {
+      const content = await ipc.readResourceDraft(activeTab.resourceId);
+      openDraftPreviewTab(resourcePreviewTitle(content), content, activeTab.resourceId);
+    } catch {
+      toastError("view draft", "Draft not ready yet — the agent may still be writing.");
     }
   };
 
@@ -486,26 +500,43 @@ export function ChatPane() {
         <div className="absolute inset-0 overflow-y-auto px-4 md:px-8 lg:px-12 pt-4 pb-40 space-y-6">
           <MessageList messages={activeTab.messages} onAskSubmit={handleAskSubmit} />
         </div>
-        {/* Floating composer */}
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-full px-6 pointer-events-none" style={{ zIndex: 20 }}>
-          <div className="pointer-events-auto">
-            {!showResourceBar && (
-              <Composer onSend={handleSend} disabled={activeTab.isStreaming} onCancel={() => ipc.chatCancel(activeTabId)} />
+        {/* Floating composer + resource bar */}
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-full px-6 flex flex-col gap-2 pointer-events-none" style={{ zIndex: 20 }}>
+          <div className="contents">
+            {showResourceBar && (
+              <div className="flex justify-center pointer-events-auto">
+                <div className="flex bg-surface-container border border-outline-variant rounded-lg shadow-lg shadow-black/30 overflow-hidden">
+                  <button
+                    className="flex items-center gap-1.5 px-4 h-9 text-[11px] font-mono text-on-surface font-medium hover:bg-surface-container-high transition-colors"
+                    onClick={handleViewDraft}
+                  >
+                    <svg width="11" height="11" viewBox="0 0 16 16" fill="none" className="opacity-60"><path d="M2 8s2.5-5 6-5 6 5 6 5-2.5 5-6 5-6-5-6-5z" stroke="currentColor" strokeWidth="1.5" fill="none"/><circle cx="8" cy="8" r="2" stroke="currentColor" strokeWidth="1.5"/></svg>
+                    View Summary
+                  </button>
+                  <div className="w-px self-stretch bg-outline-variant my-1.5" />
+                  <button
+                    className="flex items-center gap-1.5 px-4 h-9 text-[11px] font-mono text-ok/80 hover:bg-ok/5 transition-colors"
+                    onClick={handleConfirmResource}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 16 16" fill="none" className="opacity-70"><path d="M3 8.5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    Approve
+                  </button>
+                  <div className="w-px self-stretch bg-outline-variant my-1.5" />
+                  <button
+                    className="flex items-center gap-1.5 px-4 h-9 text-[11px] font-mono text-on-surface-variant hover:text-error hover:bg-error/5 transition-colors"
+                    onClick={handleDiscardResource}
+                  >
+                    <svg width="10" height="10" viewBox="0 0 16 16" fill="none" className="opacity-60"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+                    Discard
+                  </button>
+                </div>
+              </div>
             )}
+            <div className="pointer-events-auto">
+              <Composer onSend={handleSend} disabled={activeTab.isStreaming} onCancel={() => ipc.chatCancel(activeTabId)} />
+            </div>
           </div>
         </div>
-        {/* Resource bar */}
-        {showResourceBar && (
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-3 bg-surface-container border border-outline-variant rounded-lg px-4 py-2 shadow-lg shadow-black/30" style={{ zIndex: 20 }}>
-            <button className="text-[13px] text-on-surface font-medium hover:text-ok transition-colors" onClick={handleConfirmResource}>
-              Confirm — save to wiki
-            </button>
-            <span className="text-outline-variant">·</span>
-            <button className="text-[13px] text-on-surface-variant hover:text-error transition-colors" onClick={handleDiscardResource}>
-              Discard
-            </button>
-          </div>
-        )}
       </div>
     </section>
   );

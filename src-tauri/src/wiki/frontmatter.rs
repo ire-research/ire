@@ -15,10 +15,43 @@ pub fn parse(content: &str) -> (Option<HashMap<String, String>>, &str) {
     };
 
     let mut map = HashMap::new();
+    let mut list_key: Option<String> = None;
+    let mut list_items: Vec<String> = Vec::new();
+
     for line in fm_text.lines() {
+        if let Some(key) = list_key.clone() {
+            if let Some(item) = line.trim_start().strip_prefix("- ") {
+                list_items.push(item.trim().trim_matches('"').to_string());
+                continue;
+            }
+
+            if list_items.is_empty() {
+                map.insert(key, String::new());
+            } else if let Ok(json) = serde_json::to_string(&list_items) {
+                map.insert(key, json);
+            }
+            list_key = None;
+            list_items.clear();
+        }
+
         if let Some((k, v)) = line.split_once(':') {
-            map.insert(k.trim().to_string(), v.trim().to_string());
+            let key = k.trim().to_string();
+            let value = v.trim();
+            if value.is_empty() {
+                list_key = Some(key);
+            } else {
+                map.insert(key, value.to_string());
+            }
         }
     }
+
+    if let Some(key) = list_key {
+        if list_items.is_empty() {
+            map.insert(key, String::new());
+        } else if let Ok(json) = serde_json::to_string(&list_items) {
+            map.insert(key, json);
+        }
+    }
+
     (Some(map), body)
 }
