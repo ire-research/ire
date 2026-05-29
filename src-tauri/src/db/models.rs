@@ -229,6 +229,10 @@ pub struct ChatSessionRow {
     pub ended_at: String,
     pub message_count: i64,
     pub first_user_msg: Option<String>,
+    pub input_tokens: i64,
+    pub cached_input_tokens: i64,
+    pub output_tokens: i64,
+    pub cost_usd: f64,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -243,6 +247,10 @@ pub fn insert_chat_session(
     message_count: i64,
     first_user_msg: Option<&str>,
     messages_json: &str,
+    input_tokens: i64,
+    cached_input_tokens: i64,
+    output_tokens: i64,
+    cost_usd: f64,
 ) -> Result<()> {
     let conn = open(ire_dir)?;
     // Upsert: insert on first save, update mutable fields on subsequent saves.
@@ -250,17 +258,21 @@ pub fn insert_chat_session(
     // original session start time even as the session grows.
     conn.execute(
         "INSERT INTO chat_sessions \
-         (session_uuid, tab_label, provider, model, started_at, ended_at, message_count, first_user_msg, messages_json) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
+         (session_uuid, tab_label, provider, model, started_at, ended_at, message_count, first_user_msg, messages_json, input_tokens, cached_input_tokens, output_tokens, cost_usd) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13) \
          ON CONFLICT(session_uuid) DO UPDATE SET \
-             tab_label      = excluded.tab_label, \
-             provider       = excluded.provider, \
-             model          = excluded.model, \
-             ended_at       = excluded.ended_at, \
-             message_count  = excluded.message_count, \
-             first_user_msg = excluded.first_user_msg, \
-             messages_json  = excluded.messages_json",
-        params![session_uuid, tab_label, provider, model, started_at, ended_at, message_count, first_user_msg, messages_json],
+             tab_label           = excluded.tab_label, \
+             provider            = excluded.provider, \
+             model               = excluded.model, \
+             ended_at            = excluded.ended_at, \
+             message_count       = excluded.message_count, \
+             first_user_msg      = excluded.first_user_msg, \
+             messages_json       = excluded.messages_json, \
+             input_tokens        = excluded.input_tokens, \
+             cached_input_tokens = excluded.cached_input_tokens, \
+             output_tokens       = excluded.output_tokens, \
+             cost_usd            = excluded.cost_usd",
+        params![session_uuid, tab_label, provider, model, started_at, ended_at, message_count, first_user_msg, messages_json, input_tokens, cached_input_tokens, output_tokens, cost_usd],
     )?;
     Ok(())
 }
@@ -268,7 +280,8 @@ pub fn insert_chat_session(
 pub fn list_chat_sessions(ire_dir: &Path, limit: usize) -> Result<Vec<ChatSessionRow>> {
     let conn = open(ire_dir)?;
     let mut stmt = conn.prepare(
-        "SELECT session_uuid, tab_label, provider, model, started_at, ended_at, message_count, first_user_msg \
+        "SELECT session_uuid, tab_label, provider, model, started_at, ended_at, message_count, first_user_msg, \
+                input_tokens, cached_input_tokens, output_tokens, cost_usd \
          FROM chat_sessions ORDER BY ended_at DESC LIMIT ?1",
     )?;
     let rows = stmt.query_map(params![limit as i64], |r| {
@@ -281,6 +294,10 @@ pub fn list_chat_sessions(ire_dir: &Path, limit: usize) -> Result<Vec<ChatSessio
             ended_at: r.get(5)?,
             message_count: r.get(6)?,
             first_user_msg: r.get(7)?,
+            input_tokens: r.get(8)?,
+            cached_input_tokens: r.get(9)?,
+            output_tokens: r.get(10)?,
+            cost_usd: r.get(11)?,
         })
     })?;
     rows.map(|r| r.context("chat session row")).collect()

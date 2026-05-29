@@ -121,8 +121,12 @@ export const ipc = {
     startedAt: string,
     messagesJson: string,
     sessionUuid?: string,
+    inputTokens?: number,
+    cachedInputTokens?: number,
+    outputTokens?: number,
+    costUsd?: number,
   ): Promise<void> =>
-    invoke("chat_history_save", { sessionUuid, tabLabel, provider, model, startedAt, messagesJson }),
+    invoke("chat_history_save", { sessionUuid, tabLabel, provider, model, startedAt, messagesJson, inputTokens, cachedInputTokens, outputTokens, costUsd }),
   chatHistoryList: (limit?: number): Promise<import("./types").ChatSessionSummary[]> =>
     invoke("chat_history_list", { limit }),
   chatHistoryGet: (sessionUuid: string): Promise<string | null> =>

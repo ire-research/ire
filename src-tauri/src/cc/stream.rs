@@ -43,6 +43,12 @@ pub enum StreamEvent {
         tool_id: String,
         questions: Vec<AskQuestion>,
     },
+    Usage {
+        input_tokens: u64,
+        cached_input_tokens: u64,
+        output_tokens: u64,
+        cost_usd: f64,
+    },
     Result {
         text: Option<String>,
         session_id: String,
@@ -87,6 +93,15 @@ pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, em
             }
         }
         "result" => {
+            if let Some(model_usage) = json["modelUsage"].as_object() {
+                let (input, cached, output, cost) = sum_model_usage(model_usage);
+                emit(StreamEvent::Usage {
+                    input_tokens: input,
+                    cached_input_tokens: cached,
+                    output_tokens: output,
+                    cost_usd: cost,
+                });
+            }
             let text = extract_result_text(json, state);
             emit(StreamEvent::Result {
                 text,
@@ -190,6 +205,20 @@ fn advance_cursor(cursors: &mut Vec<usize>, index: usize, next: usize) -> usize 
         cursors[index] = next;
     }
     previous
+}
+
+fn sum_model_usage(obj: &serde_json::Map<String, Value>) -> (u64, u64, u64, f64) {
+    let mut input = 0u64;
+    let mut cached = 0u64;
+    let mut output = 0u64;
+    let mut cost = 0f64;
+    for entry in obj.values() {
+        input += entry["inputTokens"].as_u64().unwrap_or(0);
+        cached += entry["cacheReadInputTokens"].as_u64().unwrap_or(0);
+        output += entry["outputTokens"].as_u64().unwrap_or(0);
+        cost += entry["costUSD"].as_f64().unwrap_or(0.0);
+    }
+    (input, cached, output, cost)
 }
 
 fn extract_result_text(json: &Value, state: &StreamState) -> Option<String> {

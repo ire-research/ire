@@ -15,6 +15,7 @@ fn ire_dir(active: &State<'_, ActiveWorkspace>) -> Result<std::path::PathBuf, St
 /// session. Passing the same UUID on subsequent calls upserts the row so the session
 /// stays current without creating duplicates.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub fn chat_history_save(
     active: State<'_, ActiveWorkspace>,
     session_uuid: Option<String>,
@@ -23,6 +24,10 @@ pub fn chat_history_save(
     model: String,
     started_at: String,
     messages_json: String,
+    input_tokens: Option<i64>,
+    cached_input_tokens: Option<i64>,
+    output_tokens: Option<i64>,
+    cost_usd: Option<f64>,
 ) -> Result<(), String> {
     let dir = ire_dir(&active)?;
     let session_uuid = session_uuid.unwrap_or_else(|| Uuid::new_v4().to_string());
@@ -55,6 +60,10 @@ pub fn chat_history_save(
         message_count,
         first_user_msg.as_deref(),
         &messages_json,
+        input_tokens.unwrap_or(0),
+        cached_input_tokens.unwrap_or(0),
+        output_tokens.unwrap_or(0),
+        cost_usd.unwrap_or(0.0),
     )
     .map_err(|e| e.to_string())
 }

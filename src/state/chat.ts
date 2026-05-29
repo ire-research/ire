@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { AskAnswer, AskQuestion, AssistantContentBlock, AssistantMessage, ChatMessage, ChatOptions, ExperimentStatus, ResourceStatus, Tab, ToolCallState, ToolIo, ToolMeta, ToolStatus } from "../types";
+import type { AskAnswer, AskQuestion, AssistantContentBlock, AssistantMessage, ChatMessage, ChatOptions, ExperimentStatus, ResourceStatus, Tab, TokenStats, ToolCallState, ToolIo, ToolMeta, ToolStatus } from "../types";
 
 const MAIN_TAB_ID = "main";
 
@@ -24,6 +24,7 @@ interface ChatStore {
   appendText: (tabId: string, msgId: string, chunk: string) => void;
   appendThinking: (tabId: string, msgId: string, chunk: string) => void;
   finishMessage: (tabId: string, msgId: string) => void;
+  setMessageTokenStats: (tabId: string, msgId: string, stats: TokenStats) => void;
   setMessageError: (tabId: string, msgId: string, error: string) => void;
   setStreaming: (tabId: string, v: boolean) => void;
   setResourceStatus: (tabId: string, status: ResourceStatus) => void;
@@ -239,6 +240,11 @@ export const useChat = create<ChatStore>((set) => ({
   finishMessage: (tabId, msgId) =>
     set((s) => ({
       tabs: updateMessage(s.tabs, tabId, msgId, (m) => ({ ...m, isStreaming: false })),
+    })),
+
+  setMessageTokenStats: (tabId, msgId, stats) =>
+    set((s) => ({
+      tabs: updateMessage(s.tabs, tabId, msgId, (m) => ({ ...m, tokenStats: stats })),
     })),
 
   setMessageError: (tabId, msgId, error) =>

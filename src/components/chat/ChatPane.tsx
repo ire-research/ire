@@ -19,7 +19,7 @@ import { ResourcePreviewPane } from "./ResourcePreviewPane";
 import { ExperimentTabView } from "./ExperimentTabView";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faMessage, faClockRotateLeft, iconClass } from "../../icons";
-import type { AskAnswer, AskBlockState, ChatMessage, ChatOptions, Provider, Tab } from "../../types";
+import type { AskAnswer, AskBlockState, ChatMessage, ChatOptions, Provider, Tab, TokenStats } from "../../types";
 
 const seenStreamEventIds = new Map<string, number>();
 
@@ -70,6 +70,7 @@ export function ChatPane() {
     appendText,
     appendThinking,
     finishMessage,
+    setMessageTokenStats,
     setMessageError,
     setStreaming,
     setResourceStatus,
@@ -107,6 +108,10 @@ export function ChatPane() {
   // on the tab, and reused for upserts so restart/close does not duplicate rows.
   const sessionUuidByTab = useRef<Map<string, string>>(new Map());
   const sessionStartedAtByTab = useRef<Map<string, string>>(new Map());
+  // Per-tab running token totals (accumulated across turns within the session).
+  const sessionTotalsByTab = useRef<Map<string, { inputTokens: number; cachedInputTokens: number; outputTokens: number }>>(new Map());
+  // Usage emitted for the current in-flight turn, keyed by tab_id.
+  const pendingUsageByTab = useRef<Map<string, { input_tokens: number; cached_input_tokens: number; output_tokens: number; cost_usd: number }>>(new Map());
 
   // Global stream listener — routes events to the correct tab.
   //
@@ -165,6 +170,10 @@ export function ChatPane() {
           if (msgId) addAskQuestion(tab_id, msgId, event.tool_id, event.questions);
           break;
 
+        case "Usage":
+          pendingUsageByTab.current.set(tab_id, event);
+          break;
+
         case "Result":
           if (msgId && event.text) appendText(tab_id, msgId, event.text);
           break;
@@ -173,11 +182,29 @@ export function ChatPane() {
           if (msgId) setMessageError(tab_id, msgId, event.message);
           setStreaming(tab_id, false);
           assistantIdByTab.current.delete(tab_id);
+          pendingUsageByTab.current.delete(tab_id);
           void ipc.saveWorkspaceState(useWorkspace.getState().toPersisted())
             .catch((e) => toastError("save state", e));
           break;
 
         case "Done": {
+          const usage = pendingUsageByTab.current.get(tab_id);
+          if (msgId && usage) {
+            const prev = sessionTotalsByTab.current.get(tab_id) ?? { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 };
+            const totalIn = prev.inputTokens + usage.input_tokens;
+            const totalCached = prev.cachedInputTokens + usage.cached_input_tokens;
+            const totalOut = prev.outputTokens + usage.output_tokens;
+            sessionTotalsByTab.current.set(tab_id, { inputTokens: totalIn, cachedInputTokens: totalCached, outputTokens: totalOut });
+            const stats: TokenStats = {
+              inputTokens: usage.input_tokens,
+              cachedInputTokens: usage.cached_input_tokens,
+              outputTokens: usage.output_tokens,
+              totalInputTokens: totalIn,
+              totalOutputTokens: totalOut,
+            };
+            setMessageTokenStats(tab_id, msgId, stats);
+          }
+          pendingUsageByTab.current.delete(tab_id);
           if (msgId) finishMessage(tab_id, msgId);
           setStreaming(tab_id, false);
           assistantIdByTab.current.delete(tab_id);
@@ -260,8 +287,9 @@ export function ChatPane() {
     if (!tab || tab.kind !== "chat" || tab.messages.length === 0 || tab.isStreaming) return;
     const { uuid, startedAt } = getSessionMeta(tabId);
     const savedOptions = tab.agentOptions ?? useChatOptions.getState();
+    const totals = sessionTotalsByTab.current.get(tabId);
     await ipc
-      .chatHistorySave(tab.label, savedOptions.provider, savedOptions.model, startedAt, JSON.stringify(tab.messages), uuid)
+      .chatHistorySave(tab.label, savedOptions.provider, savedOptions.model, startedAt, JSON.stringify(tab.messages), uuid, totals?.inputTokens ?? 0, totals?.cachedInputTokens ?? 0, totals?.outputTokens ?? 0)
       .catch((e) => toastError("save chat history", e));
   };
 

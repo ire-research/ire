@@ -41,6 +41,10 @@ export function MessageList({ messages, onAskSubmit }: MessageListProps) {
   );
 }
 
+function fmtN(n: number): string {
+  return n.toLocaleString();
+}
+
 function formatElapsed(s: number): string {
   const mins   = Math.floor(s / 60);
   const secs   = Math.floor(s % 60);
@@ -103,7 +107,7 @@ function AssistantBubble({ msg, onAskSubmit }: { msg: AssistantMessage; onAskSub
         <div className="text-[14px] text-error">{msg.error}</div>
       )}
 
-      {/* Loading row: dots (while streaming) + timer (whole turn). Always last. */}
+      {/* Loading row: dots (while streaming) + timer + token stats (whole turn). Always last. */}
       {showTimer && !msg.error && (
         <div className="flex items-center gap-2.5">
           {msg.isStreaming && (
@@ -116,6 +120,17 @@ function AssistantBubble({ msg, onAskSubmit }: { msg: AssistantMessage; onAskSub
           <span className="font-mono text-[12px] text-on-surface-variant/60 min-w-[48px] tracking-[0.02em]">
             {formatElapsed(elapsed)}
           </span>
+          {!msg.isStreaming && msg.tokenStats && (
+            <>
+              <div className="w-px h-[10px] bg-on-surface-variant/20 shrink-0" />
+              <span
+                className="font-mono text-[12px] text-on-surface-variant/60 tracking-[0.02em] whitespace-nowrap"
+                title="Input / output token usage for this turn"
+              >
+                {`in: ${fmtN(msg.tokenStats.inputTokens)}  out: ${fmtN(msg.tokenStats.outputTokens)}  cached: ${fmtN(msg.tokenStats.cachedInputTokens)}  total in: ${fmtN(msg.tokenStats.totalInputTokens)}  total out: ${fmtN(msg.tokenStats.totalOutputTokens)}`}
+              </span>
+            </>
+          )}
         </div>
       )}
     </div>

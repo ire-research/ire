@@ -111,6 +111,17 @@ pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, em
             }
         }
         "turn.completed" => {
+            if let Some(usage) = json["usage"].as_object() {
+                let input = usage["input_tokens"].as_u64().unwrap_or(0);
+                let cached = usage["cached_input_tokens"].as_u64().unwrap_or(0);
+                let output = usage["output_tokens"].as_u64().unwrap_or(0);
+                emit(StreamEvent::Usage {
+                    input_tokens: input,
+                    cached_input_tokens: cached,
+                    output_tokens: output,
+                    cost_usd: 0.0,
+                });
+            }
             emit(StreamEvent::Result {
                 text: None,
                 session_id: state.session_id.clone(),

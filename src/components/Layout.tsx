@@ -74,8 +74,19 @@ export function Layout() {
         const sessionUuid = tab.historySessionUuid ?? crypto.randomUUID();
         const startedAt = tab.historyStartedAt ?? new Date().toISOString();
         const savedOptions = tab.agentOptions ?? { provider, model, effort };
+        const tokenTotals = tab.messages.reduce(
+          (acc, m) => {
+            if (m.role === "assistant" && m.tokenStats) {
+              acc.inputTokens += m.tokenStats.inputTokens;
+              acc.cachedInputTokens += m.tokenStats.cachedInputTokens;
+              acc.outputTokens += m.tokenStats.outputTokens;
+            }
+            return acc;
+          },
+          { inputTokens: 0, cachedInputTokens: 0, outputTokens: 0 }
+        );
         await ipc
-          .chatHistorySave(tab.label, savedOptions.provider, savedOptions.model, startedAt, JSON.stringify(tab.messages), sessionUuid)
+          .chatHistorySave(tab.label, savedOptions.provider, savedOptions.model, startedAt, JSON.stringify(tab.messages), sessionUuid, tokenTotals.inputTokens, tokenTotals.cachedInputTokens, tokenTotals.outputTokens)
           .catch(() => {}); // best-effort
       }
     }

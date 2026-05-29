@@ -97,12 +97,21 @@ export type AssistantContentBlock =
   | { id: string; kind: "tool"; tool: ToolCallState }
   | { id: string; kind: "ask"; ask: AskBlockState };
 
+export interface TokenStats {
+  inputTokens: number;
+  cachedInputTokens: number;
+  outputTokens: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+}
+
 export interface AssistantMessage {
   id: string;
   role: "assistant";
   blocks: AssistantContentBlock[];
   isStreaming: boolean;
   error?: string;
+  tokenStats?: TokenStats | null;
 }
 
 export type ChatMessage = UserMessage | AssistantMessage;
@@ -114,6 +123,7 @@ export type StreamEvent =
   | { kind: "ToolStart"; tool: ToolCallState }
   | { kind: "ToolDone"; tool_id: string; output: ToolIo | null; status: ToolStatus; meta: ToolMeta }
   | { kind: "AskUserQuestion"; tool_id: string; questions: AskQuestion[] }
+  | { kind: "Usage"; input_tokens: number; cached_input_tokens: number; output_tokens: number; cost_usd: number }
   | { kind: "Result"; text: string | null; session_id: string }
   | { kind: "Error"; message: string }
   | { kind: "Done" };
@@ -238,6 +248,10 @@ export interface ChatSessionSummary {
   ended_at: string;
   message_count: number;
   first_user_msg: string | null;
+  input_tokens: number;
+  cached_input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
 }
 
 export interface SystemStatus {
