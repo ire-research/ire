@@ -74,7 +74,7 @@ export function FocusPane() {
       {/* Header */}
       <div className="sticky top-0 z-10 flex items-center gap-2 px-0 py-1 mb-2 bg-surface-container-low">
         <FontAwesomeIcon icon={faCrosshairs} className={`${iconClass.lg} shrink-0 text-on-surface-variant`} />
-        <span className="text-[14px] text-on-surface-variant">Focus</span>
+        <span className="font-mono text-[14px] text-on-surface-variant">Focus</span>
       </div>
 
       {/* Research Question */}

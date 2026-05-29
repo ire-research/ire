@@ -47,7 +47,7 @@ function TabLabel({ label }: { label: string }) {
     return () => clearInterval(id);
   }, [label]);
 
-  return <span className="flex-1 truncate min-w-0">{display}</span>;
+  return <span className="font-mono flex-1 truncate min-w-0">{display}</span>;
 }
 
 export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename, rightSlot }: Props) {
