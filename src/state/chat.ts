@@ -12,6 +12,7 @@ interface ChatStore {
   createTab: (label?: string) => string;
   renameTab: (tabId: string, label: string) => void;
   openPreviewTab: (label: string, wikiPath: string) => void;
+  openDraftPreviewTab: (label: string, draftContent: string, resourceId?: string) => void;
   openExperimentTab: (uuid: string, name: string) => void;
   closeTab: (tabId: string) => void;
   setActiveTab: (tabId: string) => void;
@@ -160,6 +161,16 @@ export const useChat = create<ChatStore>((set) => ({
       const id = crypto.randomUUID();
       return {
         tabs: [...s.tabs, { id, label, messages: [], isStreaming: false, isPinned: false, kind: "preview", wikiPath }],
+        previousTabId: s.activeTabId,
+        activeTabId: id,
+      };
+    }),
+
+  openDraftPreviewTab: (label, draftContent, resourceId) =>
+    set((s) => {
+      const id = crypto.randomUUID();
+      return {
+        tabs: [...s.tabs, { id, label, messages: [], isStreaming: false, isPinned: false, kind: "preview", draftContent, resourceId }],
         previousTabId: s.activeTabId,
         activeTabId: id,
       };

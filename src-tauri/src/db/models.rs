@@ -161,8 +161,17 @@ pub fn insert_resource_with_source(
     let conn = open(ire_dir)?;
     let now = chrono::Local::now().to_rfc3339();
     conn.execute(
-        "INSERT OR IGNORE INTO resources (url_sha256, url, source_type, source_label, status, content_type, fetched_at) \
-         VALUES (?1, ?2, ?3, ?4, 'pending_summary', ?5, ?6)",
+        "INSERT INTO resources (url_sha256, url, source_type, source_label, status, content_type, fetched_at) \
+         VALUES (?1, ?2, ?3, ?4, 'pending_summary', ?5, ?6) \
+         ON CONFLICT(url_sha256) DO UPDATE SET \
+             url = excluded.url, \
+             source_type = excluded.source_type, \
+             source_label = excluded.source_label, \
+             status = 'pending_summary', \
+             content_type = excluded.content_type, \
+             fetched_at = excluded.fetched_at, \
+             error = NULL \
+         WHERE resources.wiki_path IS NULL",
         params![sha256, url, source_type, source_label, content_type, now],
     )?;
     Ok(())
@@ -175,6 +184,29 @@ pub fn update_resource_status(ire_dir: &Path, sha256: &str, status: &str) -> Res
         params![status, sha256],
     )?;
     Ok(())
+}
+
+pub fn get_resource(ire_dir: &Path, sha256: &str) -> Result<Option<ResourceRow>> {
+    let conn = open(ire_dir)?;
+    let mut stmt = conn.prepare(
+        "SELECT url_sha256, url, source_type, source_label, title, status, content_type, wiki_path, fetched_at \
+         FROM resources WHERE url_sha256 = ?1",
+    )?;
+    let mut rows = stmt.query(params![sha256])?;
+    if let Some(r) = rows.next()? {
+        return Ok(Some(ResourceRow {
+            url_sha256: r.get(0)?,
+            url: r.get(1)?,
+            source_type: r.get(2)?,
+            source_label: r.get(3)?,
+            title: r.get(4)?,
+            status: r.get(5)?,
+            content_type: r.get(6)?,
+            wiki_path: r.get(7)?,
+            fetched_at: r.get(8)?,
+        }));
+    }
+    Ok(None)
 }
 
 /// Rows without a linked `wiki_path` — candidates for inline indexing when CC writes
@@ -327,4 +359,79 @@ pub fn list_resources(ire_dir: &Path) -> Result<Vec<ResourceRow>> {
         })
     })?;
     rows.map(|r| r.context("db row")).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{get_resource, insert_resource_with_source, update_resource_indexed};
+
+    fn temp_ire_dir() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("wiki")).unwrap();
+        crate::db::migrations::run(dir.path()).unwrap();
+        dir
+    }
+
+    #[test]
+    fn insert_resource_with_source_refreshes_unindexed_source_ref() {
+        let dir = temp_ire_dir();
+        let ire_dir = dir.path();
+        let sha = "same-content-sha";
+
+        insert_resource_with_source(
+            ire_dir,
+            sha,
+            "/Users/me/Downloads/paper.pdf",
+            "paper.pdf",
+            "local_file",
+            "application/pdf",
+        )
+        .unwrap();
+        insert_resource_with_source(
+            ire_dir,
+            sha,
+            "/Users/me/Documents/paper.pdf",
+            "paper.pdf",
+            "local_file",
+            "application/pdf",
+        )
+        .unwrap();
+
+        let row = get_resource(ire_dir, sha).unwrap().unwrap();
+        assert_eq!(row.url, "/Users/me/Documents/paper.pdf");
+        assert_eq!(row.source_type, "local_file");
+        assert_eq!(row.status, "pending_summary");
+    }
+
+    #[test]
+    fn insert_resource_with_source_does_not_rewrite_indexed_row() {
+        let dir = temp_ire_dir();
+        let ire_dir = dir.path();
+        let sha = "indexed-sha";
+
+        insert_resource_with_source(
+            ire_dir,
+            sha,
+            "/Users/me/Downloads/paper.pdf",
+            "paper.pdf",
+            "local_file",
+            "application/pdf",
+        )
+        .unwrap();
+        update_resource_indexed(ire_dir, sha, "resources/paper.md", "Paper").unwrap();
+        insert_resource_with_source(
+            ire_dir,
+            sha,
+            "/Users/me/Documents/paper.pdf",
+            "paper.pdf",
+            "local_file",
+            "application/pdf",
+        )
+        .unwrap();
+
+        let row = get_resource(ire_dir, sha).unwrap().unwrap();
+        assert_eq!(row.url, "/Users/me/Downloads/paper.pdf");
+        assert_eq!(row.wiki_path.as_deref(), Some("resources/paper.md"));
+        assert_eq!(row.status, "summarized");
+    }
 }

@@ -165,6 +165,10 @@ impl WikiStore {
 }
 
 fn parse_sources_array(value: &str) -> Vec<&str> {
+    if let Ok(refs) = serde_json::from_str::<Vec<&str>>(value.trim()) {
+        return refs;
+    }
+
     value
         .trim()
         .trim_start_matches('[')
@@ -239,5 +243,18 @@ mod tests {
     fn parse_sources_array_handles_inline_frontmatter() {
         let refs = parse_sources_array(r#"[https://example.com/a, "file:abc:paper.pdf"]"#);
         assert_eq!(refs, vec!["https://example.com/a", "file:abc:paper.pdf"]);
+    }
+
+    #[test]
+    fn parse_sources_array_handles_block_frontmatter() {
+        let content =
+            "---\nsources:\n  - /Users/me/Documents/paper.pdf\n  - https://example.com/a\n---\n";
+        let (fm, _) = crate::wiki::frontmatter::parse(content);
+        let fm = fm.unwrap();
+        let refs = parse_sources_array(fm.get("sources").unwrap());
+        assert_eq!(
+            refs,
+            vec!["/Users/me/Documents/paper.pdf", "https://example.com/a"]
+        );
     }
 }

@@ -53,7 +53,13 @@ impl SessionManager {
         session.session_provider = Some(provider.to_string());
     }
 
-    pub fn set_agent_options(&self, tab_id: &str, provider: &str, model: &str, effort: Option<&str>) {
+    pub fn set_agent_options(
+        &self,
+        tab_id: &str,
+        provider: &str,
+        model: &str,
+        effort: Option<&str>,
+    ) {
         let mut map = self.0.lock().unwrap();
         let session = map
             .entry(tab_id.to_string())

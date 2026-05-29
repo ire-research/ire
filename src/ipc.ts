@@ -93,8 +93,10 @@ export const ipc = {
     invoke("submit_resources", { sources, options }),
   discardResource: (resourceId: string): Promise<void> =>
     invoke("discard_resource", { resourceId }),
-  getResourceConfirmPrompt: (): Promise<string> =>
-    invoke("get_resource_confirm_prompt"),
+  readResourceDraft: (resourceId: string): Promise<string> =>
+    invoke("read_resource_draft", { resourceId }),
+  confirmResource: (resourceId: string): Promise<void> =>
+    invoke("confirm_resource", { resourceId }),
   saveWikiFile: (path: string, content: string): Promise<void> =>
     invoke("save_wiki_file", { path, content }),
   experimentList: (limit?: number): Promise<ExperimentRow[]> =>

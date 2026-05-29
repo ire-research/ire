@@ -362,20 +362,20 @@ User queues one or more URLs/files → Ingest
            single local files use .ire/cache/<sha256(file bytes)>.txt
            multi-source jobs use .ire/cache/<batch_sha>/source-001.txt, source-002.txt, ...
       7. insert one resource row in SQLite (status=pending_summary, source_type='url',
-         'local_file', or 'batch')
-      8. open a new resource chat tab (see §9.4), labelled by URL hostname, filename,
-         or "<N> sources"
+         'local_file', or 'batch'); if an unindexed row with the same resource ID
+         already exists, refresh its source refs from the current request
+      8. open a new resource chat tab (see §9.4), defaulted to "Ingest"
       9. kick an agent turn in that tab, using the composer-selected
-         provider/model/effort, with prompt:
-           "Read <cache file(s)> (source: <source ref(s)>). Provide one comprehensive
-            executive summary — what the material is, what is relevant to this project,
-            why it matters, and how it could be used. Use bullet points.
-            Do NOT write to the wiki yet."
+         provider/model/effort. The prompt points the agent at the cache file(s),
+         gives the draft path `.ire/cache/<resource_id>_draft.md`, passes each
+         original source ref exactly (`URL` for web resources, full local path
+         for local files), and tells the agent to follow the resource analyst
+         system prompt.
 ```
 
-The selected agent streams the summary into the resource tab. When the turn ends, **Confirm** and **Discard** buttons appear.
+The selected agent writes the draft markdown file and streams one short confirmation into the resource tab. When the turn ends, **Confirm** and **Discard** buttons appear. `read_resource_draft` normalizes the draft's `sources:` frontmatter from the stored DB source refs before returning it, so the preview shows the user-provided local path even if the agent wrote an internal cache filename.
 
-**Confirm**: triggers a second agent turn in the same tab with the instruction to write the summary to `resources/<slug>.md` via the `wiki.write` MCP tool. This turn reuses the provider/model/effort captured when the resource tab was created, so it resumes the same resource-summary session even if the global composer selection changed in another tab. Frontmatter follows the schema in `.ire/_SYSTEM.md`: `title`, `type: summary`, `sources: [<all original sources in order>]`, `updated: YYYY-MM-DD`, and `summary`. URL sources use the original URL; local file sources use `file:<sha256>:<filename>`. Body starts with a `#` heading matching the title, then the summary. The tab auto-closes when this second agent turn ends. The written file is indexed in SQLite by matching every stored source ref in `sources`, but no git commit is created by IRE.
+**Confirm**: reads `.ire/cache/<resource_id>_draft.md`, normalizes its `sources:` frontmatter from the stored DB source refs, writes it to `resources/<slug>.md` through `WikiStore`, then removes the cache. Frontmatter follows the resource analyst schema: `title`, `sources`, `updated`, and `TL;DR`. URL sources use the original URL; local file sources use the exact local path provided by the user. Body starts with a `#` heading matching the title, then the summary. The written file is indexed in SQLite by matching every stored source ref in `sources`, but no git commit is created by IRE.
 
 **Discard**: deletes `.ire/cache/<sha256>.txt` or `.ire/cache/<batch_sha>/`, marks the DB row `status=rejected`, closes the tab immediately. No wiki file is written.
 
@@ -483,7 +483,7 @@ IRE supports multiple independent chat tabs in the central pane.
 | Main | On workspace open (id `"main"`) | No (pinned) | The primary research conversation. |
 | Chat | User clicks + button | Yes | Fresh provider-scoped agent session, independent conversation history. |
 | Resource | Backend resource ingestion (§8.3) | Auto-closes on Confirm/Discard | Dedicated to reviewing a single resource summary; shows Confirm / Discard instead of a free-form Composer when CC finishes. |
-| Preview | User clicks a resource in the Resources list | Yes | Renders a `ResourcePreviewPane` (edit/preview toggle + Submit) for the resource's wiki file. Clicking the same resource again focuses the existing tab rather than opening a duplicate. Submit persists edits to disk via `save_wiki_file`; the user commits when ready. |
+| Preview | User clicks a resource in the Resources list | Yes | Renders a `ResourcePreviewPane` (frontmatter metadata header + markdown body, with edit/preview toggle + Submit) for the resource's wiki file. Clicking the same resource again focuses the existing tab rather than opening a duplicate. Submit persists edits to disk via `save_wiki_file`; the user commits when ready. |
 | Experiment | User clicks an experiment in the left-rail ExperimentsSection | Yes | Dedicated full view of a single experiment: metadata grid (status, runtime, command), live log tail (stdout only, scrolls to bottom automatically). Clicking the same experiment again focuses the existing tab rather than opening a duplicate. |
 
 **Session isolation.** Each tab carries its own `tab_id` (UUID for dynamically created tabs; `"main"` for the pinned tab). The backend `SessionManager` maintains a `HashMap<tab_id, PerTabSession>` where `PerTabSession` holds `{ session_id: Option<String>, session_provider: Option<String>, running_pid: Option<u32> }`. This replaces the old single `ChatSession` global and prevents cross-provider resume.
@@ -685,7 +685,7 @@ CREATE INDEX idx_experiments_started ON experiments(started_at DESC);
 
 CREATE TABLE resources (
   url_sha256 TEXT PRIMARY KEY,
-  url TEXT NOT NULL,                 -- URL, file:<sha256>:<filename>, or JSON array of source refs for batches
+  url TEXT NOT NULL,                 -- URL, local file path, or JSON array of source refs for batches
   source_type TEXT NOT NULL DEFAULT 'url',
   source_label TEXT,                 -- display label, e.g. URL, filename, or "<N> sources"
   title TEXT,
@@ -765,7 +765,7 @@ The Tauri window opens in windowed mode at 1280 × 820 so the primary rails, cen
 
 ### 13.3 Edit/preview toggle behaviour
 
-- Resource preview tabs open in **Preview** by default, rendering the wiki markdown via `ResourcePreviewPane`. Switching to Edit loads the raw file contents into a textarea; switching back to Preview without Submit discards local edits (with a confirm if dirty). Submit calls `save_wiki_file`.
+- Resource preview tabs open in **Preview** by default, rendering the wiki file via `ResourcePreviewPane`: frontmatter keys (`title`, `sources`, `updated`, `TL;DR`) are shown as a compact aligned metadata header above the markdown body, and `TL;DR: "Not relevant"` receives a highlighted treatment. Switching to Edit loads the raw file contents into a textarea; switching back to Preview without Submit discards local edits (with a confirm if dirty). Submit calls `save_wiki_file`.
 - `NotesPane` renders `notes.md` as markdown in display mode, edits it inline as raw markdown in a full-height textarea, and saves through `save_notes` on blur / Ctrl+Enter.
 - `IdeasPane` does not use markdown edit/preview. It writes the structured `ideas.json` list directly via `save_ideas_json`.
 
@@ -773,7 +773,7 @@ The Tauri window opens in windowed mode at 1280 × 820 so the primary rails, cen
 
 The Resources list shows only confirmed (indexed) resources — those where the user clicked Confirm, CC wrote the wiki file via `wiki.write`, and `WikiStore::write` linked the matching DB row (`status=summarized`, non-null `wiki_path`) inline as part of that same write. Each entry shows the extracted title (frontmatter `title:` → first `#` heading → filename stem). No status label is shown. Resources in progress (being fetched or summarised) do not appear in the list; they are visible only in the open resource chat tab.
 
-Clicking a resource entry (only enabled when `wiki_path` is non-null) opens a **Preview tab** in the central column. The tab fetches the wiki file content via `read_wiki_file` and renders it in a `ResourcePreviewPane` with edit/preview toggle and a Submit button. Submit calls `save_wiki_file` to persist edits; it does not commit. Clicking the same resource while its Preview tab is already open re-focuses that tab instead of opening a duplicate.
+Clicking a resource entry (only enabled when `wiki_path` is non-null) opens a **Preview tab** in the central column. The tab fetches the wiki file content via `read_wiki_file` and renders it in a `ResourcePreviewPane` with a compact frontmatter metadata header, markdown body, edit/preview toggle, and Submit button. Submit calls `save_wiki_file` to persist edits; it does not commit. Clicking the same resource while its Preview tab is already open re-focuses that tab instead of opening a duplicate.
 
 ### 13.5 Theming
 
@@ -1008,7 +1008,7 @@ ire/
 │   │   │   ├── MessageMarkdown.tsx     # react-markdown + remark-gfm + KaTeX renderer
 │   │   │   ├── ExperimentCard.tsx      # experiment.start tool-call card with live log tail
 │   │   │   ├── ExperimentTabView.tsx   # full experiment detail view (metadata + logs)
-│   │   │   ├── ResourcePreviewPane.tsx # edit/preview toggle for resource wiki files
+│   │   │   ├── ResourcePreviewPane.tsx # preview renderer for resource wiki files
 │   │   │   └── Composer.tsx            # floating textarea + model/effort pickers + Send
 │   │   └── setup/
 │   │       └── SetupScreen.tsx         # workspace picker + recent list + agent binary status
@@ -1092,7 +1092,7 @@ Each phase ends with a demoable milestone.
 
 **Phase 4 — MCP server.** Node MCP server with the [§11.1](#111-tool-catalog-mvp) tool catalog, RPC bridge to Rust. Agent MCP config is wired through Claude Code's `--mcp-config` or Codex's `-c mcp_servers.*` flags. Implements `wiki.*`, `memory.*`, `pulse.update`. Unix-domain socket at `.ire/mcp.sock`; server path embedded at build time via `IRE_MCP_DIR` env var. `WikiStore` handles atomic writes, index regeneration, typed `workspace-event` dispatch, and renames without creating git commits. System prompt composed from wiki context files on every agent turn. *Milestone:* in chat, user can ask "save this insight to long-term memory" and the selected agent actually does it. ✅
 
-**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML/local-file extractors. `submit_resources` accepts an ordered list of URL and local-file sources plus the composer-selected provider/model/effort, extracts all text all-or-nothing, writes one cache file for a single source or `.ire/cache/<batch_sha>/source-NNN.txt` for multiple sources, inserts one DB row (with `url` holding a single source ref or a JSON-encoded array of source refs for batches), emits `tab-created`, and kicks one selected-agent summarisation turn. The legacy `submit_resource` and `submit_local_resource` commands remain available for single-source callers. Confirm sends a second selected-agent turn that writes `resources/<slug>.md` via `wiki.write`; `WikiStore::write` parses the new file's frontmatter `sources:` array, lists unindexed DB rows, links any row whose stored source refs (schema-aligned URL or `file:<sha256>:<filename>`) are all present in the file's `sources:` array, extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), and emits `workspace-event resource-changed { resource }` for each linked row — all before `wiki.write` returns, so the panel updates the moment the file is written. Discard calls `discard_resource` (deletes cache, marks `rejected`, emits `resource-deleted`). Notes and ideas write directly to disk without committing. The resources list shows only `summarized` resources with their title and non-null `wiki_path`; no status label is shown. *Milestone:* ingest one or more supported sources → one resource summary appears in the right pane. ✅
+**Phase 5 — Pipelines.** Notes/ideas/resource ingestion, including the Rust PDF/HTML/local-file extractors. `submit_resources` accepts an ordered list of URL and local-file sources plus the composer-selected provider/model/effort, extracts all text all-or-nothing, writes one cache file for a single source or `.ire/cache/<batch_sha>/source-NNN.txt` for multiple sources, inserts one DB row (with `url` holding a single source ref or a JSON-encoded array of source refs for batches), refreshes an existing unindexed row with the same resource ID from the current request, emits `tab-created`, and kicks one selected-agent summarisation turn that writes `.ire/cache/<resource_id>_draft.md`. Source refs are schema-aligned URLs for web resources and exact user-provided local paths for local files; the SHA-256 of local file bytes is only used as the internal resource/cache ID. The legacy `submit_resource` and `submit_local_resource` commands remain available for single-source callers. Confirm writes the draft to `resources/<slug>.md` through `WikiStore`; `WikiStore::write` parses the new file's frontmatter `sources:` array, lists unindexed DB rows, links any row whose stored source refs are all present in the file's `sources:` array, extracts the title (frontmatter `title:` → first `#` heading → filename stem), updates the DB (`status=summarized`, `wiki_path`, `title`), and emits `workspace-event resource-changed { resource }` for each linked row — all before `WikiStore::write` returns, so the panel updates the moment the file is written. Discard calls `discard_resource` (deletes cache, marks `rejected`, emits `resource-deleted`). Notes and ideas write directly to disk without committing. The resources list shows only `summarized` resources with their title and non-null `wiki_path`; no status label is shown. *Milestone:* ingest one or more supported sources → one resource summary appears in the right pane. ✅
 
 **Phase 6 — Experiments.** `experiment.start`, detached subprocess, monitor, wake-up turn composition. Experiment cards in chat with live log tail. *Milestone:* an agent can run a Python script ablation, tell the user "I'll be back", and resume with results when the script exits. ✅
 
