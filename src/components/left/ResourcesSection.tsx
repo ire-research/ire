@@ -56,7 +56,7 @@ export function ResourcesSection({ onOpen }: Props) {
 
   return (
     <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
-      <div className="sticky top-0 z-10 flex items-center gap-2 py-1 mb-2 bg-surface-container-low text-on-surface-variant text-[14px]">
+      <div className="sticky top-0 z-10 flex items-center gap-2 py-1 mb-2 bg-surface-container-low text-on-surface-variant font-mono text-[14px]">
         <FontAwesomeIcon icon={faFileLines} className={`${iconClass.lg} shrink-0`} />
         <span className="flex-1">Resources</span>
         <button
