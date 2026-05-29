@@ -103,6 +103,7 @@ export interface AssistantMessage {
   blocks: AssistantContentBlock[];
   isStreaming: boolean;
   error?: string;
+  runtime?: number;
 }
 
 export type ChatMessage = UserMessage | AssistantMessage;

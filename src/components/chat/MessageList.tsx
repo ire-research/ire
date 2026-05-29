@@ -51,7 +51,7 @@ function formatElapsed(s: number): string {
 function AssistantBubble({ msg, onAskSubmit }: { msg: AssistantMessage; onAskSubmit?: (ask: AskBlockState, answers: AskAnswer[]) => void }) {
   // Timer: starts at mount (when the assistant turn begins), freezes when streaming stops.
   const startRef = useRef(Date.now());
-  const [elapsed, setElapsed] = useState(0);
+  const [elapsed, setElapsed] = useState(msg.runtime ?? 0);
 
   useEffect(() => {
     if (!msg.isStreaming) return;
