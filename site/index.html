@@ -1,15 +1,317 @@
-<!doctype html>
-<html lang="en" class="dark">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Coming soon...</title>
-  </head>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IRE — Integrated Research Environment</title>
+  <meta name="description" content="A local-first desktop environment for researchers. Keep your code, literature, experiments, and AI collaboration seamlessly connected." />
+  <meta property="og:title" content="IRE — Integrated Research Environment" />
+  <meta property="og:description" content="A local-first desktop environment for researchers. Keep your code, literature, experiments, and AI collaboration seamlessly connected." />
+  <meta property="og:type" content="website" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+  <script src="https://unpkg.com/@phosphor-icons/web"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
 <body>
-  <h1>Coming soon...</h1>
-  <br>
-  <a href="https://giacomociro.com">giacomociro.com</a>
-  <br>
-  <a href="https://vittoriorossi.com">vittorirossi.com</a>
+
+  <!-- Nav -->
+  <nav id="main-nav">
+    <div class="nav-inner">
+      <a href="#" class="logo" id="nav-logo">
+        <span class="logo-hex">⬡</span>
+        <span class="logo-ire">IRE</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features" id="nav-features">Features</a>
+        <a href="#how-it-works" id="nav-how">How it works</a>
+        <a href="#download" class="nav-cta" id="nav-download">Download</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero" id="hero">
+    <div class="hero-bg">
+      <div class="grid-overlay"></div>
+      <div class="glow glow-1"></div>
+      <div class="glow glow-2"></div>
+      <div class="glow glow-3"></div>
+    </div>
+    <div class="container hero-content">
+      <div class="badge" id="hero-badge">
+        <span class="badge-dot"></span>
+        Local-first &middot; Private &middot; Open Source
+      </div>
+      <h1 id="hero-headline" class="silver-gradient">
+        Research without<br />
+        losing context.
+      </h1>
+      <p class="hero-sub" id="hero-sub">
+        The Integrated Research Environment (IRE) is a desktop application built for researchers. Your code, literature, experiments, and AI live in one unified workspace — so you never start from scratch.
+      </p>
+      <div class="hero-actions" id="hero-actions">
+        <a href="#download" class="btn-primary" id="hero-cta-primary">
+          <i class="ph-light ph-download-simple"></i>
+          Download free
+        </a>
+        <a href="https://github.com/giacomo-ciro/ire" target="_blank" rel="noopener" class="btn-secondary" id="hero-cta-github">
+          <i class="ph-light ph-github-logo"></i>
+          View on GitHub
+        </a>
+      </div>
+      <div class="hero-screenshot-wrapper" id="hero-screenshot">
+        <div class="screenshot-glow"></div>
+        <img src="ui.png" alt="IRE interface — five-pane research environment with Focus, Resources, Chat, Notes, and Ideas panels" class="screenshot" id="app-screenshot" />
+      </div>
+    </div>
+  </section>
+
+  <!-- Problem -->
+  <section class="problem" id="problem">
+    <div class="container">
+      <div class="section-label">The Problem</div>
+      <h2 class="silver-gradient">ML research workflows are fragmented.</h2>
+      <div class="pain-grid" id="pain-grid">
+        <div class="pain-card" id="pain-1">
+          <div class="pain-icon">
+            <i class="ph-light ph-arrows-clockwise"></i>
+          </div>
+          <h3>Context loss</h3>
+          <p>Every session starts with re-establishing state. What did I try? What failed? Why?</p>
+        </div>
+        <div class="pain-card" id="pain-2">
+          <div class="pain-icon">
+            <i class="ph-light ph-squares-four"></i>
+          </div>
+          <h3>Knowledge fragmentation</h3>
+          <p>No persistent memory of insights, paper summaries, or rejected approaches — so AI suggestions repeat dead ends.</p>
+        </div>
+        <div class="pain-card" id="pain-3">
+          <div class="pain-icon">
+            <i class="ph-light ph-clock"></i>
+          </div>
+          <h3>Experiment limbo</h3>
+          <p>Fire off a long run, switch tasks, and forget about it. Results sit unreviewed.</p>
+        </div>
+        <div class="pain-card" id="pain-4">
+          <div class="pain-icon">
+            <i class="ph-light ph-target"></i>
+          </div>
+          <h3>Goal drift</h3>
+          <p>The core research question gets buried under technical details and literature exploration.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="features" id="features">
+    <div class="container">
+      <div class="section-label">Features</div>
+      <h2 class="silver-gradient">Everything in one unified workspace.</h2>
+
+      <div class="feature-list">
+
+        <div class="feature-item" id="feature-wiki">
+          <div class="feature-icon-wrap">
+            <i class="ph-light ph-book-open-text"></i>
+          </div>
+          <div class="feature-text">
+            <h3>Persistent LLM Wiki</h3>
+            <p>A Git-tracked markdown wiki maintained automatically. Architectural decisions, failed approaches, and current blockers are selectively injected into the agent's context so it never forgets.</p>
+          </div>
+        </div>
+
+        <div class="feature-item" id="feature-experiments">
+          <div class="feature-icon-wrap">
+            <i class="ph-light ph-flask"></i>
+          </div>
+          <div class="feature-text">
+            <h3>Non-blocking Experiments</h3>
+            <p>Fire off a long-running experiment and keep working. IRE monitors it as a detached process. When it finishes, the agent wakes up with full results and context attached, ready to continue.</p>
+          </div>
+        </div>
+
+        <div class="feature-item" id="feature-claude">
+          <div class="feature-icon-wrap">
+            <i class="ph-light ph-cpu"></i>
+          </div>
+          <div class="feature-text">
+            <h3>Agentic IDE, Deeply Integrated</h3>
+            <p>IRE wraps coding agents with a native MCP bridge. AI agents can read your wiki, write findings, record memory, update your research pulse, and start experiments — not just chat.</p>
+          </div>
+        </div>
+
+        <div class="feature-item" id="feature-memory">
+          <div class="feature-icon-wrap">
+            <i class="ph-light ph-brain"></i>
+          </div>
+          <div class="feature-text">
+            <h3>Structured Memory</h3>
+            <p>Long-term memory for durable insights alongside short-term daily notes automatically injected into context.</p>
+          </div>
+        </div>
+
+        <div class="feature-item" id="feature-local">
+          <div class="feature-icon-wrap">
+            <i class="ph-light ph-hard-drives"></i>
+          </div>
+          <div class="feature-text">
+            <h3>Local-First, No Backend</h3>
+            <p>Everything runs on your machine. Your research stays private. No vendor lock-in. Git is your backup and collaboration layer.</p>
+          </div>
+        </div>
+
+        <div class="feature-item" id="feature-git">
+          <div class="feature-icon-wrap">
+            <i class="ph-light ph-git-branch"></i>
+          </div>
+          <div class="feature-text">
+            <h3>One Workspace, One Repo</h3>
+            <p>Each IRE workspace maps 1:1 to a Git repository. Your code, wiki, experiment logs, and AI state all live together in <code>.ire/</code>. Version-controlled from day one.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- How it works -->
+  <section class="how" id="how-it-works">
+    <div class="container">
+      <div class="section-label">How It Works</div>
+      <h2 class="silver-gradient">The five-pane research interface.</h2>
+      <p class="section-sub">Every panel is purpose-built. Nothing is noise.</p>
+
+      <div class="pane-grid" id="pane-grid">
+        <div class="pane-card" id="pane-focus">
+          <div class="pane-icon">
+            <i class="ph-light ph-target"></i>
+          </div>
+          <h3>Focus</h3>
+          <p>Your research question and weekly goal, always visible.</p>
+        </div>
+        <div class="pane-card" id="pane-resources">
+          <div class="pane-icon">
+            <i class="ph-light ph-books"></i>
+          </div>
+          <h3>Resources</h3>
+          <p>Indexed papers, articles, and API docs. Submit a URL or file and the agent summarises it into the wiki.</p>
+        </div>
+        <div class="pane-card" id="pane-chat">
+          <div class="pane-icon">
+            <i class="ph-light ph-chat-circle-text"></i>
+          </div>
+          <h3>Chat</h3>
+          <p>Streaming coding agents with real-time tool calls, experiment status, and full wiki access. Supports multiple tabs.</p>
+        </div>
+        <div class="pane-card" id="pane-notes">
+          <div class="pane-icon">
+            <i class="ph-light ph-note-pencil"></i>
+          </div>
+          <h3>Notes</h3>
+          <p>Editable markdown notes that the agent can read and write. Click to inline-edit.</p>
+        </div>
+        <div class="pane-card" id="pane-ideas">
+          <div class="pane-icon">
+            <i class="ph-light ph-lightbulb"></i>
+          </div>
+          <h3>Ideas</h3>
+          <p>A draggable bullet list for capturing hypotheses and next steps.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download -->
+  <section class="download" id="download">
+    <div class="container">
+      <div class="section-label">Download</div>
+      <h2 class="silver-gradient">Free. Open Source. Runs everywhere.</h2>
+      <p class="section-sub">Built with Tauri and a Rust backend — lightweight, native, fast.</p>
+
+      <div class="platform-grid" id="platform-grid">
+
+        <!-- macOS -->
+        <div class="platform-card" id="platform-mac">
+          <div class="platform-header">
+            <div class="platform-icon">
+              <i class="fa-brands fa-apple"></i>
+            </div>
+            <h3>macOS</h3>
+          </div>
+          <div class="platform-options">
+            <a href="#" class="download-btn" id="download-dmg">
+              <i class="ph-light ph-download-simple"></i>
+              Download .dmg
+            </a>
+            <!-- <div class="brew-card" id="brew-install">
+              <code id="brew-command">brew install --cask ire</code>
+              <button class="copy-btn" id="copy-brew" onclick="copyBrew()" title="Copy to clipboard">
+                <i class="ph-light ph-copy"></i>
+              </button>
+            </div> -->
+          </div>
+        </div>
+
+        <!-- Windows -->
+        <div class="platform-card" id="platform-windows">
+          <div class="platform-header">
+            <div class="platform-icon">
+              <i class="fa-brands fa-windows"></i>
+            </div>
+            <h3>Windows</h3>
+          </div>
+          <div class="platform-options">
+            <a href="#" class="download-btn" id="download-exe">
+              <i class="ph-light ph-download-simple"></i>
+              Download .exe
+            </a>
+          </div>
+        </div>
+
+        <!-- Linux -->
+        <div class="platform-card" id="platform-linux">
+          <div class="platform-header">
+            <div class="platform-icon">
+              <i class="fa-brands fa-linux"></i>
+            </div>
+            <h3>Linux</h3>
+          </div>
+          <div class="platform-options">
+            <a href="#" class="download-btn" id="download-appimage">
+              <i class="ph-light ph-download-simple"></i>
+              Download .AppImage
+            </a>
+          </div>
+        </div>
+
+      </div>
+
+      <p class="source-note">
+        Or <a href="https://github.com/giacomo-ciro/ire" target="_blank" rel="noopener" id="source-link">build from source</a> — Rust + Node.js required.
+      </p>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer" id="site-footer">
+    <div class="container footer-inner">
+      <a href="#" class="logo" id="footer-logo">
+        <span class="logo-hex">⬡</span>
+        <span class="logo-ire">IRE</span>
+      </a>
+      <p class="footer-copy">Built for researchers who want to move faster.</p>
+      <div class="footer-links">
+        <a href="https://github.com/giacomo-ciro/ire" target="_blank" rel="noopener" id="footer-github">GitHub</a>
+        <a href="https://github.com/giacomo-ciro/ire/blob/main/LICENSE" target="_blank" rel="noopener" id="footer-license">MIT License</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
 </body>
 </html>
