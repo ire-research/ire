@@ -102,18 +102,13 @@ impl WikiStore {
     /// for single-source resources, JSON-encoded array for `submit_resources`
     /// batches) appears in the file's `sources:` frontmatter.
     fn index_resource(&self, rel_path: &str, content: &str, app: &AppHandle) {
-        let (fm, _) = frontmatter::parse(content);
-        let Some(fm) = fm else {
-            tracing::warn!(path = %rel_path, "index_resource: no frontmatter parsed");
+        let file_sources = extract_sources_array(content);
+        if file_sources.is_empty() {
+            tracing::warn!(path = %rel_path, "index_resource: no `sources` parsed from frontmatter");
             return;
-        };
-        let Some(sources_raw) = fm.get("sources") else {
-            tracing::warn!(path = %rel_path, fm_keys = ?fm.keys().collect::<Vec<_>>(), "index_resource: no `sources:` key in frontmatter");
-            return;
-        };
-
-        let file_sources: Vec<&str> = parse_sources_array(sources_raw);
+        }
         tracing::info!(path = %rel_path, sources = ?file_sources, "index_resource: parsed sources");
+        let file_sources_str: Vec<&str> = file_sources.iter().map(String::as_str).collect();
 
         let candidates = match models::list_unindexed_resources(&self.ire_dir) {
             Ok(c) => c,
@@ -127,7 +122,7 @@ impl WikiStore {
         let mut linked = 0usize;
         for row in candidates {
             let stored = stored_source_refs(&row.url);
-            if stored.is_empty() || !stored.iter().all(|s| file_sources.contains(&s.as_str())) {
+            if stored.is_empty() || !stored.iter().all(|s| stored_matches_file(s, &file_sources_str)) {
                 continue;
             }
             if let Err(e) = models::update_resource_indexed(&self.ire_dir, &row.url_sha256, rel_path, &title) {
@@ -169,6 +164,62 @@ fn parse_sources_array(value: &str) -> Vec<&str> {
 /// batches store a JSON-encoded array; single-source rows store the ref directly.
 fn stored_source_refs(value: &str) -> Vec<String> {
     serde_json::from_str::<Vec<String>>(value).unwrap_or_else(|_| vec![value.to_string()])
+}
+
+/// CC sometimes writes shortened source identifiers in the `sources:` frontmatter
+/// (e.g. just the filename instead of the full `file:<sha256>:<filename>` ref).
+/// Accept either exact match against the stored ref, or — for local-file refs —
+/// a match against just the filename component.
+fn stored_matches_file(stored: &str, file_sources: &[&str]) -> bool {
+    if file_sources.contains(&stored) {
+        return true;
+    }
+    if let Some(rest) = stored.strip_prefix("file:") {
+        if let Some((_sha, filename)) = rest.split_once(':') {
+            if file_sources.contains(&filename) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Extract the `sources` array from a wiki file's frontmatter. Supports both
+/// inline (`sources: [a, b]`) and block (`sources:\n  - a\n  - b`) YAML styles.
+/// CC picks block style when there are multiple sources, which the line-based
+/// frontmatter parser can't represent as a single value — we read it directly
+/// from the raw content here.
+fn extract_sources_array(content: &str) -> Vec<String> {
+    let Some(rest) = content.strip_prefix("---\n") else { return vec![] };
+    let fm = match rest.find("\n---\n").or_else(|| rest.find("\n---")) {
+        Some(idx) => &rest[..idx],
+        None => return vec![],
+    };
+
+    let mut lines = fm.lines().peekable();
+    while let Some(line) = lines.next() {
+        let Some(after) = line.strip_prefix("sources:") else { continue };
+        let inline = after.trim();
+        if !inline.is_empty() {
+            return parse_sources_array(inline).into_iter().map(String::from).collect();
+        }
+        // Block style: collect leading `- item` lines until the next non-list line.
+        let mut out = Vec::new();
+        while let Some(peek) = lines.peek() {
+            let trimmed = peek.trim_start();
+            if !trimmed.starts_with('-') {
+                break;
+            }
+            let item = trimmed.trim_start_matches('-').trim();
+            let item = item.trim_matches(|c: char| c == '"' || c == '\'');
+            if !item.is_empty() {
+                out.push(item.to_string());
+            }
+            lines.next();
+        }
+        return out;
+    }
+    vec![]
 }
 
 fn extract_title_from(content: &str, rel_path: &str) -> String {
@@ -214,7 +265,7 @@ pub(crate) fn atomic_write(path: &Path, content: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_sources_array, stored_source_refs};
+    use super::{extract_sources_array, parse_sources_array, stored_matches_file, stored_source_refs};
 
     #[test]
     fn stored_source_refs_reads_batch_json() {
@@ -233,4 +284,38 @@ mod tests {
         let refs = parse_sources_array(r#"[https://example.com/a, "file:abc:paper.pdf"]"#);
         assert_eq!(refs, vec!["https://example.com/a", "file:abc:paper.pdf"]);
     }
+
+    #[test]
+    fn extract_sources_handles_inline_array() {
+        let content = "---\nsources: [\"file:abc:a.pdf\", \"file:def:b.pdf\"]\n---\nbody";
+        assert_eq!(
+            extract_sources_array(content),
+            vec!["file:abc:a.pdf", "file:def:b.pdf"],
+        );
+    }
+
+    #[test]
+    fn extract_sources_handles_block_array() {
+        let content = "---\ntitle: foo\nsources:\n  - \"file:abc:a.pdf\"\n  - \"file:def:b.pdf\"\nupdated: 2026-05-25\n---\nbody";
+        assert_eq!(
+            extract_sources_array(content),
+            vec!["file:abc:a.pdf", "file:def:b.pdf"],
+        );
+    }
+
+    #[test]
+    fn stored_matches_file_accepts_filename_only_for_local_refs() {
+        let file_sources = vec!["a.pdf", "b.pdf"];
+        assert!(stored_matches_file("file:abc123:a.pdf", &file_sources));
+        assert!(stored_matches_file("file:def456:b.pdf", &file_sources));
+        assert!(!stored_matches_file("file:xxx:c.pdf", &file_sources));
+    }
+
+    #[test]
+    fn stored_matches_file_still_requires_exact_url_match() {
+        let file_sources = vec!["https://example.com/a"];
+        assert!(stored_matches_file("https://example.com/a", &file_sources));
+        assert!(!stored_matches_file("https://example.com/b", &file_sources));
+    }
+
 }
