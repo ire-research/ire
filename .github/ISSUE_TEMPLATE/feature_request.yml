@@ -1,0 +1,31 @@
+name: Feature request
+description: Suggest an idea or improvement for IRE
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: What's missing or frustrating in your current workflow?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: How would you like this to work? Sketch the UX or behavior if helpful.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any other approaches or workarounds you've tried.
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else — links, mockups, related issues.

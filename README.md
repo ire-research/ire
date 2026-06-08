@@ -118,3 +118,19 @@ Builds the Tauri binary and launches IRE as a native desktop application.
 | Use case | Explore ideas, read papers, plan | Run code, make file changes, run experiments |
 | Claude-Code tools | Wiki read, memory write, resource fetch | + File edit, bash, experiment management |
 | Permissions | Prompt on changes (safer) | Auto-accept changes |
+
+---
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for dev setup,
+build verification, and PR expectations. Please also read our
+[Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Security
+
+Found a vulnerability? Please report it privately — see [SECURITY.md](SECURITY.md).
+
+## License
+
+IRE is licensed under the [MIT License](LICENSE).
