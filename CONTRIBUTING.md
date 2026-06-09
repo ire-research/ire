@@ -77,6 +77,18 @@ the MCP handshake (see [docs/mcp-tool-discovery.md](docs/mcp-tool-discovery.md))
   (e.g. "Add experiment status polling", not "Added" or "Adds").
 - Reference related issues in the PR description (e.g. `Fixes #123`).
 
+## Testing
+
+- **Rust unit tests**: atomic writes (parallel write loops), lock acquisition, NDJSON parser (replay recorded streams), index regenerator, frontmatter parser, PDF extractor (golden files), HTML extractor (snapshot of cleaned text).
+- **Rust integration tests**: workspace init/open/close round-trip, end-to-end pipeline that drives a stubbed CC binary (`src-tauri/tests/fixtures/fake_claude.sh` — emits canned NDJSON, enabling CI without a real Claude binary).
+- **Frontend tests** with Vitest: state stores and the markdown pane edit/preview reducer. No e2e for MVP.
+
+Run all Rust tests and lints before opening a PR:
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+```
+
 ## Reporting Bugs and Requesting Features
 
 Use the issue templates under `.github/ISSUE_TEMPLATE/`. For security
