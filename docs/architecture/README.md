@@ -1,6 +1,7 @@
 # Architecture Docs
 
-This document is an index. The architecture has been split into focused files — one per subsystem.
+One file per subsystem. Each is the source of truth for its area — update the
+relevant file(s) in the same commit when implementation diverges.
 
 | File | Contents |
 |---|---|
@@ -10,6 +11,6 @@ This document is an index. The architecture has been split into focused files �
 | [chat-agents.md](chat-agents.md) | Ingestion pipelines, chat system, experiment lifecycle, agent subprocess layer |
 | [mcp.md](mcp.md) | MCP server, tool catalog, backend RPC channel |
 | [frontend.md](frontend.md) | React layout, chat rendering, theming, workspace state, Tauri IPC surface |
-| [ROADMAP.md](../ROADMAP.md) | Implementation phases + open items & risks |
+| [../../ROADMAP.md](../../ROADMAP.md) | Implementation phases + open items & risks |
 
-Deep-dive implementation guides live in [blueprints/](blueprints/).
+Deep-dive implementation guides live in [../blueprints/](../blueprints/).

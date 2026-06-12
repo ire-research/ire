@@ -74,9 +74,9 @@ Do not use `npm run tauri dev` as routine verification. It starts an interactive
 
 ### 6. Documentation Synchronization
 
-**Keep `docs/SDD.md` and `src-tauri/assets/seed/_SYSTEM.md` in lockstep. Every implementation divergence must be reflected in these files immediately.**
+**Keep `docs/architecture/*` and `src-tauri/assets/seed/_SYSTEM.md` in lockstep. Every implementation divergence must be reflected in these files immediately.**
 
-- The SDD is the architectural source of truth — it must reflect the current implementation to the detail level (exact CLI flags, event names, field names, etc.). When code diverges (flags removed, flow changed, commands altered, new features added), update the SDD **immediately** in the same commit. If a SDD section describes the old behavior, update it to match the new behavior.
+- `docs/architecture/` holds the architectural source of truth, split one file per subsystem (see [docs/architecture/README.md](docs/architecture/README.md) for the index). It must reflect the current implementation to the detail level (exact CLI flags, event names, field names, etc.). When code diverges (flags removed, flow changed, commands altered, new features added), update **only the file(s) covering the affected subsystem** in the same commit — don't load or rewrite the whole directory for a localized change.
 
 - `src-tauri/assets/seed/_SYSTEM.md` is the general-purpose system prompt injected into every CC turn regardless of mode. Keep it accurate:
     - **Do not document MCP tools here.** Tools are advertised automatically via MCP server handshaking — duplicating them in `_SYSTEM.md` wastes context and gets stale.
