@@ -32,6 +32,37 @@ animateTargets.forEach(selector => {
   });
 });
 
+// Populate download buttons with links to the latest GitHub release
+const REPO = 'giacomo-ciro/ire';
+const RELEASES_URL = `https://github.com/${REPO}/releases/latest`;
+
+fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
+  .then((res) => res.json())
+  .then((release) => {
+    const assets = release.assets || [];
+    const findAsset = (suffix) => assets.find((a) => a.name.endsWith(suffix));
+
+    const links = {
+      'download-dmg': findAsset('.dmg'),
+      'download-exe': findAsset('.exe'),
+      'download-appimage': findAsset('.AppImage'),
+    };
+
+    Object.entries(links).forEach(([id, asset]) => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.href = asset ? asset.browser_download_url : RELEASES_URL;
+      if (asset) btn.removeAttribute('target');
+    });
+  })
+  .catch(() => {
+    // Fall back to the releases page if the API call fails
+    ['download-dmg', 'download-exe', 'download-appimage'].forEach((id) => {
+      const btn = document.getElementById(id);
+      if (btn) btn.href = RELEASES_URL;
+    });
+  });
+
 // Copy brew command
 function copyBrew() {
   const cmd = 'brew install --cask ire';
