@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::cc::stream::{StreamEvent, StreamState};
+use crate::claude_code::stream::{StreamEvent, StreamState};
 use crate::tool_cards::{build_tool_call, text_output, ToolProvider, ToolStatus};
 
 pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, emit: &mut F) {
