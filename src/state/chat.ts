@@ -486,7 +486,7 @@ export const useChat = create<ChatStore>((set) => ({
       const normalised = tabs.map((t) => ({
         ...t,
         isStreaming: false,
-        messages: t.messages.map((m) =>
+        messages: (t.messages ?? []).map((m) =>
           m.role === "assistant" ? { ...m, isStreaming: false } : m
         ),
       }));

@@ -258,7 +258,9 @@ pub async fn generate_chat_title(
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
                 let mut collect = |event: StreamEvent| match event {
                     StreamEvent::TextDelta { text } => collected.push_str(&text),
-                    StreamEvent::Result { text: Some(text), .. } => collected.push_str(&text),
+                    StreamEvent::Result {
+                        text: Some(text), ..
+                    } => collected.push_str(&text),
                     _ => {}
                 };
                 if provider == "codex" {
@@ -377,8 +379,14 @@ mod tests {
 
     #[test]
     fn clean_title_strips_quotes_and_takes_first_line() {
-        assert_eq!(clean_title("\"Quantum Error Correction\""), "Quantum Error Correction");
-        assert_eq!(clean_title("  Tuning a Sampler  \nextra"), "Tuning a Sampler");
+        assert_eq!(
+            clean_title("\"Quantum Error Correction\""),
+            "Quantum Error Correction"
+        );
+        assert_eq!(
+            clean_title("  Tuning a Sampler  \nextra"),
+            "Tuning a Sampler"
+        );
         assert_eq!(clean_title(""), "");
     }
 }

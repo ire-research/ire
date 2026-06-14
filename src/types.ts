@@ -242,19 +242,21 @@ export interface ChatSessionSummary {
   first_user_msg: string | null;
 }
 
-export interface SystemStatus {
-  workspace_path: string;
-  git_branch: string;
-  git_insertions: number;
-  git_deletions: number;
+export interface SystemInfo {
   cpu_model: string;
-  cpu_usage_pct: number;
-  gpu_model: string | null;
-  gpu_usage_pct: number | null;
-  gpu_vram_gb: number | null;
   ram_total_gb: number;
+  gpu_model: string | null;
+  gpu_vram_gb: number | null;
   hostname: string;
   username: string;
   cc_connected: boolean;
   codex_connected: boolean;
+}
+
+export interface SystemMetrics {
+  git_branch: string;
+  git_insertions: number;
+  git_deletions: number;
+  cpu_usage_pct: number;
+  gpu_usage_pct: number | null;
 }

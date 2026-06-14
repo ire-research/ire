@@ -1,5 +1,7 @@
 use serde::Serialize;
+use std::path::Path;
 use std::process::Command;
+use std::sync::{Arc, Mutex};
 use sysinfo::{CpuRefreshKind, RefreshKind, System};
 use tauri::State;
 
@@ -7,26 +9,67 @@ use crate::claude_code::discovery::find_claude_binary;
 use crate::codex::discovery::find_codex_binary;
 use crate::workspace::state::ActiveWorkspace;
 
-#[derive(Debug, Serialize)]
-pub struct SystemStatus {
-    pub workspace_path: String,
-    pub git_branch: String,
-    pub git_insertions: u32,
-    pub git_deletions: u32,
+/// Machine-level info that doesn't change for the lifetime of the app
+/// process. Computed once on first request and cached.
+#[derive(Debug, Clone, Serialize)]
+pub struct SystemInfo {
     pub cpu_model: String,
-    pub cpu_usage_pct: f32,
-    pub gpu_model: Option<String>,
-    pub gpu_usage_pct: Option<f32>,
-    pub gpu_vram_gb: Option<u32>,
     pub ram_total_gb: u32,
+    pub gpu_model: Option<String>,
+    pub gpu_vram_gb: Option<u32>,
     pub hostname: String,
     pub username: String,
     pub cc_connected: bool,
     pub codex_connected: bool,
 }
 
+/// Workspace/runtime metrics that change over time and are polled.
+#[derive(Debug, Serialize)]
+pub struct SystemMetrics {
+    pub git_branch: String,
+    pub git_insertions: u32,
+    pub git_deletions: u32,
+    pub cpu_usage_pct: f32,
+    pub gpu_usage_pct: Option<f32>,
+}
+
+#[derive(Default)]
+pub struct SystemInfoCache(pub Mutex<Option<SystemInfo>>);
+
+/// Long-lived sysinfo handle for CPU usage. Kept alive across polls so each
+/// `get_system_metrics` call can compute usage from the delta since the last
+/// refresh, instead of blocking on `MINIMUM_CPU_UPDATE_INTERVAL` every time.
+#[derive(Clone)]
+pub struct CpuMonitor(Arc<Mutex<System>>);
+
+impl Default for CpuMonitor {
+    fn default() -> Self {
+        Self(Arc::new(Mutex::new(System::new_with_specifics(
+            RefreshKind::new().with_cpu(CpuRefreshKind::everything()),
+        ))))
+    }
+}
+
 #[tauri::command]
-pub fn get_system_status(active: State<'_, ActiveWorkspace>) -> Result<SystemStatus, String> {
+pub async fn get_system_info(cache: State<'_, SystemInfoCache>) -> Result<SystemInfo, String> {
+    if let Some(info) = cache.0.lock().map_err(|e| e.to_string())?.clone() {
+        return Ok(info);
+    }
+
+    let info = tauri::async_runtime::spawn_blocking(collect_system_info)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    *cache.0.lock().map_err(|e| e.to_string())? = Some(info.clone());
+    Ok(info)
+}
+
+#[tauri::command]
+pub async fn get_system_metrics(
+    active: State<'_, ActiveWorkspace>,
+    cache: State<'_, SystemInfoCache>,
+    cpu_monitor: State<'_, CpuMonitor>,
+) -> Result<SystemMetrics, String> {
     let workspace_path = {
         let guard = active.0.lock().map_err(|e| e.to_string())?;
         guard
@@ -37,11 +80,62 @@ pub fn get_system_status(active: State<'_, ActiveWorkspace>) -> Result<SystemSta
             .clone()
     };
 
+    let has_gpu = cache
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .as_ref()
+        .is_some_and(|info| info.gpu_model.is_some());
+
+    let cpu_monitor = cpu_monitor.inner().clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        collect_system_metrics(&workspace_path, has_gpu, &cpu_monitor)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+fn collect_system_info() -> SystemInfo {
+    let mut sys =
+        System::new_with_specifics(RefreshKind::new().with_cpu(CpuRefreshKind::everything()));
+    sys.refresh_memory();
+    let cpu_model = sys
+        .cpus()
+        .first()
+        .map(|c| c.brand().to_string())
+        .unwrap_or_else(|| "Unknown CPU".to_string());
+    let ram_total_gb = (sys.total_memory() / 1_073_741_824) as u32;
+
+    let (gpu_model, _gpu_usage_pct, gpu_vram_gb) = query_nvidia_smi();
+
+    let hostname = System::host_name().unwrap_or_else(|| "unknown".to_string());
+    let username = std::env::var("USER")
+        .or_else(|_| std::env::var("USERNAME"))
+        .unwrap_or_else(|_| "user".to_string());
+
+    SystemInfo {
+        cpu_model,
+        ram_total_gb,
+        gpu_model,
+        gpu_vram_gb,
+        hostname,
+        username,
+        cc_connected: find_claude_binary().is_ok(),
+        codex_connected: find_codex_binary().is_ok(),
+    }
+}
+
+fn collect_system_metrics(
+    workspace_path: &Path,
+    has_gpu: bool,
+    cpu_monitor: &CpuMonitor,
+) -> SystemMetrics {
     // Git branch: symbolic-ref works even on a fresh repo with no commits;
     // rev-parse is only reached in detached-HEAD state.
     let git_branch = Command::new("git")
         .args(["symbolic-ref", "--short", "HEAD"])
-        .current_dir(&workspace_path)
+        .current_dir(workspace_path)
         .output()
         .ok()
         .filter(|o| o.status.success())
@@ -51,7 +145,7 @@ pub fn get_system_status(active: State<'_, ActiveWorkspace>) -> Result<SystemSta
         .unwrap_or_else(|| {
             Command::new("git")
                 .args(["rev-parse", "--abbrev-ref", "HEAD"])
-                .current_dir(&workspace_path)
+                .current_dir(workspace_path)
                 .output()
                 .ok()
                 .and_then(|o| String::from_utf8(o.stdout).ok())
@@ -59,53 +153,27 @@ pub fn get_system_status(active: State<'_, ActiveWorkspace>) -> Result<SystemSta
                 .unwrap_or_else(|| "HEAD".to_string())
         });
 
-    // Git diff stat
-    let (git_insertions, git_deletions) = git_diff_stat(&workspace_path);
+    let (git_insertions, git_deletions) = git_diff_stat(workspace_path);
 
-    // CPU via sysinfo
-    let mut sys =
-        System::new_with_specifics(RefreshKind::new().with_cpu(CpuRefreshKind::everything()));
-    std::thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
-    sys.refresh_cpu_all();
-    let cpu_model = sys
-        .cpus()
-        .first()
-        .map(|c| c.brand().to_string())
-        .unwrap_or_else(|| "Unknown CPU".to_string());
-    let cpu_usage_pct = sys.global_cpu_usage();
+    let cpu_usage_pct = {
+        let mut sys = cpu_monitor.0.lock().unwrap_or_else(|e| e.into_inner());
+        sys.refresh_cpu_all();
+        sys.global_cpu_usage()
+    };
 
-    // RAM via sysinfo
-    sys.refresh_memory();
-    let ram_total_gb = (sys.total_memory() / 1_073_741_824) as u32;
+    // Only re-query nvidia-smi for live usage if a GPU was detected at all.
+    let gpu_usage_pct = if has_gpu { query_nvidia_smi().1 } else { None };
 
-    // GPU via nvidia-smi (best-effort)
-    let (gpu_model, gpu_usage_pct, gpu_vram_gb) = query_nvidia_smi();
-
-    // Hostname + username
-    let hostname = System::host_name().unwrap_or_else(|| "unknown".to_string());
-    let username = std::env::var("USER")
-        .or_else(|_| std::env::var("USERNAME"))
-        .unwrap_or_else(|_| "user".to_string());
-
-    Ok(SystemStatus {
-        workspace_path: workspace_path.to_string_lossy().into_owned(),
+    SystemMetrics {
         git_branch,
         git_insertions,
         git_deletions,
-        cpu_model,
         cpu_usage_pct,
-        gpu_model,
         gpu_usage_pct,
-        gpu_vram_gb,
-        ram_total_gb,
-        hostname,
-        username,
-        cc_connected: find_claude_binary().is_ok(),
-        codex_connected: find_codex_binary().is_ok(),
-    })
+    }
 }
 
-fn git_diff_stat(path: &std::path::Path) -> (u32, u32) {
+fn git_diff_stat(path: &Path) -> (u32, u32) {
     let out = Command::new("git")
         .args(["diff", "--shortstat", "HEAD"])
         .current_dir(path)
@@ -128,6 +196,13 @@ fn parse_stat(s: &str, keyword: &str) -> u32 {
         .unwrap_or(0)
 }
 
+#[cfg(target_os = "macos")]
+fn query_nvidia_smi() -> (Option<String>, Option<f32>, Option<u32>) {
+    // nvidia-smi never exists on macOS; skip the spawn entirely.
+    (None, None, None)
+}
+
+#[cfg(not(target_os = "macos"))]
 fn query_nvidia_smi() -> (Option<String>, Option<f32>, Option<u32>) {
     let out = Command::new("nvidia-smi")
         .args([
