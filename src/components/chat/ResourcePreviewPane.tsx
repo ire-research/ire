@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faPencil, iconClass } from "../../icons";
 
 interface Props {
   title: string;
   content: string;
+  onSave?: (content: string) => Promise<void>;
 }
 
 interface Frontmatter {
@@ -110,7 +113,77 @@ function SourceText({ source }: { source: string }) {
   );
 }
 
-export function ResourcePreviewPane({ title, content }: Props) {
+export function ResourcePreviewPane({ title, content, onSave }: Props) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState(content);
+  const [isSaving, setIsSaving] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    setIsEditing(false);
+    setDraft(content);
+  }, [content]);
+
+  useEffect(() => {
+    if (isEditing && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [isEditing]);
+
+  const handleSave = async () => {
+    if (isSaving || !onSave) return;
+    setIsSaving(true);
+    await onSave(draft);
+    setIsSaving(false);
+    setIsEditing(false);
+  };
+
+  const handleCancel = () => {
+    setDraft(content);
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Escape") {
+      handleCancel();
+    } else if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      void handleSave();
+    }
+  };
+
+  if (isEditing) {
+    return (
+      <div className="absolute inset-0 flex flex-col px-4 md:px-8 lg:px-12 pt-6 pb-4">
+        <div className="flex items-center justify-between mb-4 shrink-0">
+          <p className="text-[11px] uppercase tracking-widest text-on-surface-variant">Resource · Wiki</p>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCancel}
+              className="text-[11px] font-mono text-on-surface-variant hover:text-on-surface transition-colors px-2 py-1"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => void handleSave()}
+              disabled={isSaving}
+              className="text-[11px] font-mono text-ok/80 hover:text-ok transition-colors px-2 py-1 disabled:opacity-50"
+            >
+              {isSaving ? "Saving…" : "Save"}
+            </button>
+          </div>
+        </div>
+        <textarea
+          ref={textareaRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={handleKeyDown}
+          className="flex-1 min-h-0 bg-transparent border border-outline-variant rounded text-[13px] font-mono text-on-surface px-3 py-2 focus:outline-none focus:border-outline resize-none"
+        />
+      </div>
+    );
+  }
+
   const { fm, body } = parseFrontmatter(content);
 
   // Normalize repeated sources and render a deterministic preview date.
@@ -124,7 +197,18 @@ export function ResourcePreviewPane({ title, content }: Props) {
 
   return (
     <div className="absolute inset-0 overflow-y-auto px-4 md:px-8 lg:px-12 pt-6 pb-8">
-      <p className="text-[11px] uppercase tracking-widest text-on-surface-variant mb-4">Resource · Wiki</p>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-[11px] uppercase tracking-widest text-on-surface-variant">Resource · Wiki</p>
+        {onSave && (
+          <button
+            onClick={() => setIsEditing(true)}
+            className="app-icon-button cursor-pointer p-0.5"
+            title="Edit resource"
+          >
+            <FontAwesomeIcon icon={faPencil} className={iconClass.md} />
+          </button>
+        )}
+      </div>
       <h2 className="text-base font-semibold text-on-surface mb-2">{displayTitle}</h2>
 
       {fm && (

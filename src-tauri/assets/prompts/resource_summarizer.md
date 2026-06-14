@@ -15,8 +15,6 @@ updated: <today YYYY-MM-DD>
 TL;DR: <one-line summary or 'Not relevant'>
 ---
 
-# <title>
-
 ## Abstract
 
 <2–4 sentences covering only the aspects relevant to this project. Omit this section entirely if not relevant.>

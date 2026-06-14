@@ -636,6 +636,27 @@ pub fn confirm_resource(
     Ok(())
 }
 
+#[tauri::command]
+pub fn save_resource_draft(
+    active: State<'_, ActiveWorkspace>,
+    resource_id: String,
+    content: String,
+) -> Result<(), String> {
+    let workspace_path = {
+        let guard = active.0.lock().map_err(|e| e.to_string())?;
+        guard
+            .as_ref()
+            .ok_or("no workspace open")?
+            .state
+            .path
+            .clone()
+    };
+    let draft_path = workspace_path
+        .join(".ire/cache")
+        .join(format!("{resource_id}_draft.md"));
+    fs::write(&draft_path, content.as_bytes()).map_err(|e| e.to_string())
+}
+
 fn sanitize_wiki_filename(title: &str) -> String {
     title
         .chars()
