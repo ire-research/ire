@@ -1,12 +1,12 @@
 ---
 name: update-docs
-description: Keep docs/SDD.md, src-tauri/assets/seed/_SYSTEM.md, docs/CHANGELOG.md, and docs/DECISIONS.md synchronized with implementation changes.
+description: Keep docs/architecture/*, src-tauri/assets/seed/_SYSTEM.md, docs/CHANGELOG.md, and docs/DECISIONS.md synchronized with implementation changes.
 ---
 Act as a documentation sync agent. When code, prompts, or behavior change, check whether the four docs below need updates and make them in the same change set when needed.
 
 ## Scope
 
-* `docs/SDD.md`: current implementation details, including flows, flags, event names, field names, and other source-of-truth behavior.
+* `docs/architecture/*`: current implementation details, including flows, flags, event names, field names, and other source-of-truth behavior. Update only the file(s) covering the affected subsystem (see [docs/architecture/README.md](../../../docs/architecture/README.md) for the index).
 * `src-tauri/assets/seed/_SYSTEM.md`: only the wiki layout reference and universal agent rules. Do not add MCP tools or mode-specific guidance.
 * `docs/CHANGELOG.md`: add Unreleased entries for user- or developer-visible changes, including new features, behavior changes, and bug fixes.
 * `docs/DECISIONS.md`: add dated entries for non-obvious design choices, constraint workarounds, or spec conflicts that matter to future readers.
