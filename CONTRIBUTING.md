@@ -57,13 +57,14 @@ check.
 ## Documentation Sync
 
 If your change touches architecture, CLI flags, event names, field names, the
-wiki layout, or agent-facing behavior, update `docs/SDD.md` and
+wiki layout, or agent-facing behavior, update the relevant file(s) in
+[docs/architecture/](docs/architecture/) and
 `src-tauri/assets/seed/_SYSTEM.md` **in the same PR**. These files are the
 source of truth for how IRE behaves — letting them drift out of sync makes the
 codebase harder to reason about for the next contributor (human or agent).
 
 Do not document MCP tools in `_SYSTEM.md`; they're advertised automatically via
-the MCP handshake (see [docs/mcp-tool-discovery.md](docs/mcp-tool-discovery.md)).
+the MCP handshake (see [docs/architecture/mcp.md](docs/architecture/mcp.md)).
 
 ## Pull Request Expectations
 
@@ -71,11 +72,23 @@ the MCP handshake (see [docs/mcp-tool-discovery.md](docs/mcp-tool-discovery.md))
   unrelated refactors or formatting changes with a feature or fix.
 - Match the existing code style; don't restyle code you didn't otherwise touch.
 - Make sure the build verification commands above pass before requesting review.
-- Update `docs/SDD.md` / `_SYSTEM.md` in the same PR if your change diverges
-  from what they describe (see above).
+- Update `docs/architecture/*` / `_SYSTEM.md` in the same PR if your change
+  diverges from what they describe (see above).
 - Write commit messages in the imperative mood with a concise subject line
   (e.g. "Add experiment status polling", not "Added" or "Adds").
 - Reference related issues in the PR description (e.g. `Fixes #123`).
+
+## Testing
+
+- **Rust unit tests**: atomic writes (parallel write loops), lock acquisition, NDJSON parser (replay recorded streams), index regenerator, frontmatter parser, PDF extractor (golden files), HTML extractor (snapshot of cleaned text).
+- **Rust integration tests**: workspace init/open/close round-trip, end-to-end pipeline that drives a stubbed CC binary (`src-tauri/tests/fixtures/fake_claude.sh` — emits canned NDJSON, enabling CI without a real Claude binary).
+- **Frontend tests** with Vitest: state stores and the markdown pane edit/preview reducer. No e2e for MVP.
+
+Run all Rust tests and lints before opening a PR:
+```bash
+cargo test --manifest-path src-tauri/Cargo.toml
+cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
+```
 
 ## Reporting Bugs and Requesting Features
 
