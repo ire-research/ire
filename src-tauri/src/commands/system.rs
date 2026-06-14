@@ -3,7 +3,7 @@ use std::process::Command;
 use sysinfo::{CpuRefreshKind, RefreshKind, System};
 use tauri::State;
 
-use crate::cc::discovery::find_claude_binary;
+use crate::claude_code::discovery::find_claude_binary;
 use crate::codex::discovery::find_codex_binary;
 use crate::workspace::state::ActiveWorkspace;
 

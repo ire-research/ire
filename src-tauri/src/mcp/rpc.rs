@@ -6,7 +6,7 @@ use anyhow::{anyhow, Result};
 use chrono::Local;
 use tauri::{AppHandle, Emitter};
 
-use crate::cc::session::SessionManager;
+use crate::claude_code::session::SessionManager;
 use crate::commands::wiki::{patch_pulse_content, read_pulse_content, write_pulse_content};
 use crate::db::models as db;
 use crate::wiki::WikiStore;
