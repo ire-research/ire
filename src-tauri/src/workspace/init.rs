@@ -13,6 +13,7 @@ const GITIGNORE_ENTRIES: &[&str] = &[
     ".ire/.lock",
     ".ire/wiki/local.db",
     ".ire/workspace.json",
+    ".ire/sessions.json",
     ".ire/wiki/experiments/*/*.log",
     ".ire/cache/",
 ];

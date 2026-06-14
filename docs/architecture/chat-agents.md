@@ -240,3 +240,10 @@ pub struct SessionManager(Arc<Mutex<HashMap<String, PerTabSession>>>);
 ```
 
 `session_id` is captured from the first `Init` event for a given `tab_id` and provider. Subsequent `chat_send` calls for that same tab and provider pass `--resume <session_id>` for Claude or `codex exec resume <thread_id>` for Codex. Switching providers in a tab starts a fresh provider session. `experiment.start` records the active `tab_id`, `session_id`, `session_provider`, `model`, and optional `effort` from the running turn before spawning the detached command; the monitor uses those values to fire the wake-up through the same provider and model settings.
+
+**Persistence across backend restarts.** `SessionManager`'s map is in-memory only, so a backend restart (e.g. a dev-mode rebuild) would otherwise drop every tab's `session_id` and make the next `chat_send` start a brand-new, contextless session despite `--resume` being expected. To survive this, `{session_id, session_provider}` for each tab is mirrored to `.ire/sessions.json`:
+- On every `Init` event, `chat_send` calls `SessionManager::persist_session(ire_dir, tab_id)`, writing the current `session_id`/`session_provider` for that tab to `.ire/sessions.json` (atomic write).
+- On workspace attach (`open_workspace`/`init_workspace`), `SessionManager::restore_from_disk(ire_dir)` reads `.ire/sessions.json` and repopulates the in-memory map before the MCP server starts.
+- `chat_reset_session` calls `SessionManager::clear_persisted_session(ire_dir, tab_id)` to remove the tab's entry, so the next send starts fresh with no `--resume`.
+
+`.ire/sessions.json` is gitignored, like `.ire/workspace.json`.

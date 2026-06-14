@@ -164,6 +164,10 @@ fn attach(
 
     migrations::run(&ire).map_err(|e| e.to_string())?;
 
+    // Restore per-tab CC session ids saved on previous Init events, so
+    // `--resume` keeps working across backend restarts.
+    session_manager.restore_from_disk(&ire);
+
     // Start the MCP RPC server and write the mcp.json config for CC.
     let socket = crate::mcp::rpc::socket_path(&ire);
     let task = crate::mcp::rpc::start(socket.clone(), path.clone(), session_manager, app.clone());

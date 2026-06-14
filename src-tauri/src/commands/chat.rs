@@ -72,6 +72,7 @@ pub async fn chat_send(
     };
 
     let system_prompt = build_system_prompt(&workspace_path);
+    let ire_dir = workspace_path.join(".ire");
 
     // Clone the SessionManager handle (cheap Arc clone) so it can move into spawn_blocking.
     let session_clone = (*session).clone();
@@ -137,6 +138,7 @@ pub async fn chat_send(
                             &provider,
                             session_id.clone(),
                         );
+                        session_clone.persist_session(&ire_dir, &tab_id);
                         tracing::debug!(tab_id = %tab_id, session_id = %session_id, "stream session init");
                     }
                     if let StreamEvent::Error { message: ref errmsg } = event {
@@ -304,10 +306,16 @@ pub fn chat_cancel(session: State<'_, SessionManager>, tab_id: String) -> Result
 
 #[tauri::command]
 pub fn chat_reset_session(
+    active: State<'_, ActiveWorkspace>,
     session: State<'_, SessionManager>,
     tab_id: String,
 ) -> Result<(), String> {
     tracing::info!(tab_id = %tab_id, "chat_reset_session");
+    if let Ok(guard) = active.0.lock() {
+        if let Some(handle) = guard.as_ref() {
+            session.clear_persisted_session(&handle.state.path.join(".ire"), &tab_id);
+        }
+    }
     session.reset(&tab_id);
     Ok(())
 }
