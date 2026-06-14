@@ -5,8 +5,8 @@ use serde::Serialize;
 use serde_json::json;
 use tauri::{AppHandle, State};
 
-use crate::cc::discovery::{find_claude_binary, DiscoveryError};
-use crate::cc::session::SessionManager;
+use crate::claude_code::discovery::{find_claude_binary, DiscoveryError};
+use crate::claude_code::session::SessionManager;
 use crate::codex::discovery::find_codex_binary;
 use crate::db::{migrations, models};
 use crate::events::{self, EventSource};

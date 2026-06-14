@@ -4,7 +4,7 @@ use std::path::Path;
 
 use tauri::{Emitter, State};
 
-use crate::cc::discovery::find_claude_binary;
+use crate::claude_code::discovery::find_claude_binary;
 use crate::codex::discovery::find_codex_binary;
 use crate::codex::spawn::{build_codex_command, CodexSpawnArgs};
 
@@ -12,9 +12,9 @@ fn trunc(s: &str) -> &str {
     let end = s.char_indices().nth(80).map(|(i, _)| i).unwrap_or(s.len());
     &s[..end]
 }
-use crate::cc::session::SessionManager;
-use crate::cc::spawn::{build_command, SpawnArgs};
-use crate::cc::stream::{self as cc_stream, StreamEvent, StreamState};
+use crate::claude_code::session::SessionManager;
+use crate::claude_code::spawn::{build_command, SpawnArgs};
+use crate::claude_code::stream::{self as cc_stream, StreamEvent, StreamState};
 use crate::codex::stream as codex_stream;
 use crate::workspace::state::ActiveWorkspace;
 

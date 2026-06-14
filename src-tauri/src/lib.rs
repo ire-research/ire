@@ -1,5 +1,6 @@
 mod binary;
-mod cc;
+#[path = "claude-code/mod.rs"]
+mod claude_code;
 mod codex;
 mod commands;
 mod db;
@@ -13,7 +14,7 @@ mod user_config;
 mod wiki;
 mod workspace;
 
-use cc::session::SessionManager;
+use claude_code::session::SessionManager;
 use commands::chat::{chat_cancel, chat_reset_session, chat_send, generate_chat_title};
 use commands::experiments::{
     experiment_cancel, experiment_delete, experiment_list, experiment_logs, experiment_rename,
