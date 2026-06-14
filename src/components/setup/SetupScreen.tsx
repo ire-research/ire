@@ -25,11 +25,11 @@ export function SetupScreen({ status, onRefresh }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const applyPersisted = (
+  const applyPersisted = async (
     persisted: Parameters<typeof hydrateFromPersisted>[0],
     availableProviders: Provider[],
   ) => {
-    hydrateFromPersisted(persisted);
+    await hydrateFromPersisted(persisted);
     setOptions(optionsForAvailableProviders(
       persisted.model,
       persisted.provider,
@@ -75,7 +75,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
       pushRecentWorkspace(path);
       const persisted = await ipc.readWorkspaceState().catch(() => null);
       if (persisted) {
-        applyPersisted(persisted, availableProviders);
+        await applyPersisted(persisted, availableProviders);
       } else {
         setOptions(optionsForAvailableProviders(null, null, null, availableProviders));
       }
@@ -101,7 +101,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
       pushRecentWorkspace(path);
       const persisted = await ipc.readWorkspaceState().catch(() => null);
       if (persisted) {
-        applyPersisted(persisted, availableProviders);
+        await applyPersisted(persisted, availableProviders);
       } else {
         setOptions(optionsForAvailableProviders(null, null, null, availableProviders));
       }

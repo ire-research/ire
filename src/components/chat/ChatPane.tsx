@@ -283,7 +283,7 @@ export function ChatPane() {
     }
 
     // Ensure a stable session UUID exists for this tab before the first message.
-    getSessionMeta(activeTabId);
+    const { uuid: sessionUuid, startedAt: sessionStartedAt } = getSessionMeta(activeTabId);
     setTabAgentOptions(activeTabId, { model, provider, effort });
 
     addUserMessage(activeTabId, text);
@@ -302,7 +302,7 @@ export function ChatPane() {
       await ipc
         .saveWorkspaceState(useWorkspace.getState().toPersisted())
         .catch((e) => toastError("save chat options", e));
-      await ipc.chatSend(activeTabId, text, { model, provider, effort });
+      await ipc.chatSend(activeTabId, text, { model, provider, effort }, sessionUuid, activeTab.label, sessionStartedAt);
     } catch (err) {
       const currentMsgId = assistantIdByTab.current.get(activeTabId);
       if (currentMsgId) setMessageError(activeTabId, currentMsgId, String(err));
