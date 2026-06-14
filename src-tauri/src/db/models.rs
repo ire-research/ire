@@ -318,6 +318,61 @@ pub fn list_chat_sessions(ire_dir: &Path, limit: usize) -> Result<Vec<ChatSessio
     rows.map(|r| r.context("chat session row")).collect()
 }
 
+/// Upsert a chat session row at turn-start time, capturing the provider's
+/// resume id (`claude_session_id` / `codex_thread_id`) as soon as the agent's
+/// `Init` event arrives. Creates the row with empty message history if it
+/// doesn't exist yet; `chat_history_save` fills in `messages_json` once the
+/// turn completes. Resume id columns are preserved via COALESCE so a session
+/// that switches provider doesn't clobber the other provider's stored id.
+pub fn upsert_chat_session_init(
+    ire_dir: &Path,
+    session_uuid: &str,
+    tab_label: &str,
+    provider: &str,
+    model: &str,
+    started_at: &str,
+    resume_id: &str,
+) -> Result<()> {
+    let conn = open(ire_dir)?;
+    let now = chrono::Local::now().to_rfc3339();
+    let (claude_session_id, codex_thread_id) = if provider == "codex" {
+        (None, Some(resume_id))
+    } else {
+        (Some(resume_id), None)
+    };
+    conn.execute(
+        "INSERT INTO chat_sessions \
+         (session_uuid, tab_label, provider, model, started_at, ended_at, message_count, first_user_msg, messages_json, claude_session_id, codex_thread_id) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, NULL, '[]', ?7, ?8) \
+         ON CONFLICT(session_uuid) DO UPDATE SET \
+             tab_label         = excluded.tab_label, \
+             provider          = excluded.provider, \
+             model             = excluded.model, \
+             ended_at          = excluded.ended_at, \
+             claude_session_id = COALESCE(excluded.claude_session_id, chat_sessions.claude_session_id), \
+             codex_thread_id   = COALESCE(excluded.codex_thread_id, chat_sessions.codex_thread_id)",
+        params![session_uuid, tab_label, provider, model, started_at, now, claude_session_id, codex_thread_id],
+    )?;
+    Ok(())
+}
+
+/// Look up the provider-scoped resume id (`claude_session_id` or
+/// `codex_thread_id`) for a chat session, used to resume the agent across
+/// app restarts.
+pub fn get_resume_id(ire_dir: &Path, session_uuid: &str, provider: &str) -> Result<Option<String>> {
+    let conn = open(ire_dir)?;
+    let column = if provider == "codex" { "codex_thread_id" } else { "claude_session_id" };
+    let mut stmt = conn.prepare(&format!(
+        "SELECT {column} FROM chat_sessions WHERE session_uuid = ?1"
+    ))?;
+    let mut rows = stmt.query(params![session_uuid])?;
+    rows.next()?
+        .map(|r| r.get::<_, Option<String>>(0))
+        .transpose()
+        .map(|o| o.flatten())
+        .context("get_resume_id")
+}
+
 pub fn get_chat_session_messages(ire_dir: &Path, session_uuid: &str) -> Result<Option<String>> {
     let conn = open(ire_dir)?;
     let mut stmt =

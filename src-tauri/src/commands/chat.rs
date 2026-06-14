@@ -16,6 +16,7 @@ use crate::claude_code::session::SessionManager;
 use crate::claude_code::spawn::{build_command, SpawnArgs};
 use crate::claude_code::stream::{self as cc_stream, StreamEvent, StreamState};
 use crate::codex::stream as codex_stream;
+use crate::db::models;
 use crate::workspace::state::ActiveWorkspace;
 
 #[derive(Clone, serde::Deserialize)]
@@ -32,6 +33,7 @@ fn default_provider() -> String {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn chat_send(
     app_handle: tauri::AppHandle,
     active: State<'_, ActiveWorkspace>,
@@ -39,6 +41,9 @@ pub async fn chat_send(
     tab_id: String,
     message: String,
     options: ChatOptions,
+    history_session_uuid: String,
+    tab_label: String,
+    history_started_at: String,
 ) -> Result<(), String> {
     let workspace_path = {
         let guard = active.0.lock().map_err(|e| e.to_string())?;
@@ -60,7 +65,12 @@ pub async fn chat_send(
     } else {
         find_claude_binary().map_err(|e| e.to_string())?.path
     };
-    let resume_id = session.get_session_id_for_provider(&tab_id, &provider);
+    let ire_dir = workspace_path.join(".ire");
+    // In-memory cache for the running process; falls back to the durable
+    // chat_sessions row so a session can be resumed after an app restart.
+    let resume_id = session
+        .get_session_id_for_provider(&tab_id, &provider)
+        .or_else(|| models::get_resume_id(&ire_dir, &history_session_uuid, &provider).ok().flatten());
 
     let mcp_config = {
         let p = workspace_path.join(".ire/mcp.json");
@@ -76,6 +86,7 @@ pub async fn chat_send(
     // Clone the SessionManager handle (cheap Arc clone) so it can move into spawn_blocking.
     let session_clone = (*session).clone();
     let tab_id_outer = tab_id.clone();
+    let ire_dir_for_init = ire_dir.clone();
 
     tracing::info!(
         tab_id = %tab_id,
@@ -137,6 +148,17 @@ pub async fn chat_send(
                             &provider,
                             session_id.clone(),
                         );
+                        if let Err(e) = models::upsert_chat_session_init(
+                            &ire_dir_for_init,
+                            &history_session_uuid,
+                            &tab_label,
+                            &provider,
+                            &options.model,
+                            &history_started_at,
+                            session_id,
+                        ) {
+                            tracing::warn!(tab_id = %tab_id, error = %e, "upsert_chat_session_init failed");
+                        }
                         tracing::debug!(tab_id = %tab_id, session_id = %session_id, "stream session init");
                     }
                     if let StreamEvent::Error { message: ref errmsg } = event {

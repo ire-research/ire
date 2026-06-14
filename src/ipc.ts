@@ -82,8 +82,15 @@ export const ipc = {
   saveIdeasJson: (ideas: IdeaItem[]): Promise<void> => invoke("save_ideas_json", { ideas }),
   getSystemInfo: (): Promise<SystemInfo> => invoke("get_system_info"),
   getSystemMetrics: (): Promise<SystemMetrics> => invoke("get_system_metrics"),
-  chatSend: (tabId: string, message: string, options: ChatOptions): Promise<void> =>
-    invoke("chat_send", { tabId, message, options }),
+  chatSend: (
+    tabId: string,
+    message: string,
+    options: ChatOptions,
+    historySessionUuid: string,
+    tabLabel: string,
+    historyStartedAt: string,
+  ): Promise<void> =>
+    invoke("chat_send", { tabId, message, options, historySessionUuid, tabLabel, historyStartedAt }),
   chatCancel: (tabId: string): Promise<void> =>
     invoke("chat_cancel", { tabId }),
   chatResetSession: (tabId: string): Promise<void> =>

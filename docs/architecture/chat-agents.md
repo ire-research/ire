@@ -68,7 +68,11 @@ IRE uses a **single unified agent surface** in the central pane. The user select
 
 ```
 User types in central pane → Send
-  → chat_send({ message, options: { provider, model, effort } }) Tauri command
+  → chat_send({ message, options: { provider, model, effort },
+                 historySessionUuid, tabLabel, historyStartedAt }) Tauri command
+  → Rust resolves the resume id: SessionManager's in-memory cache for this
+    tab/provider, falling back to chat_sessions.claude_session_id /
+    codex_thread_id for historySessionUuid (covers resume across app restarts)
   → Rust spawns one of:
       claude -p "<message>"
         --model <model>
@@ -87,8 +91,11 @@ User types in central pane → Send
         -- "<message>"
       codex exec resume [OPTIONS] <thread_id> -- "<message>"
   → Rust parses JSONL line-by-line, emits chat-stream events
-  → on `Init`: capture provider-scoped session/thread id
-  → on `Result`/`Done`: turn complete, frontend re-enables input
+  → on `Init`: capture provider-scoped session/thread id in SessionManager
+    AND upsert it into chat_sessions (claude_session_id / codex_thread_id),
+    keyed by historySessionUuid, alongside tab_label/provider/model/ended_at
+  → on `Result`/`Done`: turn complete, frontend re-enables input and calls
+    chat_history_save to persist messages_json for this turn
 ```
 
 **Auto-title (first message of a new chat tab):** When the user sends the first message in a brand-new chat tab whose label is still the default `"Chat"`, `ChatPane.handleSend` fires `generate_chat_title({ message, model, provider })` in the background. The model is the smallest of the selected provider (`claude-haiku-4-5-20251001` / `gpt-5.2`). The Rust command spawns a one-shot subprocess with **no** system prompt, MCP config, session resume, or effort, and returns a cleaned single-line title. On resolve the frontend calls `renameTab`, which types over the old label (40 ms/char typewriter). Any failure is silent — the label stays `"Chat"`.
@@ -158,7 +165,7 @@ IRE supports multiple independent chat tabs in the central pane.
 
 **Event routing.** `chat-stream` events are wrapped as `{ tab_id, stream_id, event_id, event }` before being emitted. The frontend maintains a single global listener, routes each event to the correct tab's message list using `tab_id`, and ignores any already-seen `{tab_id, stream_id, event_id}` delivery.
 
-**History persistence.** Chat tabs carry optional `historySessionUuid`, `historyStartedAt`, and `agentOptions` fields. The frontend creates the history UUID/start time on first send, persists those fields in `.ire/workspace.json`, and passes the UUID plus tab agent metadata to `chat_history_save` so every completed turn upserts the same `chat_sessions` row. The History menu filters out any row whose UUID is currently open as a chat tab.
+**History persistence.** `chat_sessions` is the durable live store for chat tabs — `.ire/workspace.json` keeps only small UI/tab metadata (`id`, `label`, `kind`, `isPinned`, `agentOptions`, `historySessionUuid`, `historyStartedAt`, etc.), never the `messages` array. Chat tabs carry optional `historySessionUuid`, `historyStartedAt`, and `agentOptions` fields; the frontend creates the history UUID/start time on first send (`ChatPane.getSessionMeta`, covers the `main` tab too) and passes them into every `chat_send` and `chat_history_save` call. `chat_send`'s `Init` handler upserts `claude_session_id`/`codex_thread_id` plus tab metadata immediately; `chat_history_save` upserts `messages_json`/`message_count`/`first_user_msg`/`ended_at` on `Done`, error, and tab/workspace close. On workspace reopen, `useWorkspace.hydrateFromPersisted` fetches `messages_json` for each tab via `chat_history_get(historySessionUuid)` and rehydrates the tab — so resuming a chat after closing and reopening continues the same provider session instead of starting a new one. The History menu filters out any row whose UUID is currently open as a chat tab.
 
 **IPC changes from single-session baseline**
 
@@ -243,6 +250,8 @@ struct PerTabSession {
 pub struct SessionManager(Arc<Mutex<HashMap<String, PerTabSession>>>);
 ```
 
-`session_id` is captured from the first `Init` event for a given `tab_id` and provider. Subsequent `chat_send` calls for that same tab and provider pass `--resume <session_id>` for Claude or `codex exec resume <thread_id>` for Codex. Switching providers in a tab starts a fresh provider session. `experiment.start` records the active `tab_id`, `session_id`, `session_provider`, `model`, and optional `effort` from the running turn before spawning the detached command; the monitor uses those values to fire the wake-up through the same provider and model settings.
+`session_id` is captured from the first `Init` event for a given `tab_id` and provider, and is also written through to `chat_sessions.claude_session_id` / `codex_thread_id` (keyed by `historySessionUuid`) in the same step. Subsequent `chat_send` calls for that same tab and provider pass `--resume <session_id>` for Claude or `codex exec resume <thread_id>` for Codex, preferring SessionManager's in-memory value but falling back to the `chat_sessions` row — this is what lets a chat resume its provider session after the app restarts. Switching providers in a tab starts a fresh provider session. `experiment.start` records the active `tab_id`, `session_id`, `session_provider`, `model`, and optional `effort` from the running turn before spawning the detached command; the monitor uses those values to fire the wake-up through the same provider and model settings.
 
 **`ask_user_question` handshake.** `pending_ask` carries the oneshot sender for a tab's in-flight `ask_user_question` MCP call. `register_ask(tab_id)` stores the sender and returns the receiver, which the MCP RPC handler (`mcp/rpc.rs`) blocks on with `blocking_recv()`. `submit_ask_answer(tab_id, answers)` (a Tauri command) calls `submit_ask`, which takes the sender and sends the answers, waking the blocked handler so it returns its `tool_result` within the same CC subprocess turn. `chat_cancel` and `chat_reset_session` both call `cancel_ask(tab_id)` to drop any pending sender, so a blocked handler returns an error instead of hanging if the user cancels or resets before answering.
+
+`session_id`/`session_provider` in `SessionManager` are an in-memory cache for the current run — they back `get_active_session()` for the experiment wake-up flow and the resume fast-path — while `chat_sessions` is the cross-restart source of truth for resuming a tab's provider session.

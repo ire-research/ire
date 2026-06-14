@@ -66,6 +66,11 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_ended ON chat_sessions(ended_at DESC);
 ";
 
+const MIGRATION_5: &str = "
+ALTER TABLE chat_sessions ADD COLUMN claude_session_id TEXT;
+ALTER TABLE chat_sessions ADD COLUMN codex_thread_id TEXT;
+";
+
 pub fn run(ire_dir: &Path) -> Result<()> {
     let db_path = ire_dir.join("wiki/local.db");
     let conn = Connection::open(&db_path).with_context(|| format!("open {}", db_path.display()))?;
@@ -129,6 +134,24 @@ pub fn run(ire_dir: &Path) -> Result<()> {
             params![chrono::Local::now().to_rfc3339()],
         )
         .context("record migration 4")?;
+    }
+
+    let v5_applied: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM schema_migrations WHERE version = 5",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap_or(0)
+        > 0;
+
+    if !v5_applied {
+        conn.execute_batch(MIGRATION_5).context("run migration 5")?;
+        conn.execute(
+            "INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (5, ?1)",
+            params![chrono::Local::now().to_rfc3339()],
+        )
+        .context("record migration 5")?;
     }
 
     Ok(())
