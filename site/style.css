@@ -137,17 +137,10 @@ body {
   line-height: 1;
 }
 
-.logo-ire {
-  font-size: 14px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: var(--text);
-}
-
-.logo-hex {
-  font-size: 18px;
-  color: var(--primary);
-  line-height: 1;
+.logo-mark {
+  width: 46px;
+  height: auto;
+  flex-shrink: 0;
 }
 
 .nav-links {
