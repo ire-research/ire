@@ -95,6 +95,8 @@ export const ipc = {
     invoke("discard_resource", { resourceId }),
   readResourceDraft: (resourceId: string): Promise<string> =>
     invoke("read_resource_draft", { resourceId }),
+  saveResourceDraft: (resourceId: string, content: string): Promise<void> =>
+    invoke("save_resource_draft", { resourceId, content }),
   confirmResource: (resourceId: string): Promise<void> =>
     invoke("confirm_resource", { resourceId }),
   saveWikiFile: (path: string, content: string): Promise<void> =>

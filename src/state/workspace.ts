@@ -95,7 +95,7 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => ({
       model,
       provider,
       last_opened: new Date().toISOString(),
-      effort,
+      effort: effort ?? undefined,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tabs: tabsToSave as any[],
       active_tab_id: activeTabId,
