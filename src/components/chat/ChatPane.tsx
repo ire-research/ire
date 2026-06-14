@@ -471,11 +471,20 @@ export function ChatPane() {
   }
 
   if (activeTab.kind === "preview") {
+    const handleSaveResource = async (content: string) => {
+      if (activeTab.wikiPath) {
+        await ipc.saveWikiFile(activeTab.wikiPath, content).catch((e) => toastError("save resource", e));
+      } else if (activeTab.resourceId) {
+        await ipc.saveResourceDraft(activeTab.resourceId, content).catch((e) => toastError("save draft", e));
+      }
+      setPreviewContent(content);
+    };
+
     return (
       <section className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
         {tabBar}
         <div className="flex-1 overflow-hidden relative">
-          <ResourcePreviewPane title={activeTab.label} content={previewContent} />
+          <ResourcePreviewPane title={activeTab.label} content={previewContent} onSave={handleSaveResource} />
         </div>
       </section>
     );
