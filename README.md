@@ -11,6 +11,20 @@
 
 ![IRE interface screenshot](public/ui.png)
 
+## Download
+
+Grab the latest build from the [**Releases**](https://github.com/giacomo-ciro/ire/releases/latest) page:
+
+| Platform | File |
+|----------|------|
+| macOS | `.dmg` |
+| Linux | `.AppImage` / `.deb` |
+| Windows | _coming soon_ |
+
+> The builds are not yet code-signed. On **macOS**, right-click the app → **Open** the first time (or System Settings → Privacy & Security → **Open Anyway**) to get past Gatekeeper.
+
+You'll also need **Claude-Code** installed and authenticated. To build from source instead, see [Quick Start](#quick-start).
+
 ## The Problem
 
 ML research workflows are fragmented. You lose context between sessions, AI suggestions repeat dead ends because nothing remembers what failed, long experiments finish unnoticed, and the core research question drifts out of sight.
