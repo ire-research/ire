@@ -1,6 +1,7 @@
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faMicrochip, faGamepad, faDatabase, iconClass } from "../icons";
-import { useSystemStatus } from "../hooks/useSystemStatus";
+import { useSystemInfo, useSystemMetrics } from "../hooks/useSystemStatus";
+import { useWorkspace } from "../state/workspace";
 
 function getUsageColor(usage: number): string {
   if (usage < 70) return "text-ok";
@@ -9,9 +10,12 @@ function getUsageColor(usage: number): string {
 }
 
 export function StatusBar() {
-  const status = useSystemStatus();
+  const info = useSystemInfo();
+  const metrics = useSystemMetrics();
+  const phase = useWorkspace((s) => s.phase);
+  const workspacePath = phase.kind === "ready" ? phase.workspace.path : "";
 
-  if (!status) {
+  if (!info || !metrics) {
     return <footer className="h-6 bg-surface-container-lowest border-t border-outline-variant shrink-0" />;
   }
 
@@ -20,33 +24,33 @@ export function StatusBar() {
       <div className="flex items-center gap-0 w-full overflow-x-auto no-scrollbar">
         {/* Git item */}
         <div className="flex items-center gap-1.5 px-2 border-r border-outline-variant shrink-0 h-6">
-          <span className="text-on-surface-variant/70">{status.workspace_path}</span>
+          <span className="text-on-surface-variant/70">{workspacePath}</span>
           <span className="text-outline-variant">·</span>
-          <span className="text-primary">{status.git_branch}</span>
-          {status.git_insertions > 0 && <span className="text-ok">+{status.git_insertions}</span>}
-          {status.git_deletions > 0 && <span className="text-error">-{status.git_deletions}</span>}
+          <span className="text-primary">{metrics.git_branch}</span>
+          {metrics.git_insertions > 0 && <span className="text-ok">+{metrics.git_insertions}</span>}
+          {metrics.git_deletions > 0 && <span className="text-error">-{metrics.git_deletions}</span>}
         </div>
 
         {/* CPU item */}
         <div className="flex items-center gap-1.5 px-2 border-r border-outline-variant shrink-0 h-6">
           <FontAwesomeIcon icon={faMicrochip} className={iconClass.xs} />
-          <span>{status.cpu_model}</span>
+          <span>{info.cpu_model}</span>
           <span className="text-outline-variant">·</span>
-          <span className={getUsageColor(status.cpu_usage_pct)}>{Math.round(status.cpu_usage_pct)}%</span>
+          <span className={getUsageColor(metrics.cpu_usage_pct)}>{Math.round(metrics.cpu_usage_pct)}%</span>
         </div>
 
         {/* GPU item */}
         <div className="flex items-center gap-1.5 px-2 border-r border-outline-variant shrink-0 h-6">
           <FontAwesomeIcon icon={faGamepad} className={iconClass.xs} />
-          {status.gpu_model !== null ? (
+          {info.gpu_model !== null ? (
             <>
-              <span>{status.gpu_model}</span>
+              <span>{info.gpu_model}</span>
               <span className="text-outline-variant">·</span>
-              <span className={getUsageColor(status.gpu_usage_pct ?? 0)}>
-                {status.gpu_usage_pct !== null ? `${Math.round(status.gpu_usage_pct)}%` : "n/a"}
+              <span className={getUsageColor(metrics.gpu_usage_pct ?? 0)}>
+                {metrics.gpu_usage_pct !== null ? `${Math.round(metrics.gpu_usage_pct)}%` : "n/a"}
               </span>
               <span className="text-outline-variant">·</span>
-              <span>{status.gpu_vram_gb !== null ? `${status.gpu_vram_gb} GB VRAM` : "n/a"}</span>
+              <span>{info.gpu_vram_gb !== null ? `${info.gpu_vram_gb} GB VRAM` : "n/a"}</span>
             </>
           ) : (
             <span>n/a</span>
@@ -56,23 +60,23 @@ export function StatusBar() {
         {/* RAM item */}
         <div className="flex items-center gap-1.5 px-2 border-r border-outline-variant shrink-0 h-6">
           <FontAwesomeIcon icon={faDatabase} className={iconClass.xs} />
-          <span>{status.ram_total_gb} GB RAM</span>
+          <span>{info.ram_total_gb} GB RAM</span>
         </div>
 
         {/* Hostname item */}
         <div className="flex items-center gap-1.5 px-2 border-r border-outline-variant shrink-0 h-6">
           <span>
-            {status.username}@{status.hostname}
+            {info.username}@{info.hostname}
           </span>
         </div>
 
         {/* Agent status */}
         <div className="flex items-center gap-1.5 px-2 shrink-0 h-6 ml-auto">
-          <span className={status.cc_connected ? "" : "text-error"}>claude-code</span>
-          <span className={`w-1.5 h-1.5 rounded-full ${status.cc_connected ? "bg-ok" : "bg-error"}`} />
+          <span className={info.cc_connected ? "" : "text-error"}>claude-code</span>
+          <span className={`w-1.5 h-1.5 rounded-full ${info.cc_connected ? "bg-ok" : "bg-error"}`} />
           <span className="text-outline-variant">·</span>
-          <span className={status.codex_connected ? "" : "text-on-surface-variant/40"}>codex</span>
-          <span className={`w-1.5 h-1.5 rounded-full ${status.codex_connected ? "bg-ok" : "bg-surface-container-high"}`} />
+          <span className={info.codex_connected ? "" : "text-on-surface-variant/40"}>codex</span>
+          <span className={`w-1.5 h-1.5 rounded-full ${info.codex_connected ? "bg-ok" : "bg-surface-container-high"}`} />
         </div>
       </div>
     </footer>

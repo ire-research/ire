@@ -8,7 +8,8 @@ import type {
   ExperimentStartingPayload,
   ExperimentStatusPayload,
   IdeaItem,
-  SystemStatus,
+  SystemInfo,
+  SystemMetrics,
   TabCreatedPayload,
   TabStreamPayload,
   WikiFile,
@@ -78,7 +79,8 @@ export const ipc = {
   savePulseField: (field: "research_question" | "this_week", content: string): Promise<void> =>
     invoke("save_pulse_field", { field, content }),
   saveIdeasJson: (ideas: IdeaItem[]): Promise<void> => invoke("save_ideas_json", { ideas }),
-  getSystemStatus: (): Promise<SystemStatus> => invoke("get_system_status"),
+  getSystemInfo: (): Promise<SystemInfo> => invoke("get_system_info"),
+  getSystemMetrics: (): Promise<SystemMetrics> => invoke("get_system_metrics"),
   chatSend: (tabId: string, message: string, options: ChatOptions): Promise<void> =>
     invoke("chat_send", { tabId, message, options }),
   chatCancel: (tabId: string): Promise<void> =>

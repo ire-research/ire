@@ -1,19 +1,39 @@
 import { useState, useEffect } from "react";
 import { ipc } from "../ipc";
-import type { SystemStatus } from "../types";
+import type { SystemInfo, SystemMetrics } from "../types";
 
-export function useSystemStatus(): SystemStatus | null {
-  const [status, setStatus] = useState<SystemStatus | null>(null);
+export function useSystemInfo(): SystemInfo | null {
+  const [info, setInfo] = useState<SystemInfo | null>(null);
 
   useEffect(() => {
-    const load = () => ipc.getSystemStatus().then(setStatus).catch((e) => {
-      console.error("Failed to load system status:", e);
-      setStatus(null);
-    });
+    ipc
+      .getSystemInfo()
+      .then(setInfo)
+      .catch((e) => {
+        console.error("Failed to load system info:", e);
+        setInfo(null);
+      });
+  }, []);
+
+  return info;
+}
+
+export function useSystemMetrics(): SystemMetrics | null {
+  const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
+
+  useEffect(() => {
+    const load = () =>
+      ipc
+        .getSystemMetrics()
+        .then(setMetrics)
+        .catch((e) => {
+          console.error("Failed to load system metrics:", e);
+          setMetrics(null);
+        });
     load();
     const id = setInterval(load, 5000);
     return () => clearInterval(id);
   }, []);
 
-  return status;
+  return metrics;
 }

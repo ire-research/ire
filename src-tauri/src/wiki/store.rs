@@ -54,8 +54,7 @@ impl WikiStore {
     pub fn delete(&self, rel_path: &str) -> Result<()> {
         let path = self.wiki_root.join(rel_path);
         if path.exists() {
-            fs::remove_file(&path)
-                .with_context(|| format!("remove {}", path.display()))?;
+            fs::remove_file(&path).with_context(|| format!("remove {}", path.display()))?;
         }
         let index_content = index::build(&self.wiki_root)?;
         atomic_write(&self.wiki_root.join("_index.md"), &index_content)?;

@@ -26,7 +26,7 @@ use commands::resources::{
     confirm_resource, discard_resource, read_resource_draft, save_resource_draft,
     submit_local_resource, submit_resource, submit_resources,
 };
-use commands::system::get_system_status;
+use commands::system::{get_system_info, get_system_metrics, CpuMonitor, SystemInfoCache};
 use commands::wiki::{
     read_wiki_file, save_ideas_json, save_notes, save_pulse_field, save_wiki_file,
 };
@@ -54,6 +54,8 @@ pub fn run() {
         .manage(ActiveWorkspace::default())
         .manage(SessionManager::default())
         .manage(McpState::default())
+        .manage(SystemInfoCache::default())
+        .manage(CpuMonitor::default())
         .invoke_handler(tauri::generate_handler![
             setup_status,
             open_workspace,
@@ -69,7 +71,8 @@ pub fn run() {
             save_notes,
             save_pulse_field,
             save_ideas_json,
-            get_system_status,
+            get_system_info,
+            get_system_metrics,
             chat_send,
             chat_cancel,
             chat_reset_session,

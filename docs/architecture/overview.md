@@ -179,7 +179,7 @@ ire/
 │   │   ├── chatOptions.ts              # provider + model + effort selection
 │   │   └── toasts.ts                   # error toast queue
 │   ├── hooks/
-│   │   └── useSystemStatus.ts          # polls get_system_status every 5 s
+│   │   └── useSystemStatus.ts          # useSystemInfo (once) + useSystemMetrics (polls get_system_metrics every 5 s)
 │   ├── components/
 │   │   ├── Layout.tsx                  # five-pane shell + data loading + debounced saves
 │   │   ├── StatusBar.tsx               # bottom status bar
@@ -222,7 +222,7 @@ ire/
 │       │   ├── chat.rs                 # chat_send, chat_cancel, chat_reset_session, generate_chat_title
 │       │   ├── history.rs              # chat_history_save/list/get/delete
 │       │   ├── resources.rs            # submit/discard/list_resources
-│       │   └── system.rs               # get_system_status
+│       │   └── system.rs               # get_system_info (cached once), get_system_metrics (polled)
 │       ├── workspace/
 │       │   ├── lock.rs                 # .lock PID file
 │       │   ├── init.rs                 # scaffold + git init
