@@ -29,7 +29,7 @@ The Tauri window opens in windowed mode at 1280 × 820.
 - The right rail is a vertical group `right` with panels `notes`, `ideas`, `resource-input`.
 - `FocusPane` and `NotesPane` use **inline editing**: clicking a field activates a textarea in place; blur/Enter saves.
 - `NotesPane` renders saved `notes.md` as markdown in display mode; in edit mode its textarea fills the remaining height of the resizable panel.
-- The top navbar shows the full workspace path. The bottom `StatusBar` polls `get_system_status` every 5 s and displays: workspace path + git branch + insertions/deletions, CPU, GPU, RAM, `username@hostname`, and `Claude Code` / `codex` availability chips.
+- The top navbar shows the full workspace path. The bottom `StatusBar` displays: workspace path (from workspace state) + git branch + insertions/deletions, CPU, GPU, RAM, `username@hostname`, and `Claude Code` / `codex` availability chips. Machine-level facts (CPU/RAM/GPU model, hostname, username, agent availability) come from `get_system_info`, fetched once and cached in-memory on the Rust side; volatile metrics (git branch/diff, CPU usage, GPU usage) come from `get_system_metrics`, polled every 5 s. Both run off the main thread via `spawn_blocking`.
 
 ---
 
@@ -165,7 +165,8 @@ Directory picking is **not** a Tauri command — the frontend calls Tauri's dial
 | `experiment_cancel` | `{ uuid }` | `{}` |
 | `experiment_delete` | `{ uuid }` | `{}` |
 | `experiment_rename` | `{ uuid, name }` | `{}` |
-| `get_system_status` | — | `SystemStatus` |
+| `get_system_info` | — | `SystemInfo` (cached after first call) |
+| `get_system_metrics` | — | `SystemMetrics` |
 | `read_workspace_state` | — | `PersistedWorkspace` |
 | `save_workspace_state` | `{ state: PersistedWorkspace }` | `{}` |
 | `chat_history_save` | `{ session_uuid?, tab_label, provider, model, started_at, messages_json }` | `{}` |

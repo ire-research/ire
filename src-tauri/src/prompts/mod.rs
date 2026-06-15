@@ -12,7 +12,9 @@ pub fn resource_summarizer() -> &'static str {
 
 /// Prompt for the lightweight model that names a new chat from its first message.
 pub fn chat_title(user_message: &str) -> String {
-    CHAT_TITLE.trim_end().replace("{user_message}", user_message)
+    CHAT_TITLE
+        .trim_end()
+        .replace("{user_message}", user_message)
 }
 
 pub struct WakeupArgs<'a> {
