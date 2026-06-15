@@ -148,6 +148,43 @@ const TOOLS = [
     },
   },
   {
+    name: 'ask_user_question',
+    description: 'Ask the user one or more multiple-choice questions and block until they respond in the IRE UI. Use this instead of guessing when you need the user to pick between options.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        questions: {
+          type: 'array',
+          description: 'Questions to ask, shown together as a form.',
+          items: {
+            type: 'object',
+            properties: {
+              header: { type: 'string', description: 'Short label for this question (e.g. "Approach")' },
+              question: { type: 'string', description: 'The question text' },
+              multiSelect: { type: 'boolean', description: 'Allow selecting multiple options (default false)' },
+              options: {
+                type: 'array',
+                description: 'Choices the user can pick from',
+                items: {
+                  type: 'object',
+                  properties: {
+                    label: { type: 'string', description: 'Option label' },
+                    description: { type: 'string', description: 'Optional explanation of this option' },
+                  },
+                  required: ['label'],
+                },
+                minItems: 1,
+              },
+            },
+            required: ['header', 'question', 'options'],
+          },
+          minItems: 1,
+        },
+      },
+      required: ['questions'],
+    },
+  },
+  {
     name: 'experiment.start',
     description: 'Spawn a detached experiment subprocess. Returns immediately with a uuid. IRE will wake you up via --resume when the process finishes.',
     inputSchema: {

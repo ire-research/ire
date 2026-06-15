@@ -297,6 +297,7 @@ fn clean_title(raw: &str) -> String {
 #[tauri::command]
 pub fn chat_cancel(session: State<'_, SessionManager>, tab_id: String) -> Result<(), String> {
     tracing::debug!(tab_id = %tab_id, "chat_cancel");
+    session.cancel_ask(&tab_id);
     if let Some(pid) = session.get_pid(&tab_id) {
         tracing::info!(tab_id = %tab_id, pid = pid, "cancelling claude subprocess");
         kill_process(pid);
@@ -310,8 +311,26 @@ pub fn chat_reset_session(
     tab_id: String,
 ) -> Result<(), String> {
     tracing::info!(tab_id = %tab_id, "chat_reset_session");
+    session.cancel_ask(&tab_id);
     session.reset(&tab_id);
     Ok(())
+}
+
+/// Deliver the user's answers for a pending `ask_user_question` MCP call. The
+/// blocked MCP handler (in mcp/rpc.rs) is woken up and returns the answers as
+/// the tool_result, letting the same subprocess continue.
+#[tauri::command]
+pub fn submit_ask_answer(
+    session: State<'_, SessionManager>,
+    tab_id: String,
+    answers: Vec<serde_json::Value>,
+) -> Result<(), String> {
+    tracing::debug!(tab_id = %tab_id, "submit_ask_answer");
+    if session.submit_ask(&tab_id, answers) {
+        Ok(())
+    } else {
+        Err("no pending question for this tab".to_string())
+    }
 }
 
 /// Compose the system prompt from wiki context files per §7.4.

@@ -136,6 +136,7 @@ fn dispatch(
         "memory.write_long_term" => memory_write_long_term(params, &wiki, app),
         "memory.write_short_term" => memory_write_short_term(params, &wiki, app),
         "pulse.update" => pulse_update(params, &wiki, app),
+        "ask_user_question" => ask_user_question(params, session_manager),
         "experiment.start" => experiment_start(params, workspace_root, session_manager, app),
         "experiment.status" => experiment_status(params, workspace_root),
         "experiment.list" => experiment_list(params, workspace_root),
@@ -284,6 +285,40 @@ fn pulse_update(
     );
 
     Ok(serde_json::json!({ "updated": "pulse.json" }))
+}
+
+/// Block until the user answers via `submit_ask_answer`. The CC subprocess
+/// that issued this MCP call is the same one waiting on our response, so the
+/// answer flows back as a normal tool_result — no session resume needed.
+fn ask_user_question(
+    params: &serde_json::Value,
+    session_manager: &SessionManager,
+) -> Result<serde_json::Value> {
+    let active = session_manager
+        .get_active_session()
+        .ok_or_else(|| anyhow!("no active agent session"))?;
+
+    let questions = params["questions"]
+        .as_array()
+        .cloned()
+        .ok_or_else(|| anyhow!("missing questions"))?;
+
+    let rx = session_manager.register_ask(&active.tab_id);
+    let answers = rx
+        .blocking_recv()
+        .map_err(|_| anyhow!("question was cancelled before the user answered"))?;
+
+    let out: Vec<serde_json::Value> = questions
+        .iter()
+        .enumerate()
+        .map(|(i, q)| {
+            serde_json::json!({
+                "header": q["header"],
+                "answer": answers.get(i).cloned().unwrap_or(serde_json::Value::Null),
+            })
+        })
+        .collect();
+    Ok(serde_json::json!({ "answers": out }))
 }
 
 // ── Experiment handlers ───────────────────────────────────────────────────────
