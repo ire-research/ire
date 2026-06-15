@@ -1,12 +1,16 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
+use tokio::sync::oneshot;
+
+#[derive(Default)]
 struct PerTabSession {
     session_id: Option<String>,
     session_provider: Option<String>,
     model: Option<String>,
     effort: Option<String>,
     running_pid: Option<u32>,
+    pending_ask: Option<oneshot::Sender<Vec<serde_json::Value>>>,
 }
 
 pub struct ActiveSession {
@@ -42,13 +46,7 @@ impl SessionManager {
         let mut map = self.0.lock().unwrap();
         let session = map
             .entry(tab_id.to_string())
-            .or_insert_with(|| PerTabSession {
-                session_id: None,
-                session_provider: None,
-                model: None,
-                effort: None,
-                running_pid: None,
-            });
+            .or_default();
         session.session_id = Some(sid);
         session.session_provider = Some(provider.to_string());
     }
@@ -63,13 +61,7 @@ impl SessionManager {
         let mut map = self.0.lock().unwrap();
         let session = map
             .entry(tab_id.to_string())
-            .or_insert_with(|| PerTabSession {
-                session_id: None,
-                session_provider: None,
-                model: None,
-                effort: None,
-                running_pid: None,
-            });
+            .or_default();
         if session.session_provider.as_deref() != Some(provider) {
             session.session_id = None;
             session.session_provider = Some(provider.to_string());
@@ -84,15 +76,7 @@ impl SessionManager {
 
     pub fn set_pid(&self, tab_id: &str, pid: u32) {
         let mut map = self.0.lock().unwrap();
-        map.entry(tab_id.to_string())
-            .or_insert_with(|| PerTabSession {
-                session_id: None,
-                session_provider: None,
-                model: None,
-                effort: None,
-                running_pid: None,
-            })
-            .running_pid = Some(pid);
+        map.entry(tab_id.to_string()).or_default().running_pid = Some(pid);
     }
 
     pub fn clear_pid(&self, tab_id: &str) {
@@ -128,6 +112,34 @@ impl SessionManager {
                     effort: s.effort.clone(),
                 })
             })
+    }
+
+    /// Register a pending `ask_user_question` for `tab_id` and return a
+    /// receiver that resolves once the user submits their answers via
+    /// `submit_ask`. Called from the MCP RPC handler, which blocks on it.
+    pub fn register_ask(&self, tab_id: &str) -> oneshot::Receiver<Vec<serde_json::Value>> {
+        let (tx, rx) = oneshot::channel();
+        let mut map = self.0.lock().unwrap();
+        map.entry(tab_id.to_string()).or_default().pending_ask = Some(tx);
+        rx
+    }
+
+    /// Deliver the user's answers to the pending `ask_user_question` for
+    /// `tab_id`, if any. Returns `false` if there was nothing pending.
+    pub fn submit_ask(&self, tab_id: &str, answers: Vec<serde_json::Value>) -> bool {
+        let mut map = self.0.lock().unwrap();
+        match map.get_mut(tab_id).and_then(|s| s.pending_ask.take()) {
+            Some(tx) => tx.send(answers).is_ok(),
+            None => false,
+        }
+    }
+
+    /// Drop a pending `ask_user_question` without answering it, so the
+    /// blocked MCP handler returns an error instead of hanging forever.
+    pub fn cancel_ask(&self, tab_id: &str) {
+        if let Some(s) = self.0.lock().unwrap().get_mut(tab_id) {
+            s.pending_ask = None;
+        }
     }
 
     /// Drop all per-tab state and return the PIDs that were running. Used on

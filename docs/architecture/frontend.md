@@ -52,7 +52,7 @@ Assistant output is stored and rendered as ordered content blocks. Text deltas, 
 - Thinking blocks render as collapsed-by-default accordions labelled `thinking...`.
 - Tool blocks render as compact canonical `ToolCard`s. React renders from `tool.kind`, `tool.title`, `tool.input`, `tool.output`, `tool.status`, and `tool.meta`; provider-specific raw names are not used for frontend branching. `experiment_start` tool calls render as `ExperimentCard` instead.
 - Experiment cards: collapsed by default; header contains status dot (blinking amber while running, solid green/red on completion), canonical tool title, status badge, optional PID/exit label, chevron, and **Cancel** button (visible only while running). Expanded body shows IN and last 10 live log lines.
-- **AskUserQuestion cards** render when CC calls the built-in `AskUserQuestion` tool. One question per step, fixed 380px stage, single-select auto-advances after 220 ms. The last question's button switches from `Next` to `Review`; the Review step lists every answer with an edit-pencil affordance. On submit, the card formats answers as a markdown bullet list prefixed with `Answers to your questions:` and sends via `chat_send`. After submit the card locks into an "Answered" summary view.
+- **AskUserQuestion cards** render when CC calls IRE's `ask_user_question` MCP tool (the built-in `AskUserQuestion` tool is disabled via `--disallowedTools`). One question per step, fixed 380px stage, single-select auto-advances after 220 ms. The last question's button switches from `Next` to `Review`; the Review step lists every answer with an edit-pencil affordance. On submit, the card calls `ipc.submitAskAnswer(tabId, answers)`, which delivers the answers to the blocked MCP call so the same subprocess turn continues. After submit the card locks into an "Answered" summary view.
 
 ### Composer footer
 
@@ -159,6 +159,7 @@ Directory picking is **not** a Tauri command — the frontend calls Tauri's dial
 | `chat_send` | `{ tab_id, message, options: { model, provider, effort } }` | `{}` (events follow) |
 | `chat_cancel` | `{ tab_id }` | `{}` |
 | `chat_reset_session` | `{ tab_id }` | `{}` |
+| `submit_ask_answer` | `{ tab_id, answers }` | `{}` |
 | `generate_chat_title` | `{ message, model, provider }` | `string` |
 | `experiment_list` | `{ limit? }` | `[ExperimentRow]` |
 | `experiment_logs` | `{ uuid, kb? }` | `{ stdout, stderr }` |

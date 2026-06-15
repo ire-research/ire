@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
+  AskAnswer,
   ChatOptions,
   ExperimentLogLinePayload,
   ExperimentRow,
@@ -87,6 +88,8 @@ export const ipc = {
     invoke("chat_cancel", { tabId }),
   chatResetSession: (tabId: string): Promise<void> =>
     invoke("chat_reset_session", { tabId }),
+  submitAskAnswer: (tabId: string, answers: AskAnswer[]): Promise<void> =>
+    invoke("submit_ask_answer", { tabId, answers }),
   submitResource: (url: string, options: ChatOptions): Promise<string> =>
     invoke("submit_resource", { url, options }),
   submitLocalResource: (path: string, options: ChatOptions): Promise<string> =>

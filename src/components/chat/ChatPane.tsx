@@ -314,14 +314,8 @@ export function ChatPane() {
     }
   };
 
-  const handleAskSubmit = (ask: AskBlockState, answers: AskAnswer[]) => {
-    const lines = ask.questions.map((q, i) => {
-      const a = answers[i];
-      const value = Array.isArray(a) ? (a.length ? a.join(", ") : "(no answer)") : (a || "(no answer)");
-      return `- **${q.header}**: ${value}`;
-    });
-    const text = `Answers to your questions:\n${lines.join("\n")}`;
-    void handleSend(text);
+  const handleAskSubmit = (_ask: AskBlockState, answers: AskAnswer[]) => {
+    void ipc.submitAskAnswer(activeTabId, answers).catch((e) => toastError("submit answer", e));
   };
 
   const handleNewTab = () => {
