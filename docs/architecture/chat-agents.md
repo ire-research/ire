@@ -167,6 +167,7 @@ IRE supports multiple independent chat tabs in the central pane.
 | `chat_send` | `{ mode, message }` | `{ tab_id, message }` |
 | `chat_cancel` | `{}` | `{ tab_id }` |
 | `chat_reset_session` | `{}` | `{ tab_id }` |
+| `submit_ask_answer` | — (new) | `{ tab_id, answers }` |
 | `chat-stream` event | `StreamEvent` | `{ tab_id, stream_id, event_id, event: StreamEvent }` |
 | `tab-created` event | — | `{ tab_id, label, kind, resource_id?, agent_options? }` |
 
@@ -196,6 +197,8 @@ Claude Code spawn non-negotiables:
 
 Always pair `--output-format stream-json` with `--verbose --include-partial-messages`.
 
+`--disallowedTools AskUserQuestion` is always passed: the built-in `AskUserQuestion` tool can't be answered in one-shot `-p` mode (no stdin to carry the `tool_result` back to a pending `tool_use`). IRE's `mcp__ire__ask_user_question` MCP tool replaces it, answered synchronously within the same subprocess via the MCP backend socket (see `ask_user_question` handshake above and [mcp.md](mcp.md)).
+
 Codex spawn uses `codex exec`, `--json`, `-m <model>`, `--dangerously-bypass-approvals-and-sandbox`, and `-c model_reasoning_effort=<low|medium|high|xhigh>`. Fresh turns pass `-C <workspace>`; resumed turns run with `Command::current_dir(workspace_root)` because `codex exec resume` does not accept `-C`. The prompt is passed after a `--` separator so messages beginning with `-` are not parsed as Codex CLI flags. `.ire/mcp.json` is translated into Codex config flags such as `-c mcp_servers.ire.command="node"`, `-c mcp_servers.ire.args=[...]`, and `-c mcp_servers.ire.env.IRE_WORKSPACE="..."`.
 
 ### JSONL parsers (`cc::stream`, `codex::stream`)
@@ -221,7 +224,7 @@ enum StreamEvent {
 
 Claude and Codex both normalize native tool records into `ToolCall` before emitting `ToolStart`. Claude maps built-ins such as `Bash`, `Read`, `Write`, `Edit`/`MultiEdit`, `Grep`/`Glob`/`LS`, and `WebFetch`; MCP names such as `ire__wiki.read` normalize through the `wiki.*`, `memory.*`, `pulse.update`, and `experiment.*` mapping.
 
-`AskUserQuestion` is emitted when CC's built-in `AskUserQuestion` tool fires. The parser intercepts that `tool_use` block, parses its `questions[]` payload, and tracks the tool id so the matching `tool_result` is suppressed. The frontend renders an `AskQuestionCard` and, on submit, sends the formatted answers as the next chat turn via `chat_send`.
+`AskUserQuestion` is emitted when CC calls IRE's `mcp__ire__ask_user_question` tool (the built-in `AskUserQuestion` tool is passed via `--disallowedTools`, see below). The parser intercepts that `tool_use` block, parses its `questions[]` payload, and tracks the tool id so the matching `tool_result` is suppressed. The frontend renders an `AskQuestionCard` and, on submit, calls `submit_ask_answer(tab_id, answers)` to deliver the answers back to the blocked MCP call in the same subprocess turn.
 
 ### Session management
 
@@ -234,9 +237,12 @@ struct PerTabSession {
     model: Option<String>,
     effort: Option<String>,
     running_pid: Option<u32>,
+    pending_ask: Option<oneshot::Sender<Vec<serde_json::Value>>>,
 }
 
 pub struct SessionManager(Arc<Mutex<HashMap<String, PerTabSession>>>);
 ```
 
 `session_id` is captured from the first `Init` event for a given `tab_id` and provider. Subsequent `chat_send` calls for that same tab and provider pass `--resume <session_id>` for Claude or `codex exec resume <thread_id>` for Codex. Switching providers in a tab starts a fresh provider session. `experiment.start` records the active `tab_id`, `session_id`, `session_provider`, `model`, and optional `effort` from the running turn before spawning the detached command; the monitor uses those values to fire the wake-up through the same provider and model settings.
+
+**`ask_user_question` handshake.** `pending_ask` carries the oneshot sender for a tab's in-flight `ask_user_question` MCP call. `register_ask(tab_id)` stores the sender and returns the receiver, which the MCP RPC handler (`mcp/rpc.rs`) blocks on with `blocking_recv()`. `submit_ask_answer(tab_id, answers)` (a Tauri command) calls `submit_ask`, which takes the sender and sends the answers, waking the blocked handler so it returns its `tool_result` within the same CC subprocess turn. `chat_cancel` and `chat_reset_session` both call `cancel_ask(tab_id)` to drop any pending sender, so a blocked handler returns an error instead of hanging if the user cancels or resets before answering.

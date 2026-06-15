@@ -40,6 +40,7 @@ The MCP server is a **thin RPC bridge** to the Rust backend over a Unix domain s
 | `experiment.status({ uuid })` | Return `{ status, exit_code?, started_at, ended_at? }`. |
 | `experiment.list({ limit? })` | Recent experiments. |
 | `experiment.tail_logs({ uuid, kb? })` | Tail of stdout/stderr. |
+| `ask_user_question({ questions })` | Block until the user answers via the IRE UI; returns `{ answers: [{ header, answer }] }`. Replaces CC's built-in `AskUserQuestion`, which is passed `--disallowedTools` (see [chat-agents.md](chat-agents.md#agent-subprocess-layer)). |
 
 All tools return JSON. Errors are surfaced to CC as MCP error responses, which CC interprets as tool failures and reports in chat.
 

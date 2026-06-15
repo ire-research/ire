@@ -15,7 +15,9 @@ mod wiki;
 mod workspace;
 
 use claude_code::session::SessionManager;
-use commands::chat::{chat_cancel, chat_reset_session, chat_send, generate_chat_title};
+use commands::chat::{
+    chat_cancel, chat_reset_session, chat_send, generate_chat_title, submit_ask_answer,
+};
 use commands::experiments::{
     experiment_cancel, experiment_delete, experiment_list, experiment_logs, experiment_rename,
 };
@@ -76,6 +78,7 @@ pub fn run() {
             chat_send,
             chat_cancel,
             chat_reset_session,
+            submit_ask_answer,
             generate_chat_title,
             submit_resource,
             submit_local_resource,

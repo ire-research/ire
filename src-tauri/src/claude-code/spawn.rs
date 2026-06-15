@@ -29,7 +29,13 @@ pub fn build_command(args: &SpawnArgs<'_>) -> Command {
         .arg("--verbose")
         .arg("--include-partial-messages")
         .arg("--permission-mode")
-        .arg("bypassPermissions");
+        .arg("bypassPermissions")
+        // The built-in AskUserQuestion tool can't be answered in one-shot `-p`
+        // mode (no stdin to carry the tool_result back to a pending tool_use).
+        // IRE exposes its own `ask_user_question` MCP tool, which is answered
+        // synchronously within the same subprocess via the MCP backend socket.
+        .arg("--disallowedTools")
+        .arg("AskUserQuestion");
 
     if let Some(p) = args.mcp_config {
         cmd.arg("--mcp-config").arg(p);
