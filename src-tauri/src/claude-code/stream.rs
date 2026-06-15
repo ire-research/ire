@@ -277,7 +277,9 @@ fn extract_tool_output(json: &Value) -> (Option<String>, Option<String>, ToolSta
 
 fn is_ask_user_question(name: &str) -> bool {
     let bare = name.rsplit("__").next().unwrap_or(name);
-    bare == "AskUserQuestion"
+    // "AskUserQuestion" is CC's disallowed built-in; "ask_user_question" is
+    // IRE's own MCP tool (mcp__ire__ask_user_question) that replaces it.
+    bare == "AskUserQuestion" || bare == "ask_user_question"
 }
 
 fn parse_ask_questions(input: &Value) -> Option<Vec<AskQuestion>> {
@@ -504,6 +506,36 @@ mod tests {
             }]
         );
         assert!(state.ask_tool_ids.contains(&"tool-ask-1".to_string()));
+    }
+
+    #[test]
+    fn emits_ask_user_question_for_ire_mcp_tool() {
+        let mut state = StreamState::default();
+        let events = collect_assistant_events(
+            json!([
+                {
+                    "type": "tool_use",
+                    "id": "tool-ask-2",
+                    "name": "mcp__ire__ask_user_question",
+                    "input": {
+                        "questions": [
+                            {
+                                "header": "Lib",
+                                "question": "Which date library?",
+                                "multiSelect": false,
+                                "options": [
+                                    { "label": "date-fns" }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]),
+            &mut state,
+        );
+
+        assert!(matches!(events.as_slice(), [StreamEvent::AskUserQuestion { tool_id, .. }] if tool_id == "tool-ask-2"));
+        assert!(state.ask_tool_ids.contains(&"tool-ask-2".to_string()));
     }
 
     #[test]
