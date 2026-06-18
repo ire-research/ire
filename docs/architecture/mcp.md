@@ -1,15 +1,15 @@
 # MCP Server
 
-A Node.js stdio MCP server bundled at `mcp/server.js`. Spawned by Tauri at workspace open and torn down on close. Claude Code connects to it via `--mcp-config .ire/mcp.json`; Codex receives the same config translated to `-c mcp_servers.*` flags.
+An out-of-process Rust stdio MCP server: the `ire` binary re-invoked as `ire --mcp-stdio` (see `src-tauri/src/mcp/stdio_server.rs`). Spawned by Claude Code / Codex per session — not by Tauri. Claude Code connects to it via `--mcp-config .ire/mcp.json`; Codex receives the same config translated to `-c mcp_servers.*` flags.
 
-`.ire/mcp.json` is generated at workspace open:
+`.ire/mcp.json` is generated at workspace open. The command is the running app's own executable path (`std::env::current_exe()`), so it needs no Node runtime and no build-time path:
 
 ```json
 {
   "mcpServers": {
     "ire": {
-      "command": "node",
-      "args": ["<bundled>/mcp/server.js"],
+      "command": "<abs-path-to-ire-binary>",
+      "args": ["--mcp-stdio"],
       "env": {
         "IRE_WORKSPACE": "<absolute-path>",
         "IRE_BACKEND_SOCKET": "<unix-socket-path-or-tcp>"
@@ -19,7 +19,7 @@ A Node.js stdio MCP server bundled at `mcp/server.js`. Spawned by Tauri at works
 }
 ```
 
-The MCP server is a **thin RPC bridge** to the Rust backend over a Unix domain socket (Windows: TCP on 127.0.0.1 with auth token). All real work — atomic writes, DB inserts, subprocess spawning — happens in Rust. The MCP server validates inputs against JSON schemas and forwards.
+The MCP server is a **thin RPC bridge** to the running app over a Unix domain socket (currently only implemented on Unix). It is a separate process from the app, so it reaches live app state — events, `register_ask`, the session manager — only through the socket. All real work — atomic writes, DB inserts, subprocess spawning — happens in the app process (`src-tauri/src/mcp/rpc.rs`). The stdio server only advertises the catalog and forwards each call.
 
 ---
 
@@ -53,7 +53,7 @@ The Node MCP server speaks line-delimited JSON over the socket:
 → { "id": 1, "method": "wiki.write", "params": { "path": "...", "content": "..." } }
 ← { "id": 1, "ok": true, "result": {} }
 ```
-This is a private internal protocol; not part of any spec. It exists only because the MCP SDK is Node-only and we want all I/O to happen in Rust for atomicity.
+This is a private internal protocol; not part of any spec. It exists because the MCP server runs as a separate process from the app and needs a channel into live app state; all I/O happens in the app process for atomicity.
 
 ---
 
@@ -61,4 +61,4 @@ This is a private internal protocol; not part of any spec. It exists only becaus
 
 When an agent connects to the MCP server, the MCP JSON-RPC handshake includes a `tools/list` call that returns each tool's name, description, and input schema directly to the agent. Tool descriptions are therefore always in sync with the server code and need no separate documentation.
 
-If you add or change an MCP tool, update its schema/description in `mcp/server.js` — that's the single source of truth agents see.
+If you add or change an MCP tool, update its schema/description in `tool_catalog()` in `src-tauri/src/mcp/stdio_server.rs` — that's the single source of truth agents see.

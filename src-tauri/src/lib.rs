@@ -39,6 +39,11 @@ use commands::workspace::{
 use mcp::McpState;
 use workspace::ActiveWorkspace;
 
+/// Run as the stdio MCP server (`ire --mcp-stdio`), spawned by Claude Code / Codex.
+pub fn run_mcp_stdio() {
+    mcp::stdio_server::run_stdio();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = tracing_subscriber::fmt()
