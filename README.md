@@ -61,9 +61,9 @@ Found a vulnerability? Please report it privately — see [SECURITY.md](SECURITY
 
 Thanks to these projects for inspiration and ideas:
 
-- [Tolaria](https://github.com/refactoringhq/tolaria) — Desktop research environment for AI-assisted coding
-- [Karpathy's LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) — The idea that inspired IRE's persistent wiki
-- [Conductor](https://conductor.build) — Multi-agent orchestration platform used to build IRE
+- [Tolaria](https://github.com/refactoringhq/tolaria)
+- [Karpathy's LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
+- [Conductor](https://conductor.build)
 
 ## License
 
