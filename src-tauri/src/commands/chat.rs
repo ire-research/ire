@@ -65,8 +65,13 @@ pub async fn chat_send(
         find_claude_binary().map_err(|e| e.to_string())?.path
     };
     let ire_dir = workspace_path.join(".ire");
-    let resume_id =
-        crate::db::models::get_chat_resume_id(&ire_dir, &session_uuid, &provider).unwrap_or(None);
+    let resume_id = match crate::db::models::get_chat_resume_id(&ire_dir, &session_uuid, &provider) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(tab_id = %tab_id, session_uuid = %session_uuid, provider = %provider, error = %e, "load resume id failed");
+            None
+        }
+    };
 
     let mcp_config = {
         let p = workspace_path.join(".ire/mcp.json");
