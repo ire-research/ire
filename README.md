@@ -26,11 +26,19 @@ ML research workflows are fragmented. You lose context between sessions, AI sugg
 
 ## Quick Start
 
-Download pre-built binaries for **macOS** and **Linux** from [GitHub Releases](https://github.com/giacomo-ciro/ire/releases).
+Grab the latest build from the [**Releases**](https://github.com/giacomo-ciro/ire/releases/latest) page:
 
-Requires [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex).
+| Platform | File |
+|----------|------|
+| macOS | `.dmg` |
+| Linux | `.AppImage` / `.deb` / `.rpm` |
+| Windows | _coming soon_ |
 
-To build from source (Node.js 18+, Rust 1.70+, Git):
+> The builds are not yet code-signed. On **macOS**, right-click the app → **Open** the first time (or System Settings → Privacy & Security → **Open Anyway**) to get past Gatekeeper.
+
+You'll also need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or [Codex](https://github.com/openai/codex) installed and authenticated.
+
+To build from source instead (Node.js 18+, Rust 1.70+, Git):
 
 ```bash
 git clone https://github.com/giacomo-ciro/ire.git
