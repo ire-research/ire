@@ -481,7 +481,11 @@ fn start_resource_summary(
             let pid = child.id();
             let stream_id = format!("{}:{}", tab_id_clone, uuid::Uuid::new_v4());
             let mut event_id = 0_u64;
-            session.set_agent_options(&tab_id_clone, &provider, &model, effort.as_deref());
+            // Resource tabs have no frontend history uuid; key their resume id by
+            // tab_id so a wake-up (if the agent launches an experiment) can resume.
+            let ire_dir_res = workspace_clone2.join(".ire");
+            let started_at_res = chrono::Local::now().to_rfc3339();
+            session.set_agent_options(&tab_id_clone, &tab_id_clone, &provider, &model, effort.as_deref());
             session.set_pid(&tab_id_clone, pid);
             tracing::info!(tab_id = %tab_id_clone, provider = %provider, pid = pid, "resource agent turn spawned");
 
@@ -492,10 +496,14 @@ fn start_resource_summary(
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
                     let mut emit_event = |event: StreamEvent| {
                         if let StreamEvent::Init { ref session_id } = event {
-                            session.set_session_id_for_provider(
+                            let _ = crate::db::models::upsert_chat_resume_id(
+                                &ire_dir_res,
                                 &tab_id_clone,
+                                "Ingest",
                                 &provider,
-                                session_id.clone(),
+                                &model,
+                                &started_at_res,
+                                session_id,
                             );
                         }
                         event_id += 1;

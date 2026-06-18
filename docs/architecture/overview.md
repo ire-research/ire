@@ -242,7 +242,7 @@ ire/
 │       │   ├── discovery.rs
 │       │   ├── spawn.rs
 │       │   ├── stream.rs               # NDJSON parser → StreamEvent
-│       │   └── session.rs              # SessionManager (per-tab session_id + PID)
+│       │   └── session.rs              # SessionManager (transient per-tab turn state + PID)
 │       ├── codex/
 │       │   ├── discovery.rs
 │       │   ├── spawn.rs

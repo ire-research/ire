@@ -29,7 +29,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
     persisted: Parameters<typeof hydrateFromPersisted>[0],
     availableProviders: Provider[],
   ) => {
-    hydrateFromPersisted(persisted);
+    void hydrateFromPersisted(persisted);
     setOptions(optionsForAvailableProviders(
       persisted.model,
       persisted.provider,

@@ -189,7 +189,7 @@ export function ChatPane() {
           if (msgId) finishMessage(tab_id, msgId);
           setStreaming(tab_id, false);
           assistantIdByTab.current.delete(tab_id);
-          void persistCompletedChat(tab_id);
+          void persistChat(tab_id);
           void ipc.saveWorkspaceState(useWorkspace.getState().toPersisted())
             .catch((e) => toastError("save state", e));
 
@@ -260,15 +260,30 @@ export function ChatPane() {
     };
   };
 
-  const persistCompletedChat = async (tabId: string) => {
+  // Persist a chat tab's messages to chat_sessions (the durable store). Streaming
+  // tabs are skipped unless `allowStreaming` is set — used by the debounced
+  // mid-stream save so an in-flight turn survives a crash.
+  const persistChat = async (tabId: string, allowStreaming = false) => {
     const tab = useChat.getState().tabs.find((t) => t.id === tabId);
-    if (!tab || tab.kind !== "chat" || tab.messages.length === 0 || tab.isStreaming) return;
+    if (!tab || tab.kind !== "chat" || tab.messages.length === 0) return;
+    if (tab.isStreaming && !allowStreaming) return;
     const { uuid, startedAt } = getSessionMeta(tabId);
     const savedOptions = tab.agentOptions ?? useChatOptions.getState();
     await ipc
       .chatHistorySave(tab.label, savedOptions.provider, savedOptions.model, startedAt, JSON.stringify(tab.messages), uuid)
       .catch((e) => toastError("save chat history", e));
   };
+
+  // Debounced mid-stream save: persist the streaming tab ~1s after the last
+  // message change so an in-flight turn survives a crash. The Done/Error/close
+  // paths still save synchronously.
+  useEffect(() => {
+    if (!activeTab || activeTab.kind !== "chat" || !activeTab.isStreaming) return;
+    const id = activeTab.id;
+    const handle = setTimeout(() => { void persistChat(id, true); }, 1000);
+    return () => clearTimeout(handle);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab?.id, activeTab?.isStreaming, activeTab?.messages]);
 
   const handleSend = async (text: string) => {
     if (!activeTab || activeTab.isStreaming) return;
@@ -283,7 +298,8 @@ export function ChatPane() {
     }
 
     // Ensure a stable session UUID exists for this tab before the first message.
-    getSessionMeta(activeTabId);
+    const { uuid: sessionUuid, startedAt } = getSessionMeta(activeTabId);
+    const tabLabel = activeTab.label;
     setTabAgentOptions(activeTabId, { model, provider, effort });
 
     addUserMessage(activeTabId, text);
@@ -302,13 +318,13 @@ export function ChatPane() {
       await ipc
         .saveWorkspaceState(useWorkspace.getState().toPersisted())
         .catch((e) => toastError("save chat options", e));
-      await ipc.chatSend(activeTabId, text, { model, provider, effort });
+      await ipc.chatSend(activeTabId, text, { model, provider, effort }, sessionUuid, tabLabel, startedAt);
     } catch (err) {
       const currentMsgId = assistantIdByTab.current.get(activeTabId);
       if (currentMsgId) setMessageError(activeTabId, currentMsgId, String(err));
       assistantIdByTab.current.delete(activeTabId);
       setStreaming(activeTabId, false);
-      void persistCompletedChat(activeTabId);
+      void persistChat(activeTabId);
       void ipc.saveWorkspaceState(useWorkspace.getState().toPersisted())
         .catch((e) => toastError("save state", e));
     }
@@ -332,7 +348,7 @@ export function ChatPane() {
     // Save history for any non-streaming chat tab with messages before removing it.
     const tab = tabs.find((t) => t.id === tabId);
     if (tab && tab.kind === "chat" && tab.messages.length > 0 && !tab.isStreaming) {
-      await persistCompletedChat(tabId);
+      await persistChat(tabId);
       sessionUuidByTab.current.delete(tabId);
       sessionStartedAtByTab.current.delete(tabId);
     }
@@ -371,9 +387,9 @@ export function ChatPane() {
       .catch((e) => { toastError("load history", e); return null; });
     if (!json) return;
     const messages: ChatMessage[] = JSON.parse(json);
-    // Remove from history — the session is now active again as a tab.
-    // It will be re-saved to history when the tab is closed.
-    ipc.chatHistoryDelete(sessionUuid).catch(() => {});
+    // chat_sessions is the live store: reopening just binds a tab to the existing
+    // row (keeping its resume id) — no delete. excludeSessionUuids hides it from
+    // the history panel while it is open.
     const agentOptions: ChatOptions | undefined = provider && model
       ? {
           provider: provider as Provider,
