@@ -20,7 +20,7 @@ pub fn start_experiment(
 ) -> Result<serde_json::Value> {
     let ActiveSession {
         tab_id,
-        session_id,
+        session_uuid,
         provider,
         model,
         effort,
@@ -59,7 +59,7 @@ pub fn start_experiment(
         &command,
         &working_dir.to_string_lossy(),
         &wake_prompt,
-        &session_id,
+        &session_uuid,
         &tab_id,
     )?;
 
@@ -86,7 +86,7 @@ pub fn start_experiment(
         uuid: uuid.clone(),
         workspace_root: workspace_root.to_path_buf(),
         tab_id,
-        session_id,
+        session_uuid,
         provider,
         model,
         effort,
@@ -113,7 +113,7 @@ struct MonitorArgs {
     uuid: String,
     workspace_root: PathBuf,
     tab_id: String,
-    session_id: String,
+    session_uuid: String,
     provider: String,
     model: String,
     effort: Option<String>,
@@ -147,7 +147,7 @@ fn monitor(mut child: Child, args: MonitorArgs) {
         uuid,
         workspace_root,
         tab_id,
-        session_id,
+        session_uuid,
         provider,
         model,
         effort,
@@ -221,7 +221,7 @@ fn monitor(mut child: Child, args: MonitorArgs) {
                     uuid: &uuid,
                     exit_code,
                     tab_id: &tab_id,
-                    session_id: &session_id,
+                    session_uuid: &session_uuid,
                     provider: &provider,
                     model: &model,
                     effort: effort.as_deref(),
