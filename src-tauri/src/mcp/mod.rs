@@ -1,5 +1,6 @@
 pub mod config;
 pub mod rpc;
+pub mod stdio_server;
 
 use std::path::PathBuf;
 use std::sync::Mutex;

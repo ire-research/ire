@@ -30,7 +30,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
-tokio = { version = "1", features = ["rt", "net", "io-util", "sync"] }
+tokio = { version = "1", features = ["rt", "net", "io-util", "io-std", "sync"] }
 reqwest = { version = "0.12", features = ["blocking", "rustls-tls"], default-features = false }
 sha2 = "0.10"
 scraper = "0.22"
@@ -42,6 +42,7 @@ sysinfo = "0.32"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 roxmltree = "0.20"
 toml = "0.8"
+rmcp = { version = "1.7.0", features = ["server", "transport-io"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
