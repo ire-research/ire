@@ -89,9 +89,13 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         },
     };
 
-    let resume_id = crate::db::models::get_chat_resume_id(&ire_dir, session_uuid, provider)
-        .ok()
-        .flatten();
+    let resume_id = match crate::db::models::get_chat_resume_id(&ire_dir, session_uuid, provider) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %e, session_uuid = %session_uuid, provider = %provider, "wake-up: load resume id failed");
+            None
+        }
+    };
     let mut cmd = match provider {
         "codex" => build_codex_command(&CodexSpawnArgs {
             bin: &bin,
