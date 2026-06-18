@@ -3,10 +3,13 @@ use std::sync::{Arc, Mutex};
 
 use tokio::sync::oneshot;
 
+/// Transient, in-process state for the current turn of a tab. The durable resume
+/// id lives in the `chat_sessions` table (keyed by `session_uuid`); this holds
+/// only what the experiment wake-up flow needs to re-attach to a live turn.
 #[derive(Default)]
 struct PerTabSession {
-    session_id: Option<String>,
-    session_provider: Option<String>,
+    session_uuid: Option<String>,
+    provider: Option<String>,
     model: Option<String>,
     effort: Option<String>,
     running_pid: Option<u32>,
@@ -15,7 +18,7 @@ struct PerTabSession {
 
 pub struct ActiveSession {
     pub tab_id: String,
-    pub session_id: String,
+    pub session_uuid: String,
     pub provider: String,
     pub model: String,
     pub effort: Option<String>,
@@ -32,40 +35,21 @@ impl Default for SessionManager {
 }
 
 impl SessionManager {
-    pub fn get_session_id_for_provider(&self, tab_id: &str, provider: &str) -> Option<String> {
-        let guard = self.0.lock().unwrap();
-        let session = guard.get(tab_id)?;
-        if session.session_provider.as_deref().unwrap_or("claude") == provider {
-            session.session_id.clone()
-        } else {
-            None
-        }
-    }
-
-    pub fn set_session_id_for_provider(&self, tab_id: &str, provider: &str, sid: String) {
-        let mut map = self.0.lock().unwrap();
-        let session = map
-            .entry(tab_id.to_string())
-            .or_default();
-        session.session_id = Some(sid);
-        session.session_provider = Some(provider.to_string());
-    }
-
+    /// Record the transient state for the turn starting on `tab_id`: the session
+    /// uuid it belongs to and the agent options in use. The wake-up flow reads
+    /// these back via `get_active_session`.
     pub fn set_agent_options(
         &self,
         tab_id: &str,
+        session_uuid: &str,
         provider: &str,
         model: &str,
         effort: Option<&str>,
     ) {
         let mut map = self.0.lock().unwrap();
-        let session = map
-            .entry(tab_id.to_string())
-            .or_default();
-        if session.session_provider.as_deref() != Some(provider) {
-            session.session_id = None;
-            session.session_provider = Some(provider.to_string());
-        }
+        let session = map.entry(tab_id.to_string()).or_default();
+        session.session_uuid = Some(session_uuid.to_string());
+        session.provider = Some(provider.to_string());
         session.model = Some(model.to_string());
         session.effort = effort.map(str::to_string);
     }
@@ -87,8 +71,8 @@ impl SessionManager {
 
     pub fn reset(&self, tab_id: &str) {
         if let Some(s) = self.0.lock().unwrap().get_mut(tab_id) {
-            s.session_id = None;
-            s.session_provider = None;
+            s.session_uuid = None;
+            s.provider = None;
             s.model = None;
             s.effort = None;
         }
@@ -101,12 +85,12 @@ impl SessionManager {
             .iter()
             .find(|(_, s)| s.running_pid.is_some())
             .and_then(|(tab_id, s)| {
-                let sid = s.session_id.as_ref()?;
-                let provider = s.session_provider.clone()?;
+                let session_uuid = s.session_uuid.clone()?;
+                let provider = s.provider.clone()?;
                 let model = s.model.clone()?;
                 Some(ActiveSession {
                     tab_id: tab_id.clone(),
-                    session_id: sid.clone(),
+                    session_uuid,
                     provider,
                     model,
                     effort: s.effort.clone(),

@@ -37,7 +37,7 @@ On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel. `
    - If present and PID alive: refuse, show "already open in another window".
    - If present and PID dead: reclaim (overwrite with current PID).
 4. Initialise SQLite (run pending migrations).
-5. Load `workspace.json` if present (restores pane layout, open tabs, and chat options).
+5. Load `workspace.json` if present (restores pane layout, open-tab UI metadata, and chat options). Tab messages are not stored here — they are hydrated from the `chat_sessions` table by each tab's `historySessionUuid`.
 6. Spawn the MCP server subprocess (long-lived, lives as long as the workspace is open).
 7. Emit `workspace-ready` event to the frontend.
 

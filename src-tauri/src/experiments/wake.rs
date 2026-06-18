@@ -19,7 +19,7 @@ pub struct FireWakeupArgs<'a> {
     pub uuid: &'a str,
     pub exit_code: i32,
     pub tab_id: &'a str,
-    pub session_id: &'a str,
+    pub session_uuid: &'a str,
     pub provider: &'a str,
     pub model: &'a str,
     pub effort: Option<&'a str>,
@@ -34,7 +34,7 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         uuid,
         exit_code,
         tab_id,
-        session_id,
+        session_uuid,
         provider,
         model,
         effort,
@@ -89,7 +89,13 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         },
     };
 
-    let resume_id = Some(session_id.to_string());
+    let resume_id = match crate::db::models::get_chat_resume_id(&ire_dir, session_uuid, provider) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(error = %e, session_uuid = %session_uuid, provider = %provider, "wake-up: load resume id failed");
+            None
+        }
+    };
     let mut cmd = match provider {
         "codex" => build_codex_command(&CodexSpawnArgs {
             bin: &bin,
@@ -136,7 +142,7 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
     let mut state = StreamState::default();
     let tab_id_owned = tab_id.to_string();
     let provider_owned = provider.to_string();
-    session_manager.set_agent_options(tab_id, provider, model, effort);
+    session_manager.set_agent_options(tab_id, session_uuid, provider, model, effort);
     let stream_id = format!("{tab_id}:{}", uuid::Uuid::new_v4());
     let mut event_id = 0_u64;
 
@@ -147,10 +153,11 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         };
         let mut emit_event = |event: StreamEvent| {
             if let StreamEvent::Init { ref session_id } = event {
-                session_manager.set_session_id_for_provider(
-                    &tab_id_owned,
+                let _ = crate::db::models::update_chat_resume_id(
+                    &ire_dir,
+                    session_uuid,
                     &provider_owned,
-                    session_id.clone(),
+                    session_id,
                 );
             }
             event_id += 1;

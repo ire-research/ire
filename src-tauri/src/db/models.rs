@@ -297,11 +297,83 @@ pub fn insert_chat_session(
     Ok(())
 }
 
+/// Persist the agent resume id for a session, keyed by `session_uuid`. Creates a
+/// minimal row if the session has not been saved yet (the first `Init` arrives
+/// before any messages are written). The resume column is chosen by provider.
+#[allow(clippy::too_many_arguments)]
+pub fn upsert_chat_resume_id(
+    ire_dir: &Path,
+    session_uuid: &str,
+    tab_label: &str,
+    provider: &str,
+    model: &str,
+    started_at: &str,
+    resume_id: &str,
+) -> Result<()> {
+    let col = resume_column(provider);
+    let conn = open(ire_dir)?;
+    let now = chrono::Local::now().to_rfc3339();
+    let sql = format!(
+        "INSERT INTO chat_sessions \
+         (session_uuid, tab_label, provider, model, started_at, ended_at, message_count, first_user_msg, messages_json, {col}) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, NULL, '[]', ?7) \
+         ON CONFLICT(session_uuid) DO UPDATE SET provider = excluded.provider, {col} = excluded.{col}"
+    );
+    conn.execute(
+        &sql,
+        params![session_uuid, tab_label, provider, model, started_at, now, resume_id],
+    )?;
+    Ok(())
+}
+
+/// Update the resume id for an existing session. Used by the experiment wake-up
+/// flow, where the row is guaranteed to exist (the conversation that launched the
+/// experiment was already saved).
+pub fn update_chat_resume_id(
+    ire_dir: &Path,
+    session_uuid: &str,
+    provider: &str,
+    resume_id: &str,
+) -> Result<()> {
+    let col = resume_column(provider);
+    let conn = open(ire_dir)?;
+    let sql = format!("UPDATE chat_sessions SET {col} = ?1 WHERE session_uuid = ?2");
+    conn.execute(&sql, params![resume_id, session_uuid])?;
+    Ok(())
+}
+
+/// Read the persisted resume id for a session and provider, if any.
+pub fn get_chat_resume_id(
+    ire_dir: &Path,
+    session_uuid: &str,
+    provider: &str,
+) -> Result<Option<String>> {
+    let col = resume_column(provider);
+    let conn = open(ire_dir)?;
+    let sql = format!("SELECT {col} FROM chat_sessions WHERE session_uuid = ?1");
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query(params![session_uuid])?;
+    let val: Option<Option<String>> = rows
+        .next()?
+        .map(|r| r.get::<_, Option<String>>(0))
+        .transpose()?;
+    Ok(val.flatten())
+}
+
+/// Resume-id column for a provider. Codex calls it a thread; Claude a session.
+fn resume_column(provider: &str) -> &'static str {
+    if provider == "codex" {
+        "codex_thread_id"
+    } else {
+        "claude_session_id"
+    }
+}
+
 pub fn list_chat_sessions(ire_dir: &Path, limit: usize) -> Result<Vec<ChatSessionRow>> {
     let conn = open(ire_dir)?;
     let mut stmt = conn.prepare(
         "SELECT session_uuid, tab_label, provider, model, started_at, ended_at, message_count, first_user_msg \
-         FROM chat_sessions ORDER BY ended_at DESC LIMIT ?1",
+         FROM chat_sessions WHERE message_count > 0 ORDER BY ended_at DESC LIMIT ?1",
     )?;
     let rows = stmt.query_map(params![limit as i64], |r| {
         Ok(ChatSessionRow {
