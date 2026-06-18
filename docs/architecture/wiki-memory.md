@@ -111,11 +111,27 @@ CREATE TABLE experiments (
   ended_at TEXT,
   pid INTEGER,
   wake_prompt TEXT,
-  session_id TEXT NOT NULL          -- CC session to wake up on completion
+  session_id TEXT NOT NULL          -- chat session_uuid whose resume id the wake-up uses
 );
 
 CREATE INDEX idx_experiments_status ON experiments(status);
 CREATE INDEX idx_experiments_started ON experiments(started_at DESC);
+
+CREATE TABLE chat_sessions (
+  session_uuid      TEXT PRIMARY KEY, -- frontend historySessionUuid
+  tab_label         TEXT NOT NULL,
+  provider          TEXT NOT NULL,
+  model             TEXT NOT NULL,
+  started_at        TEXT NOT NULL,
+  ended_at          TEXT NOT NULL,
+  message_count     INTEGER NOT NULL,
+  first_user_msg    TEXT,
+  messages_json     TEXT NOT NULL,    -- full transcript (durable store)
+  claude_session_id TEXT,             -- Claude --resume id (per provider)
+  codex_thread_id   TEXT              -- Codex resume thread id (per provider)
+);
+
+CREATE INDEX idx_chat_sessions_ended ON chat_sessions(ended_at DESC);
 
 CREATE TABLE resources (
   url_sha256 TEXT PRIMARY KEY,
@@ -134,4 +150,4 @@ CREATE TABLE resources (
 CREATE INDEX idx_resources_status ON resources(status);
 ```
 
-No table for chat messages — the CC session is the source of truth, and `--resume` rehydrates it.
+`chat_sessions` is the durable store for chat transcripts and per-provider resume ids. On reopen, tab messages are hydrated from it and the next turn resumes the underlying agent session via the stored resume id.

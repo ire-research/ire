@@ -6,6 +6,8 @@ import type {
   UserConfig,
   WorkspaceState as WorkspaceInfo,
 } from "../ipc";
+import { ipc } from "../ipc";
+import type { ChatMessage, Tab } from "../types";
 import { useChatOptions } from "./chatOptions";
 import { useChat } from "./chat";
 
@@ -23,7 +25,7 @@ interface WorkspaceStore {
   setPanelCollapsed: (panelId: "left" | "right", collapsed: boolean) => void;
   setRecentWorkspaces: (paths: string[]) => void;
   pushRecentWorkspace: (path: string) => void;
-  hydrateFromPersisted: (state: PersistedWorkspace) => void;
+  hydrateFromPersisted: (state: PersistedWorkspace) => Promise<void>;
   hydrateFromUserConfig: (config: UserConfig) => void;
   toPersisted: () => PersistedWorkspace;
 }
@@ -53,7 +55,7 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => ({
       const filtered = s.recentWorkspaces.filter((p) => p !== path);
       return { recentWorkspaces: [path, ...filtered].slice(0, 10) };
     }),
-  hydrateFromPersisted: (state) => {
+  hydrateFromPersisted: async (state) => {
     const panelLayout = state.panel_layout ?? {};
     const bodyLayout = panelLayout.groups?.body;
     set({
@@ -66,11 +68,20 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => ({
       },
     });
     if (Array.isArray(state.tabs)) {
-      useChat.getState().restorePersistedTabs(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        state.tabs as any[],
-        state.active_tab_id ?? undefined,
+      // workspace.json no longer stores messages — hydrate them from chat_sessions
+      // (the durable store) by historySessionUuid.
+      const tabs = state.tabs as Tab[];
+      const hydrated = await Promise.all(
+        tabs.map(async (t) => {
+          if (t.kind === "chat" && t.historySessionUuid) {
+            const json = await ipc.chatHistoryGet(t.historySessionUuid).catch(() => null);
+            const messages: ChatMessage[] = json ? JSON.parse(json) : [];
+            return { ...t, messages };
+          }
+          return { ...t, messages: t.messages ?? [] };
+        }),
       );
+      useChat.getState().restorePersistedTabs(hydrated, state.active_tab_id ?? undefined);
     }
   },
   hydrateFromUserConfig: (config) => {
@@ -82,12 +93,11 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => ({
     const { panelLayout } = get();
     const { model, provider, effort } = useChatOptions.getState();
     const { tabs, activeTabId } = useChat.getState();
-    const tabsToSave = tabs.map((tab) => ({
-      ...tab,
+    // Messages live in chat_sessions (the durable store), not here — persist only
+    // small UI metadata so there is a single source of truth for chat content.
+    const tabsToSave = tabs.map(({ messages: _messages, ...rest }) => ({
+      ...rest,
       isStreaming: false,
-      messages: tab.messages.map((message) =>
-        message.role === "assistant" ? { ...message, isStreaming: false } : message
-      ),
     }));
     return {
       version: 1,

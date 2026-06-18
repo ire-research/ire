@@ -111,7 +111,6 @@ Typography uses bundled `geist` package font files (`Geist`, `Geist Mono`) refer
     {
       "id": "main",
       "label": "Chat",
-      "messages": [],
       "isStreaming": false,
       "isPinned": false,
       "kind": "chat",
@@ -125,9 +124,9 @@ Typography uses bundled `geist` package font files (`Geist`, `Geist Mono`) refer
 
 Each entry under `panel_layout.groups.<group-id>` is the `Layout` map (`{ panel-id: percentage }`) that `react-resizable-panels` accepts as `defaultLayout`. `panel_layout.collapsed.left/right` stores the sidebar collapsed state.
 
-Persisted via `save_workspace_state` (debounced 1 s on layout, collapsed-state, model, provider, effort, tab, message, or active-tab change; also saved immediately before/after chat sends and before workspace close). Hydrated by `read_workspace_state` immediately after `open_workspace`/`init_workspace`, before the workspace transitions to `phase = "ready"`.
+Persisted via `save_workspace_state` (debounced 1 s on layout, collapsed-state, model, provider, effort, tab, or active-tab change; also saved immediately before/after chat sends and before workspace close). Hydrated by `read_workspace_state` immediately after `open_workspace`/`init_workspace`, before the workspace transitions to `phase = "ready"`.
 
-Per-tab agent `session_id`s are intentionally **not** persisted in MVP — sessions live in the in-memory `SessionManager` and are reset on app close.
+Tab `messages` are **not** stored in `workspace.json` — they live in the `chat_sessions` table (the durable store) and are hydrated on open via `chat_history_get(historySessionUuid)`. Per-tab agent resume ids are likewise persisted in `chat_sessions` (`claude_session_id` / `codex_thread_id`), so reopening a workspace resumes the underlying agent session; `SessionManager` keeps only transient per-turn state.
 
 ---
 
@@ -156,7 +155,7 @@ Directory picking is **not** a Tauri command — the frontend calls Tauri's dial
 | `discard_resource` | `{ resource_id }` | `{}` |
 | `list_resources` | — | `ResourceItem[]` (only `summarized` entries) |
 | `get_resource_confirm_prompt` | — | `string` |
-| `chat_send` | `{ tab_id, message, options: { model, provider, effort } }` | `{}` (events follow) |
+| `chat_send` | `{ tab_id, message, options: { model, provider, effort }, session_uuid, tab_label, started_at }` | `{}` (events follow) |
 | `chat_cancel` | `{ tab_id }` | `{}` |
 | `chat_reset_session` | `{ tab_id }` | `{}` |
 | `submit_ask_answer` | `{ tab_id, answers }` | `{}` |

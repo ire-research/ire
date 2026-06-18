@@ -32,6 +32,7 @@ fn default_provider() -> String {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn chat_send(
     app_handle: tauri::AppHandle,
     active: State<'_, ActiveWorkspace>,
@@ -39,6 +40,9 @@ pub async fn chat_send(
     tab_id: String,
     message: String,
     options: ChatOptions,
+    session_uuid: String,
+    tab_label: String,
+    started_at: String,
 ) -> Result<(), String> {
     let workspace_path = {
         let guard = active.0.lock().map_err(|e| e.to_string())?;
@@ -60,7 +64,14 @@ pub async fn chat_send(
     } else {
         find_claude_binary().map_err(|e| e.to_string())?.path
     };
-    let resume_id = session.get_session_id_for_provider(&tab_id, &provider);
+    let ire_dir = workspace_path.join(".ire");
+    let resume_id = match crate::db::models::get_chat_resume_id(&ire_dir, &session_uuid, &provider) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(tab_id = %tab_id, session_uuid = %session_uuid, provider = %provider, error = %e, "load resume id failed");
+            None
+        }
+    };
 
     let mcp_config = {
         let p = workspace_path.join(".ire/mcp.json");
@@ -76,6 +87,11 @@ pub async fn chat_send(
     // Clone the SessionManager handle (cheap Arc clone) so it can move into spawn_blocking.
     let session_clone = (*session).clone();
     let tab_id_outer = tab_id.clone();
+    // Owned copies for the blocking closure that persists the resume id on Init.
+    let ire_dir_cl = ire_dir.clone();
+    let session_uuid_cl = session_uuid.clone();
+    let tab_label_cl = tab_label.clone();
+    let started_at_cl = started_at.clone();
 
     tracing::info!(
         tab_id = %tab_id,
@@ -89,6 +105,7 @@ pub async fn chat_send(
     let result = tokio::task::spawn_blocking(move || {
         session_clone.set_agent_options(
             &tab_id,
+            &session_uuid_cl,
             &provider,
             &options.model,
             options.effort.as_deref(),
@@ -132,11 +149,17 @@ pub async fn chat_send(
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
                 let mut emit_event = |event: StreamEvent| {
                     if let StreamEvent::Init { ref session_id } = event {
-                        session_clone.set_session_id_for_provider(
-                            &tab_id,
+                        if let Err(e) = crate::db::models::upsert_chat_resume_id(
+                            &ire_dir_cl,
+                            &session_uuid_cl,
+                            &tab_label_cl,
                             &provider,
-                            session_id.clone(),
-                        );
+                            &options.model,
+                            &started_at_cl,
+                            session_id,
+                        ) {
+                            tracing::warn!(tab_id = %tab_id, error = %e, "persist resume id failed");
+                        }
                         tracing::debug!(tab_id = %tab_id, session_id = %session_id, "stream session init");
                     }
                     if let StreamEvent::Error { message: ref errmsg } = event {

@@ -137,7 +137,7 @@ T6  The agent reads result files, calls wiki.write for any new findings,
 ### Cancellation
 
 - **User cancels agent turn**: kill the running subprocess; emit `chat-cancelled`. Session id is retained.
-- **User resets session**: `chat_reset_session(tab_id)` clears the stored `session_id` for that tab. The frontend simultaneously clears the tab's message list. The next send starts a fresh CC session with no `--resume` flag.
+- **User resets session**: starting a fresh session means a new chat tab, which gets a new `historySessionUuid` (hence a new `chat_sessions` row with no resume id). `chat_reset_session(tab_id)` clears the tab's transient `SessionManager` state; it is not currently wired to a frontend control.
 - **User cancels experiment**: SIGTERM the process group; on next monitor tick, mark `status=cancelled` and fire the wake-up with that fact.
 
 ### Multi-tab chat
@@ -154,17 +154,17 @@ IRE supports multiple independent chat tabs in the central pane.
 | Preview | User clicks a resource in the Resources list | Yes | Renders the resource's wiki file with edit/preview toggle + Submit. |
 | Experiment | User clicks an experiment in ExperimentsSection | Yes | Full view: metadata grid + live log tail. |
 
-**Session isolation.** Each tab carries its own `tab_id`. The backend `SessionManager` maintains a `HashMap<tab_id, PerTabSession>` where `PerTabSession` holds `{ session_id: Option<String>, session_provider: Option<String>, running_pid: Option<u32> }`.
+**Session isolation.** Each tab carries its own `tab_id`. The backend `SessionManager` maintains a `HashMap<tab_id, PerTabSession>` of transient per-turn state (`session_uuid`, `provider`, `model`, `effort`, `running_pid`, `pending_ask`); the durable resume id lives in `chat_sessions`.
 
 **Event routing.** `chat-stream` events are wrapped as `{ tab_id, stream_id, event_id, event }` before being emitted. The frontend maintains a single global listener, routes each event to the correct tab's message list using `tab_id`, and ignores any already-seen `{tab_id, stream_id, event_id}` delivery.
 
-**History persistence.** Chat tabs carry optional `historySessionUuid`, `historyStartedAt`, and `agentOptions` fields. The frontend creates the history UUID/start time on first send, persists those fields in `.ire/workspace.json`, and passes the UUID plus tab agent metadata to `chat_history_save` so every completed turn upserts the same `chat_sessions` row. The History menu filters out any row whose UUID is currently open as a chat tab.
+**History persistence.** `chat_sessions` is the single durable store for chat content **and** resume ids. Chat tabs carry optional `historySessionUuid`, `historyStartedAt`, and `agentOptions`; `.ire/workspace.json` persists only this small UI metadata (tab id/label/kind/pinned/options + `panel_layout` and `active_tab_id`) — **not** the `messages` array. The frontend creates the history UUID/start time on first send, passes them to `chat_send` (so the backend can upsert the resume id) and to `chat_history_save`. Messages are written to `chat_sessions` on `Done`/`Error`/close and on a ~1 s debounce while streaming (crash safety). On workspace open, each tab's messages are hydrated from `chat_sessions` by `historySessionUuid`. The History menu lists rows with `message_count > 0`, filtering out any UUID currently open as a chat tab; restoring a row binds a new tab to it (no delete), preserving its resume id.
 
 **IPC changes from single-session baseline**
 
 | Command / Event | Old signature | New signature |
 |---|---|---|
-| `chat_send` | `{ mode, message }` | `{ tab_id, message }` |
+| `chat_send` | `{ mode, message }` | `{ tab_id, message, options, session_uuid, tab_label, started_at }` |
 | `chat_cancel` | `{}` | `{ tab_id }` |
 | `chat_reset_session` | `{}` | `{ tab_id }` |
 | `submit_ask_answer` | — (new) | `{ tab_id, answers }` |
@@ -228,12 +228,12 @@ Claude and Codex both normalize native tool records into `ToolCall` before emitt
 
 ### Session management
 
-Each chat tab has its own provider-scoped `session_id`, stored inside `SessionManager`:
+The durable resume id lives in the `chat_sessions` table (see **History persistence** above), keyed by `session_uuid` (the tab's `historySessionUuid`). `SessionManager` holds only transient in-process state for the current turn:
 
 ```rust
 struct PerTabSession {
-    session_id: Option<String>,
-    session_provider: Option<String>,
+    session_uuid: Option<String>,
+    provider: Option<String>,
     model: Option<String>,
     effort: Option<String>,
     running_pid: Option<u32>,
@@ -243,6 +243,8 @@ struct PerTabSession {
 pub struct SessionManager(Arc<Mutex<HashMap<String, PerTabSession>>>);
 ```
 
-`session_id` is captured from the first `Init` event for a given `tab_id` and provider. Subsequent `chat_send` calls for that same tab and provider pass `--resume <session_id>` for Claude or `codex exec resume <thread_id>` for Codex. Switching providers in a tab starts a fresh provider session. `experiment.start` records the active `tab_id`, `session_id`, `session_provider`, `model`, and optional `effort` from the running turn before spawning the detached command; the monitor uses those values to fire the wake-up through the same provider and model settings.
+`chat_send` receives `session_uuid`, `tab_label`, and `started_at` from the frontend. It reads the resume id from `chat_sessions` via `get_chat_resume_id(session_uuid, provider)` and passes `--resume <session_id>` for Claude or `codex exec resume <thread_id>` for Codex. On the first `Init` event of a turn it calls `upsert_chat_resume_id(...)`, persisting the resume id into the provider-specific column (`claude_session_id` / `codex_thread_id`) and creating the row if it does not exist yet. Because both columns persist, closing and reopening a workspace resumes the existing session, and toggling provider keeps each thread resumable.
+
+`experiment.start` records the running turn's `tab_id`, `session_uuid`, `provider`, `model`, and optional `effort` (via `get_active_session`) before spawning the detached command. The wake-up (`fire_wakeup`) resolves the resume id from `chat_sessions` by `session_uuid` + provider, and persists any new resume id the wake turn emits via `update_chat_resume_id`. Resource-ingestion turns have no frontend history uuid, so they key their resume row by `tab_id`.
 
 **`ask_user_question` handshake.** `pending_ask` carries the oneshot sender for a tab's in-flight `ask_user_question` MCP call. `register_ask(tab_id)` stores the sender and returns the receiver, which the MCP RPC handler (`mcp/rpc.rs`) blocks on with `blocking_recv()`. `submit_ask_answer(tab_id, answers)` (a Tauri command) calls `submit_ask`, which takes the sender and sends the answers, waking the blocked handler so it returns its `tool_result` within the same CC subprocess turn. `chat_cancel` and `chat_reset_session` both call `cancel_ask(tab_id)` to drop any pending sender, so a blocked handler returns an error instead of hanging if the user cancels or resets before answering.
