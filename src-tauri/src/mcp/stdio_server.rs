@@ -1,4 +1,4 @@
-//! In-process Rust MCP server exposed via `ire --mcp-stdio`.
+//! Rust stdio MCP server exposed via `ire --mcp-stdio`.
 //!
 //! Replaces the former Node `mcp/server.js`. It is a thin stdio MCP front end
 //! that forwards every tool call to the running app over `IRE_BACKEND_SOCKET`

@@ -1,6 +1,6 @@
 # MCP Server
 
-An in-process Rust stdio MCP server: the `ire` binary re-invoked as `ire --mcp-stdio` (see `src-tauri/src/mcp/stdio_server.rs`). Spawned by Claude Code / Codex per session — not by Tauri. Claude Code connects to it via `--mcp-config .ire/mcp.json`; Codex receives the same config translated to `-c mcp_servers.*` flags.
+An out-of-process Rust stdio MCP server: the `ire` binary re-invoked as `ire --mcp-stdio` (see `src-tauri/src/mcp/stdio_server.rs`). Spawned by Claude Code / Codex per session — not by Tauri. Claude Code connects to it via `--mcp-config .ire/mcp.json`; Codex receives the same config translated to `-c mcp_servers.*` flags.
 
 `.ire/mcp.json` is generated at workspace open. The command is the running app's own executable path (`std::env::current_exe()`), so it needs no Node runtime and no build-time path:
 
@@ -19,7 +19,7 @@ An in-process Rust stdio MCP server: the `ire` binary re-invoked as `ire --mcp-s
 }
 ```
 
-The MCP server is a **thin RPC bridge** to the running app over a Unix domain socket (Windows: TCP on 127.0.0.1 with auth token). It is a separate process from the app, so it reaches live app state — events, `register_ask`, the session manager — only through the socket. All real work — atomic writes, DB inserts, subprocess spawning — happens in the app process (`src-tauri/src/mcp/rpc.rs`). The stdio server only advertises the catalog and forwards each call.
+The MCP server is a **thin RPC bridge** to the running app over a Unix domain socket (currently only implemented on Unix). It is a separate process from the app, so it reaches live app state — events, `register_ask`, the session manager — only through the socket. All real work — atomic writes, DB inserts, subprocess spawning — happens in the app process (`src-tauri/src/mcp/rpc.rs`). The stdio server only advertises the catalog and forwards each call.
 
 ---
 
