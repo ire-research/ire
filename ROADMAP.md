@@ -9,6 +9,9 @@
   - Complete toolcards
   - Open Code support
   - ...
+- Binaries
+  - Windows release pipeline
+  - Signatures for MacOS and Windows
 
 ## Agentic Workflows
 
