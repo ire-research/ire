@@ -1,11 +1,15 @@
-# Integrated Research Environment (IRE)
-<p align="center">
+<p align="left">
+  <a href="https://github.com/giacomo-ciro/ire/releases/latest"><img src="https://img.shields.io/github/v/release/giacomo-ciro/ire" alt="GitHub release" /></a>
   <a href="https://ire-research.com"><img src="https://img.shields.io/badge/Website-ire--research.com-000000" alt="Website" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
-  <a href="https://tauri.app"><img src="https://img.shields.io/badge/Built_with-Tauri-24C8DB" alt="Tauri" /></a>
-  <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white" alt="TypeScript" /></a>
-  <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/Rust-CE422B?logo=rust&logoColor=white" alt="Rust" /></a>
+  <a href="https://github.com/giacomo-ciro/ire/releases/latest"><img src="https://img.shields.io/badge/MacOS_|_Linux-supported-blue" alt="MacOS | Linux supported" /></a>
 </p>
+
+<p align="center">
+  <img src="public/logo.svg" alt="IRE Logo" width="120" />
+</p>
+
+# Integrated Research Environment (IRE)
 
 > A local-first desktop environment for researchers. Keep your code, literature, experiments, and AI collaboration seamlessly connected.
 

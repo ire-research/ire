@@ -47,8 +47,12 @@
     <filter id="markShadow" x="-30%" y="-30%" width="160%" height="160%">
       <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#000000" flood-opacity="0.45"/>
     </filter>
+    <clipPath id="roundedBorder">
+      <rect width="1024" height="1024" rx="220" ry="220"/>
+    </clipPath>
   </defs>
 
+  <g clip-path="url(#roundedBorder)">
   <!-- Background -->
   <rect width="1024" height="1024" fill="url(#bg)"/>
   <!-- Grid -->
@@ -67,5 +71,6 @@
       <line stroke="#c6c6c9" x1="215" y1="80" x2="295" y2="80"/>
       <line stroke="#c6c6c9" x1="215" y1="140" x2="295" y2="140"/>
     </g>
+  </g>
   </g>
 </svg>
