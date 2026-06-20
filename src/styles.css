@@ -23,6 +23,16 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
+.hero-grid {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px);
+  background-size: 10vmin 10vmin;
+  background-position: calc(10vmin / 3) calc(10vmin / 3);
+  -webkit-mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, #fff 0%, #fff 30%, transparent 75%);
+  mask-image: radial-gradient(ellipse 60% 60% at 50% 50%, #fff 0%, #fff 30%, transparent 75%);
+}
+
 @font-face {
   font-family: "Geist";
   src: url("../node_modules/geist/dist/fonts/geist-sans/Geist-Regular.woff2") format("woff2");

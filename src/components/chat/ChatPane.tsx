@@ -447,14 +447,33 @@ export function ChatPane() {
     return (
       <section className="flex flex-col h-full min-h-0 overflow-hidden bg-background">
         {tabBar}
-        <div className="flex-1 flex flex-col items-center justify-center text-center px-10">
-          <div className="flex flex-col items-center">
-            <h1
-              className="font-syne font-bold tracking-[0.18em] leading-none pl-[0.18em] select-none"
-              style={{ fontSize: 96, color: '#050507' }}
+        <div className="relative flex-1 flex flex-col items-center justify-center text-center px-10">
+          <div className="hero-grid absolute inset-0 pointer-events-none" />
+          <div className="relative z-[1] flex flex-col items-center">
+            <svg
+              viewBox="0 310 1024 480"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className="select-none"
+              style={{ width: 'clamp(200px, 27vmin, 480px)' }}
             >
-              IRE
-            </h1>
+              <defs>
+                <linearGradient id="ireMarkGrad" gradientUnits="userSpaceOnUse" x1="20" y1="10" x2="320" y2="150">
+                  <stop offset="0%" stopColor="#3d3d48" />
+                  <stop offset="60%" stopColor="#252530" />
+                  <stop offset="100%" stopColor="#323240" />
+                </linearGradient>
+              </defs>
+              <g transform="translate(153.6 340.8) scale(2.1397)">
+                <g strokeWidth="14" strokeLinecap="square" strokeLinejoin="miter" fill="none">
+                  <line stroke="url(#ireMarkGrad)" x1="50" y1="14" x2="50" y2="146" />
+                  <path stroke="url(#ireMarkGrad)" d="M 110,14 L 140,14 C 175,14 175,80 140,80 L 110,80 L 168,146" />
+                  <line stroke="#2a2a36" x1="215" y1="20" x2="295" y2="20" />
+                  <line stroke="#2a2a36" x1="215" y1="80" x2="295" y2="80" />
+                  <line stroke="#2a2a36" x1="215" y1="140" x2="295" y2="140" />
+                </g>
+              </g>
+            </svg>
             <p className="font-mono text-[11px] tracking-[0.09em] text-outline mt-2.5">
               Integrated Research Environment
             </p>
@@ -469,7 +488,7 @@ export function ChatPane() {
           </div>
           <button
             id="ire-new-chat-btn"
-            className="inline-flex items-center gap-2 bg-on-surface text-background text-[12px] px-4 py-1.5 rounded-lg hover:opacity-85 transition-opacity mt-10"
+            className="relative z-[1] inline-flex items-center gap-2 bg-on-surface text-background text-[12px] px-4 py-1.5 rounded-lg hover:opacity-85 transition-opacity mt-10"
             onClick={handleNewTab}
           >
             <FontAwesomeIcon icon={faMessage} className={iconClass.md} />
