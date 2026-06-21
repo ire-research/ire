@@ -23,7 +23,7 @@ export default function App() {
 
   // Reset slice on workspace close. The initial state for a newly-opened
   // workspace arrives via the `workspace-event` channel (Rust emits a `hydrate`
-  // burst at the end of `open_workspace` / `init_workspace`), so there is no
+  // burst at the end of `open_workspace`), so there is no
   // explicit hydrate IPC call from the frontend.
   useEffect(() => {
     if (phase.kind !== "ready") {

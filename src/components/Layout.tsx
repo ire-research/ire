@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { Group, Panel, Separator } from "react-resizable-panels";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { ipc } from "../ipc";
@@ -34,6 +35,11 @@ export function Layout() {
 
   const [helpOpen, setHelpOpen] = useState(false);
   const helpRef = useRef<HTMLDivElement>(null);
+  const [appVersion, setAppVersion] = useState("");
+
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -235,8 +241,8 @@ export function Layout() {
                   Report a bug
                 </a>
                 <div className="flex items-center gap-2 px-3 py-2 border-t border-outline-variant">
-                  <span className="text-xs font-normal text-outline-variant">IRE</span>
-                  <span className="text-[10px] font-medium text-on-surface-variant bg-surface-container-highest border border-outline-variant rounded px-[5px] py-[1px]">v0.0.0</span>
+                  <span className="text-xs font-normal text-on-surface-variant">IRE</span>
+                  <span className="text-[10px] font-medium text-on-surface-variant bg-surface-container-highest border border-outline-variant rounded px-[5px] py-[1px]">v{appVersion || "?"}</span>
                 </div>
               </div>
             )}

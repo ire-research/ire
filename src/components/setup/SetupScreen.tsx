@@ -8,7 +8,7 @@ import {
   type Provider,
 } from "../../state/chatOptions";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faTrash, faChevronRight, faFolderOpen, faPlus, iconClass } from "../../icons";
+import { faTrash, faChevronRight, faFolderOpen, iconClass } from "../../icons";
 
 interface Props {
   status: SetupStatus;
@@ -88,16 +88,13 @@ export function SetupScreen({ status, onRefresh }: Props) {
     }
   };
 
-  const handlePick = async (kind: "open" | "init") => {
+  const handlePick = async () => {
     setError(null);
-    const path = await pickDirectory(
-      kind === "open" ? "Open existing IRE workspace" : "Pick a directory to initialize",
-    );
+    const path = await pickDirectory("Open workspace");
     if (!path) return;
     setBusy(true);
     try {
-      const workspace =
-        kind === "open" ? await ipc.openWorkspace(path) : await ipc.initWorkspace(path);
+      const workspace = await ipc.openWorkspace(path);
       setAvailableProviders(availableProviders);
       pushRecentWorkspace(path);
       const persisted = await loadPersisted(path).catch(() => null);
@@ -120,14 +117,14 @@ export function SetupScreen({ status, onRefresh }: Props) {
         {/* Title */}
         <div className="flex flex-col gap-2">
           <h1 className="text-[22px] font-semibold text-on-surface tracking-tight leading-snug">
-            Open or create a workspace.
+            Open a workspace.
           </h1>
           <p className="text-[14px] text-on-surface-variant leading-relaxed">
-            Each workspace maps 1:1 to a Git repository. Your code, resources, experiments, and Claude Code state live together in{" "}
+            Pick any folder — if it's new, IRE will initialize{" "}
             <code className="font-mono text-[12px] px-1 py-0.5 bg-surface-container border border-outline-variant rounded">
               .ire/
             </code>
-            .
+            {" "}automatically. Each workspace should map 1:1 to a Git repository.
           </p>
         </div>
 
@@ -190,29 +187,17 @@ export function SetupScreen({ status, onRefresh }: Props) {
           </div>
         </div>
 
-        {/* Action buttons */}
-        <div className="flex gap-3">
-          <button
-            onClick={() => handlePick("open")}
-            disabled={busy || !canOpenWorkspace}
-            className={`flex-1 h-9 border border-outline-variant rounded text-[14px] font-medium text-on-surface hover:bg-surface-container-low hover:border-outline transition-colors flex items-center justify-center gap-2 ${
-              busy || !canOpenWorkspace ? "opacity-50 cursor-not-allowed" : ""
-            }`}
-          >
-            <FontAwesomeIcon icon={faFolderOpen} className={`${iconClass.lg} text-on-surface-variant`} />
-            Open folder…
-          </button>
-          <button
-            onClick={() => handlePick("init")}
-            disabled={busy || !canOpenWorkspace}
-            className={`flex-1 h-9 border border-outline-variant rounded text-[14px] font-medium text-on-surface hover:bg-surface-container-low hover:border-outline transition-colors flex items-center justify-center gap-2 ${
-              busy || !canOpenWorkspace ? "opacity-50 cursor-not-allowed" : ""
-            }`}
-          >
-            <FontAwesomeIcon icon={faPlus} className={`${iconClass.lg} text-on-surface-variant`} />
-            New workspace…
-          </button>
-        </div>
+        {/* Action button */}
+        <button
+          onClick={handlePick}
+          disabled={busy || !canOpenWorkspace}
+          className={`w-full h-9 border border-outline-variant rounded text-[14px] font-medium text-on-surface hover:bg-surface-container-low hover:border-outline transition-colors flex items-center justify-center gap-2 ${
+            busy || !canOpenWorkspace ? "opacity-50 cursor-not-allowed" : ""
+          }`}
+        >
+          <FontAwesomeIcon icon={faFolderOpen} className={`${iconClass.lg} text-on-surface-variant`} />
+          Open workspace…
+        </button>
 
         {/* Divider */}
         <div className="w-full h-px bg-outline-variant"></div>
