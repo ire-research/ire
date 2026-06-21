@@ -568,8 +568,8 @@ mod tests {
                 "item": {
                     "id": "item_2",
                     "type": "dynamic_tool_call",
-                    "name": "mcp__ire__wiki__write",
-                    "input": { "path": "docs/Page.md", "content": "ok" },
+                    "name": "mcp__ire__memory__write_short_term",
+                    "input": { "content": "ok" },
                     "status": "in_progress"
                 }
             }),
@@ -580,10 +580,10 @@ mod tests {
             panic!("expected ToolStart");
         };
         assert_eq!(tool.provider, ToolProvider::Codex);
-        assert_eq!(tool.kind, ToolKind::WikiWrite);
-        assert_eq!(tool.raw_name, "mcp__ire__wiki__write");
-        assert_eq!(tool.title, "Write wiki");
-        assert_eq!(tool.input.preview.as_deref(), Some("docs/Page.md"));
+        assert_eq!(tool.kind, ToolKind::MemoryWrite);
+        assert_eq!(tool.raw_name, "mcp__ire__memory__write_short_term");
+        assert_eq!(tool.title, "Write memory");
+        assert_eq!(tool.input.preview.as_deref(), Some("ok"));
         assert_eq!(tool.input.format, ToolFormat::Json);
     }
 
@@ -624,7 +624,7 @@ mod tests {
                     "id": "item_0",
                     "type": "mcp_tool_call",
                     "server": "ire",
-                    "tool": "wiki.list",
+                    "tool": "ire.read",
                     "arguments": {},
                     "result": null,
                     "error": null,
@@ -638,9 +638,9 @@ mod tests {
             panic!("expected ToolStart");
         };
         assert_eq!(tool.provider, ToolProvider::Codex);
-        assert_eq!(tool.raw_name, "ire__wiki.list");
-        assert_eq!(tool.kind, ToolKind::WikiRead);
-        assert_eq!(tool.title, "Read wiki");
+        assert_eq!(tool.raw_name, "ire__ire.read");
+        assert_eq!(tool.kind, ToolKind::IreRead);
+        assert_eq!(tool.title, "Read ire.json");
         assert_eq!(tool.status, ToolStatus::Running);
 
         let completed = collect(
@@ -650,7 +650,7 @@ mod tests {
                     "id": "item_0",
                     "type": "mcp_tool_call",
                     "server": "ire",
-                    "tool": "wiki.list",
+                    "tool": "ire.read",
                     "arguments": {},
                     "result": {
                         "content": [{ "type": "text", "text": "README.md\nNOTES.md" }],
@@ -688,8 +688,8 @@ mod tests {
                     "id": "item_1",
                     "type": "mcp_tool_call",
                     "server": "ire",
-                    "tool": "wiki.read",
-                    "arguments": { "path": "missing.md" },
+                    "tool": "ire.read",
+                    "arguments": {},
                     "result": null,
                     "error": "file not found",
                     "status": "completed"

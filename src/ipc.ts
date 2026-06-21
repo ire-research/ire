@@ -9,6 +9,7 @@ import type {
   ExperimentStartingPayload,
   ExperimentStatusPayload,
   IdeaItem,
+  ResourcePendingPayload,
   SystemInfo,
   SystemMetrics,
   TabCreatedPayload,
@@ -69,17 +70,13 @@ export const ipc = {
   initWorkspace: (path: string): Promise<WorkspaceState> =>
     invoke("init_workspace", { path }),
   closeWorkspace: (): Promise<void> => invoke("close_workspace"),
-  readWorkspaceState: (): Promise<PersistedWorkspace> =>
-    invoke("read_workspace_state"),
-  saveWorkspaceState: (state: PersistedWorkspace): Promise<void> =>
-    invoke("save_workspace_state", { state }),
-  readWikiFile: (path: string): Promise<WikiFile> =>
-    invoke("read_wiki_file", { path }),
+  readResource: (path: string): Promise<WikiFile> =>
+    invoke("read_resource", { path }),
   saveNotes: (content: string): Promise<void> =>
     invoke("save_notes", { content }),
-  savePulseField: (field: "research_question" | "this_week", content: string): Promise<void> =>
-    invoke("save_pulse_field", { field, content }),
-  saveIdeasJson: (ideas: IdeaItem[]): Promise<void> => invoke("save_ideas_json", { ideas }),
+  saveFocusField: (field: "research_question" | "this_week", content: string): Promise<void> =>
+    invoke("save_focus_field", { field, content }),
+  saveIdeas: (ideas: IdeaItem[]): Promise<void> => invoke("save_ideas", { ideas }),
   getSystemInfo: (): Promise<SystemInfo> => invoke("get_system_info"),
   getSystemMetrics: (): Promise<SystemMetrics> => invoke("get_system_metrics"),
   chatSend: (
@@ -111,8 +108,8 @@ export const ipc = {
     invoke("save_resource_draft", { resourceId, content }),
   confirmResource: (resourceId: string): Promise<void> =>
     invoke("confirm_resource", { resourceId }),
-  saveWikiFile: (path: string, content: string): Promise<void> =>
-    invoke("save_wiki_file", { path, content }),
+  saveResource: (path: string, content: string): Promise<void> =>
+    invoke("save_resource", { path, content }),
   experimentList: (limit?: number): Promise<ExperimentRow[]> =>
     invoke("experiment_list", { limit }),
   experimentLogs: (uuid: string, kb?: number): Promise<{ stdout: string; stderr: string }> =>
@@ -171,6 +168,12 @@ export function onTabCreated(
   cb: (payload: TabCreatedPayload) => void
 ): Promise<() => void> {
   return listen<TabCreatedPayload>("tab-created", (event) => cb(event.payload));
+}
+
+export function onResourcePending(
+  cb: (payload: ResourcePendingPayload) => void
+): Promise<() => void> {
+  return listen<ResourcePendingPayload>("resource-pending", (e) => cb(e.payload));
 }
 
 export function onExperimentStatus(

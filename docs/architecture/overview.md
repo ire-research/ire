@@ -36,7 +36,7 @@ Two design-driving pain points:
 ┌──────────────────────────────────────────────────────────────────────┐
 │ Rust backend (Tauri)                                                 │
 │   ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐   │
-│   │ Workspace    │  │ Wiki         │  │ Agent subprocess manager │   │
+│   │ Workspace    │  │ IreStore     │  │ Agent subprocess manager │   │
 │   │ + .lock      │  │ (atomic I/O) │  │ (JSONL parser, resume)   │   │
 │   └──────────────┘  └──────────────┘  └──────────────────────────┘   │
 │   ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐   │
@@ -48,7 +48,7 @@ Two design-driving pain points:
                        │                         │
               ┌────────────────┐         ┌────────────────────────┐
               │ Claude/Codex   │ ◀─────▶ │ IRE MCP server         │
-              │ CLI subprocess │  tools  │ (Node, stdio transport)│
+              │ CLI subprocess │  tools  │ (Rust, stdio transport)│
               └────────────────┘         └────────────────────────┘
                        │
                        ▼ Bash tool / MCP experiment.start
@@ -74,14 +74,14 @@ Two design-driving pain points:
 | State | Zustand | Light, no Redux ceremony. |
 | Markdown | `react-markdown` + `remark-gfm` for preview; `<textarea>` for edit | Toggle-based, not split. |
 | Layout | `react-resizable-panels` | Resizable + collapsible splits. |
-| Persistence | SQLite via `rusqlite` | Single DB file at `.ire/wiki/local.db`. |
-| MCP server | Node + `@modelcontextprotocol/sdk` | Stdio transport. Bundled with the app. |
+| Persistence | SQLite via `rusqlite` | Single DB file at `~/.ire/workspaces/<id>/local.db` (chat sessions + experiment operational rows). Git-tracked state is `.ire/ire.json`. UI/session state via `tauri-plugin-store` (app-data dir). |
+| MCP server | Rust (`ire --mcp-stdio`) | Stdio transport. Same binary as the app, re-invoked as a subprocess. |
 | PDF extract | `pdf-extract` crate | Pure Rust, no system deps. |
 | HTML extract | `reqwest` + `scraper` + readability | Strip nav/ads; keep article text. |
 | Filesystem | `std::fs` + `tempfile` for atomic writes | No `notify` watcher in MVP. |
 | Logging | `tracing` + `tracing-subscriber` | Console logging only. |
 
-Claude Code and Codex are invoked as external CLI binaries; neither is a dependency in `Cargo.toml` or `package.json`. The Node MCP server's runtime (`node`) is also assumed installed.
+Claude Code and Codex are invoked as external CLI binaries; neither is a dependency in `Cargo.toml` or `package.json`.
 
 ---
 
@@ -92,40 +92,38 @@ Claude Code and Codex are invoked as external CLI binaries; neither is a depende
 ```
 my_research_project/
 ├── .git/
-├── .gitignore                       # IRE adds: .ire/wiki/local.db, .ire/wiki/experiments/*/*.log, .ire/.lock, .ire/workspace.json, .ire/cache/
-├── .ire/
-│   ├── .lock                        # PID of running IRE instance (gitignored)
-│   ├── _SYSTEM.md                   # IRE framework context + wiki schema, injected first into every agent turn
-│   ├── workspace.json               # per-workspace UI state (panel sizes, tabs, chat options); gitignored
-│   ├── cache/                       # raw extracted resource text (gitignored)
-│   └── wiki/                        # ALL TRACKED IN GIT
-│       ├── local.db                 # SQLite (gitignored)
-│       ├── _index.md                # Master index (path → one-line summary)
-│       ├── notes.md                 # User notes
-│       ├── ideas.json               # User ideas (`{ id, text, trashed, order }`)
-│       ├── pulse.json               # Current research question and weekly focus
-│       ├── long-term.md             # Agent-written architectural decisions and durable dead ends
-│       ├── short-term/
-│       │   └── YYYY-MM-DD.md        # Daily agent notes
-│       ├── resources/
-│       │   └── <slug>.md            # One file per ingested paper/article
-│       └── experiments/
-│           └── <experiment_uuid>/
-│               ├── stdout.log       # gitignored
-│               └── stderr.log       # gitignored
+├── .gitignore                       # IRE adds: .ire/cache/
+├── .ire/                            # git-tracked knowledge (plus the local-only cache/)
+│   ├── _SYSTEM.md                   # IRE framework context, injected first into every agent turn (git-tracked)
+│   ├── ire.json                     # notes, focus, ideas, experiments (git-tracked)
+│   ├── long-term.md                 # Agent-written architectural decisions and durable dead ends (git-tracked)
+│   ├── short-term/
+│   │   └── YYYY-MM-DD.md            # Daily agent notes (git-tracked)
+│   ├── resources/                   # git-tracked
+│   │   ├── _index.md                # Auto-generated resource catalog (path → one-line summary)
+│   │   └── <slug>.md                # One file per ingested paper/article (title + sources in frontmatter)
+│   └── cache/                       # ingestion temp + experiments/<uuid>/{stdout,stderr}.log (gitignored)
 └── ... user source code ...
 ```
 
+Runtime/local artifacts do **not** live in the workspace; they are keyed per workspace under the user's home directory (standard app-data practice):
+
+```
+~/.ire/workspaces/<workspace-name>-<8-hex>/
+├── .lock                            # PID of running IRE instance
+├── local.db                         # SQLite: chat sessions + experiment operational rows
+├── mcp.json                         # MCP server config consumed by Claude Code / Codex
+└── mcp.sock                         # Unix socket for the MCP RPC server
+```
+
+`<8-hex>` is the first 8 chars of SHA-256 of the workspace path — it disambiguates same-named workspaces and keeps the socket path under the macOS 104-char limit.
+
 **Gitignore additions** appended on workspace init:
 ```
-.ire/.lock
-.ire/wiki/local.db
-.ire/workspace.json
-.ire/wiki/experiments/*/*.log
 .ire/cache/
 ```
 
-`wiki/` is intentionally **not** gitignored — it is the durable knowledge artefact and benefits from version history.
+The git-tracked parts of `.ire/` (`_SYSTEM.md`, `ire.json`, `long-term.md`, `short-term/`, `resources/`) are intentionally **not** gitignored — they are the durable, shareable knowledge artefact. Per-workspace UI/session state (panel sizes, tabs, chat options) is persisted by `tauri-plugin-store` in the app-data dir, keyed by workspace path — there is no `workspace.json`.
 
 ### User config (global, cross-project)
 
@@ -218,19 +216,18 @@ ire/
 │       ├── events.rs                   # workspace-event emit helpers + EventSource
 │       ├── commands/
 │       │   ├── workspace.rs            # setup_status, open/init/close_workspace, emit_initial_state
-│       │   ├── wiki.rs                 # read/save wiki, notes, pulse, ideas
+│       │   ├── ire.rs                  # read/save resource files, notes, focus, ideas (ire.json setters)
 │       │   ├── chat.rs                 # chat_send, chat_cancel, chat_reset_session, generate_chat_title
 │       │   ├── history.rs              # chat_history_save/list/get/delete
-│       │   ├── resources.rs            # submit/discard/list_resources
+│       │   ├── resources.rs            # submit/confirm/discard + InflightResources registry
 │       │   └── system.rs               # get_system_info (cached once), get_system_metrics (polled)
 │       ├── workspace/
-│       │   ├── lock.rs                 # .lock PID file
-│       │   ├── init.rs                 # scaffold + git init
-│       │   ├── state.rs                # WorkspaceState + ActiveWorkspace managed state
-│       │   └── persisted.rs            # PersistedWorkspace (workspace.json schema)
-│       ├── wiki/
-│       │   ├── store.rs                # atomic write, index regeneration, workspace-event dispatch
-│       │   ├── index.rs                # _index.md regenerator
+│       │   ├── lock.rs                 # .lock PID file (in ~/.ire/workspaces/<id>/)
+│       │   ├── init.rs                 # scaffold + git init; home_data_dir(path) → ~/.ire/workspaces/<id>/
+│       │   └── state.rs                # WorkspaceState (path + data_dir) + ActiveWorkspace managed state
+│       ├── ire/                        # store rooted at .ire/
+│       │   ├── store.rs                # ire.json read/edit/upsert + resource write/delete; atomic writes + events
+│       │   ├── index.rs                # resources/_index.md regenerator
 │       │   └── frontmatter.rs
 │       ├── resources/
 │       │   ├── fetch.rs
@@ -248,12 +245,9 @@ ire/
 │       │   ├── spawn.rs
 │       │   └── stream.rs               # Codex JSONL parser → StreamEvent
 │       ├── mcp/
-│       │   ├── config.rs               # write .ire/mcp.json
+│       │   ├── config.rs               # write ~/.ire/workspaces/<id>/mcp.json
 │       │   └── rpc.rs                  # Unix socket / TCP RPC handler
 │       └── db/
-│           ├── migrations.rs
-│           └── models.rs               # Experiment, Resource
-└── mcp/                                # bundled Node MCP server
-    ├── server.js                       # stdio server, JSON-RPC bridge to Rust
-    └── tools.js                        # tool schema definitions
+│           ├── schema.rs               # CREATE TABLE IF NOT EXISTS (experiments, chat_sessions)
+│           └── models.rs               # Experiment + chat-session row access
 ```

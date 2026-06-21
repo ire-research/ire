@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ipc, pickDirectory, type SetupStatus } from "../../ipc";
 import { useWorkspace } from "../../state/workspace";
+import { loadPersisted } from "../../state/persistedStore";
 import {
   optionsForAvailableProviders,
   useChatOptions,
@@ -73,7 +74,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
       const workspace = await ipc.openWorkspace(path);
       setAvailableProviders(availableProviders);
       pushRecentWorkspace(path);
-      const persisted = await ipc.readWorkspaceState().catch(() => null);
+      const persisted = await loadPersisted(path).catch(() => null);
       if (persisted) {
         applyPersisted(persisted, availableProviders);
       } else {
@@ -99,7 +100,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
         kind === "open" ? await ipc.openWorkspace(path) : await ipc.initWorkspace(path);
       setAvailableProviders(availableProviders);
       pushRecentWorkspace(path);
-      const persisted = await ipc.readWorkspaceState().catch(() => null);
+      const persisted = await loadPersisted(path).catch(() => null);
       if (persisted) {
         applyPersisted(persisted, availableProviders);
       } else {
@@ -122,7 +123,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
             Open or create a workspace.
           </h1>
           <p className="text-[14px] text-on-surface-variant leading-relaxed">
-            Each workspace maps 1:1 to a Git repository. Your code, wiki, experiments, and Claude Code state live together in{" "}
+            Each workspace maps 1:1 to a Git repository. Your code, resources, experiments, and Claude Code state live together in{" "}
             <code className="font-mono text-[12px] px-1 py-0.5 bg-surface-container border border-outline-variant rounded">
               .ire/
             </code>

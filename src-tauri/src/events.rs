@@ -22,7 +22,7 @@ impl EventSource {
     }
 }
 
-pub fn emit_pulse_changed(
+pub fn emit_focus_changed(
     app: &AppHandle,
     source: EventSource,
     research_question: &str,
@@ -31,7 +31,7 @@ pub fn emit_pulse_changed(
     let _ = app.emit(
         CHANNEL,
         json!({
-            "kind": "pulse-changed",
+            "kind": "focus-changed",
             "source": source.as_str(),
             "research_question": research_question,
             "this_week": this_week,
@@ -94,13 +94,13 @@ pub fn emit_experiment_deleted(app: &AppHandle, uuid: &str) {
     );
 }
 
-pub fn emit_resource_deleted(app: &AppHandle, resource_id: &str) {
+pub fn emit_resource_deleted(app: &AppHandle, path: &str) {
     let _ = app.emit(
         CHANNEL,
         json!({
             "kind": "resource-deleted",
             "source": EventSource::Mutation.as_str(),
-            "resource_id": resource_id,
+            "path": path,
         }),
     );
 }

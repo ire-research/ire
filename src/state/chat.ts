@@ -11,7 +11,7 @@ interface ChatStore {
   addTab: (tab: Tab) => void;
   createTab: (label?: string) => string;
   renameTab: (tabId: string, label: string) => void;
-  openPreviewTab: (label: string, wikiPath: string) => void;
+  openPreviewTab: (label: string, irePath: string) => void;
   openDraftPreviewTab: (label: string, draftContent: string, resourceId?: string) => void;
   openExperimentTab: (uuid: string, name: string) => void;
   closeTab: (tabId: string) => void;
@@ -28,6 +28,7 @@ interface ChatStore {
   setMessageError: (tabId: string, msgId: string, error: string) => void;
   setStreaming: (tabId: string, v: boolean) => void;
   setResourceStatus: (tabId: string, status: ResourceStatus) => void;
+  setResourcePending: (tabId: string, resourceId: string | undefined, status: ResourceStatus | undefined) => void;
   clearMessages: (tabId: string) => void;
 
   // AskUserQuestion
@@ -152,15 +153,15 @@ export const useChat = create<ChatStore>((set) => ({
     return id;
   },
 
-  openPreviewTab: (label, wikiPath) =>
+  openPreviewTab: (label, irePath) =>
     set((s) => {
-      const existing = s.tabs.find((t) => t.kind === "preview" && t.wikiPath === wikiPath);
+      const existing = s.tabs.find((t) => t.kind === "preview" && t.irePath === irePath);
       if (existing) {
         return { previousTabId: s.activeTabId, activeTabId: existing.id };
       }
       const id = crypto.randomUUID();
       return {
-        tabs: [...s.tabs, { id, label, messages: [], isStreaming: false, isPinned: false, kind: "preview", wikiPath }],
+        tabs: [...s.tabs, { id, label, messages: [], isStreaming: false, isPinned: false, kind: "preview", irePath }],
         previousTabId: s.activeTabId,
         activeTabId: id,
       };
@@ -283,6 +284,11 @@ export const useChat = create<ChatStore>((set) => ({
   setResourceStatus: (tabId, status) =>
     set((s) => ({
       tabs: updateTab(s.tabs, tabId, (t) => ({ ...t, resourceStatus: status })),
+    })),
+
+  setResourcePending: (tabId, resourceId, status) =>
+    set((s) => ({
+      tabs: updateTab(s.tabs, tabId, (t) => ({ ...t, resourceId, resourceStatus: status })),
     })),
 
   clearMessages: (tabId) =>

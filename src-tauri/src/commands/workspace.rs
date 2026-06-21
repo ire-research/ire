@@ -1,4 +1,3 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
@@ -8,13 +7,12 @@ use tauri::{AppHandle, State};
 use crate::claude_code::discovery::{find_claude_binary, DiscoveryError};
 use crate::claude_code::session::SessionManager;
 use crate::codex::discovery::find_codex_binary;
-use crate::db::{migrations, models};
+use crate::db::schema;
 use crate::events::{self, EventSource};
 use crate::mcp::{McpHandle, McpState};
 use crate::user_config::{self, UserConfig};
 use crate::workspace::init as ws_init;
 use crate::workspace::lock::{LockError, WorkspaceLock};
-use crate::workspace::persisted::{self, PersistedWorkspace};
 use crate::workspace::state::{ActiveWorkspace, WorkspaceHandle, WorkspaceState};
 
 #[derive(Debug, Serialize)]
@@ -153,27 +151,28 @@ fn attach(
     path: PathBuf,
     app: tauri::AppHandle,
 ) -> Result<WorkspaceState, String> {
-    let ire = ws_init::ire_dir(&path);
+    let home_data_dir = ws_init::require_home_data_dir(&path)?;
+    std::fs::create_dir_all(&home_data_dir).map_err(|e| format!("create home data dir: {e}"))?;
 
-    let lock = WorkspaceLock::acquire(&ire).map_err(|e| match e {
+    let lock = WorkspaceLock::acquire(&home_data_dir).map_err(|e| match e {
         LockError::AlreadyHeld { pid } => {
             format!("workspace is already open (process {pid})")
         }
         LockError::Io(io) => io.to_string(),
     })?;
 
-    migrations::run(&ire).map_err(|e| e.to_string())?;
+    schema::run(&home_data_dir).map_err(|e| e.to_string())?;
 
     // Start the MCP RPC server and write the mcp.json config for CC.
-    let socket = crate::mcp::rpc::socket_path(&ire);
+    let socket = crate::mcp::rpc::socket_path(&home_data_dir);
     let task = crate::mcp::rpc::start(socket.clone(), path.clone(), session_manager, app.clone());
-    crate::mcp::config::write_mcp_config(&ire, &socket).map_err(|e| e.to_string())?;
+    crate::mcp::config::write_mcp_config(&home_data_dir, &path, &socket).map_err(|e| e.to_string())?;
     *mcp.0.lock().map_err(|e| e.to_string())? = Some(McpHandle {
         task,
         socket_path: socket,
     });
 
-    let state = WorkspaceState::from_path(path.clone());
+    let state = WorkspaceState::from_path(path.clone(), home_data_dir);
     *active.0.lock().map_err(|e| e.to_string())? = Some(WorkspaceHandle::new(state.clone(), lock));
 
     // Initial-state burst: every panel listener sees its data through the same
@@ -185,63 +184,39 @@ fn attach(
 }
 
 fn emit_initial_state(app: &AppHandle, workspace_root: &Path) {
-    let wiki_root = workspace_root.join(".ire/wiki");
-    let ire_dir = workspace_root.join(".ire");
+    let store = crate::ire::IreStore::new(workspace_root.to_path_buf());
+    let ire = store.read_ire().unwrap_or_default();
 
-    let store = crate::wiki::WikiStore::new(workspace_root.to_path_buf());
-    let pulse = crate::commands::wiki::read_pulse_content(&store).unwrap_or(
-        crate::commands::wiki::PulseContent {
-            research_question: String::new(),
-            this_week: String::new(),
-        },
-    );
-    events::emit_pulse_changed(
+    events::emit_notes_changed(app, EventSource::Hydrate, &ire.notes);
+    events::emit_focus_changed(
         app,
         EventSource::Hydrate,
-        &pulse.research_question,
-        &pulse.this_week,
+        &ire.focus.research_question,
+        &ire.focus.this_week,
     );
+    let ideas = serde_json::to_value(&ire.ideas).unwrap_or_else(|_| json!([]));
+    events::emit_ideas_changed(app, EventSource::Hydrate, &ideas);
 
-    let notes = fs::read_to_string(wiki_root.join("notes.md")).unwrap_or_default();
-    events::emit_notes_changed(app, EventSource::Hydrate, &notes);
-
-    // Ideas: only emit if the file parses as a JSON array. A schema mismatch
-    // skips this one variant rather than blanking the whole panel.
-    if let Ok(raw) = fs::read_to_string(wiki_root.join("ideas.json")) {
-        match serde_json::from_str::<serde_json::Value>(&raw) {
-            Ok(parsed) if parsed.is_array() => {
-                events::emit_ideas_changed(app, EventSource::Hydrate, &parsed);
-            }
-            Ok(_) => tracing::warn!("emit_initial_state: ideas.json is not a JSON array"),
-            Err(e) => tracing::warn!(error = %e, "emit_initial_state: ideas.json parse failed"),
-        }
+    // Resources are file-based: scan resources/*.md and emit one event each.
+    for resource in store.list_resources() {
+        events::emit_resource_changed(app, EventSource::Hydrate, &resource);
     }
 
-    match models::list_resources(&ire_dir) {
-        Ok(rows) => {
-            for r in rows {
-                let source_label = r.source_label.clone().unwrap_or_else(|| r.url.clone());
-                let payload = json!({
-                    "resource_id": r.url_sha256,
-                    "url": r.url,
-                    "source_type": r.source_type,
-                    "source_label": source_label,
-                    "title": r.title,
-                    "wiki_path": r.wiki_path,
-                });
-                events::emit_resource_changed(app, EventSource::Hydrate, &payload);
-            }
-        }
-        Err(e) => tracing::warn!(error = %e, "emit_initial_state: list_resources failed"),
-    }
-
-    match models::list_experiments(&ire_dir, 50) {
-        Ok(rows) => {
-            for row in rows {
-                events::emit_experiment_changed(app, EventSource::Hydrate, &row);
-            }
-        }
-        Err(e) => tracing::warn!(error = %e, "emit_initial_state: list_experiments failed"),
+    // Experiments come from the git-tracked ire.json display record. The
+    // operational tab linkage is re-established live via events, so tab_id is
+    // empty on hydrate.
+    for exp in ire.experiments {
+        let payload = json!({
+            "uuid": exp.uuid,
+            "name": exp.name,
+            "command": exp.command,
+            "status": exp.status,
+            "exit_code": exp.exit_code,
+            "started_at": exp.started_at,
+            "ended_at": exp.ended_at,
+            "tab_id": "",
+        });
+        events::emit_experiment_changed(app, EventSource::Hydrate, &payload);
     }
 }
 
@@ -253,27 +228,6 @@ pub fn open_in_vscode(path: String) -> Result<(), String> {
         .spawn()
         .map_err(|e| e.to_string())?;
     Ok(())
-}
-
-#[tauri::command]
-pub fn read_workspace_state(
-    active: State<'_, ActiveWorkspace>,
-) -> Result<PersistedWorkspace, String> {
-    let guard = active.0.lock().map_err(|e| e.to_string())?;
-    let handle = guard.as_ref().ok_or("no workspace open")?;
-    let ire = ws_init::ire_dir(&handle.state.path);
-    Ok(persisted::read(&ire))
-}
-
-#[tauri::command]
-pub fn save_workspace_state(
-    state: PersistedWorkspace,
-    active: State<'_, ActiveWorkspace>,
-) -> Result<(), String> {
-    let guard = active.0.lock().map_err(|e| e.to_string())?;
-    let handle = guard.as_ref().ok_or("no workspace open")?;
-    let ire = ws_init::ire_dir(&handle.state.path);
-    persisted::write(&ire, &state).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

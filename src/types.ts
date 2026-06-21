@@ -16,12 +16,10 @@ export type ToolKind =
   | "file_edit"
   | "file_search"
   | "web_fetch"
-  | "wiki_read"
-  | "wiki_write"
-  | "wiki_append"
-  | "wiki_rename"
+  | "ire_read"
+  | "ire_edit"
+  | "resource_add"
   | "memory_write"
-  | "pulse_update"
   | "experiment_start"
   | "experiment_status"
   | "experiment_tail_logs"
@@ -140,7 +138,7 @@ export interface Tab {
   resourceId?: string;
   resourceStatus?: ResourceStatus;
   draftContent?: string;
-  wikiPath?: string;
+  irePath?: string;
   experimentUuid?: string;
 }
 
@@ -158,17 +156,23 @@ export interface TabCreatedPayload {
   label: string;
   kind: TabKind;
   resource_id?: string;
+  resource_status?: ResourceStatus;
   agent_options?: ChatOptions;
 }
 
-/** A resource row returned by list_resources. */
-export interface ResourceItem {
+/** Payload for the "resource-pending" Tauri event (agent-supplied resource
+ *  awaiting user approval on the current tab). */
+export interface ResourcePendingPayload {
   resource_id: string;
-  url: string;
-  source_type: "url" | "local_file" | "batch";
-  source_label: string;
-  title: string | null;
-  wiki_path: string | null;
+  resource_status: ResourceStatus;
+}
+
+/** A file-based resource discovered under `.ire/resources/`. Identity is the
+ *  `path` (`resources/<slug>.md`); title and sources come from frontmatter. */
+export interface ResourceItem {
+  path: string;
+  title: string;
+  sources: string[];
 }
 
 /** An experiment row returned by experiment_list. */
@@ -205,13 +209,10 @@ export interface ExperimentStartingPayload {
 }
 
 export interface IdeaItem {
-  id: string;
   text: string;
-  trashed: boolean;
-  order: number;
 }
 
-export interface PulseContent {
+export interface FocusContent {
   research_question: string;
   this_week: string;
 }
@@ -223,11 +224,11 @@ export type WorkspaceEventSource = "hydrate" | "mutation";
 
 /** Payload for the "workspace-event" Tauri event. */
 export type WorkspaceEvent =
-  | { kind: "pulse-changed"; source: WorkspaceEventSource; research_question: string; this_week: string }
+  | { kind: "focus-changed"; source: WorkspaceEventSource; research_question: string; this_week: string }
   | { kind: "notes-changed"; source: WorkspaceEventSource; content: string }
   | { kind: "ideas-changed"; source: WorkspaceEventSource; ideas: IdeaItem[] }
   | { kind: "resource-changed"; source: WorkspaceEventSource; resource: ResourceItem }
-  | { kind: "resource-deleted"; source: WorkspaceEventSource; resource_id: string }
+  | { kind: "resource-deleted"; source: WorkspaceEventSource; path: string }
   | { kind: "experiment-changed"; source: WorkspaceEventSource; experiment: ExperimentRow }
   | { kind: "experiment-deleted"; source: WorkspaceEventSource; uuid: string };
 

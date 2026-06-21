@@ -1,9 +1,11 @@
+use std::collections::HashMap;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use serde::Deserialize;
-use tauri::{Emitter, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::claude_code::discovery::find_claude_binary;
 use crate::claude_code::session::SessionManager;
@@ -13,12 +15,32 @@ use crate::codex::discovery::find_codex_binary;
 use crate::codex::spawn::{build_codex_command, CodexSpawnArgs};
 use crate::codex::stream as codex_stream;
 use crate::commands::chat::ChatOptions;
-use crate::db::models;
-use crate::events;
 use crate::prompts;
 use crate::resources::fetch::fetch_and_extract;
 use crate::resources::local::extract_local_file;
+use crate::ire::{focus_prompt_block, IreStore};
 use crate::workspace::state::ActiveWorkspace;
+
+/// In-flight ingestion state, keyed by the transient resource id. Holds the
+/// source refs (URLs / file paths) injected into the resource's frontmatter on
+/// confirm. Entries live only between ingest start and confirm/discard;
+/// confirmed resources are identified by their file path instead.
+#[derive(Default)]
+pub struct InflightResources(pub Mutex<HashMap<String, Vec<String>>>);
+
+impl InflightResources {
+    fn register(&self, id: &str, sources: Vec<String>) {
+        self.0.lock().unwrap().insert(id.to_string(), sources);
+    }
+
+    fn sources(&self, id: &str) -> Vec<String> {
+        self.0.lock().unwrap().get(id).cloned().unwrap_or_default()
+    }
+
+    fn remove(&self, id: &str) -> Option<Vec<String>> {
+        self.0.lock().unwrap().remove(id)
+    }
+}
 
 fn sha256_hex(s: &str) -> String {
     sha256_hex_bytes(s.as_bytes())
@@ -28,15 +50,6 @@ fn sha256_hex_bytes(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let hash = Sha256::digest(bytes);
     hash.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-fn hostname_from_url(url: &str) -> String {
-    url.trim_start_matches("https://")
-        .trim_start_matches("http://")
-        .split('/')
-        .next()
-        .unwrap_or("resource")
-        .to_string()
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -49,11 +62,9 @@ pub enum ResourceSourceInput {
 #[derive(Debug, Clone)]
 struct PreparedSource {
     source_ref: String,
-    source_label: String,
     local_content_sha256: Option<String>,
     cache_rel: String,
     text: String,
-    content_type: String,
     source_type: String,
 }
 
@@ -68,6 +79,7 @@ pub async fn submit_resource(
     app_handle: tauri::AppHandle,
     active: State<'_, ActiveWorkspace>,
     session: State<'_, SessionManager>,
+    inflight: State<'_, InflightResources>,
     url: String,
     options: ChatOptions,
 ) -> Result<String, String> {
@@ -90,18 +102,13 @@ pub async fn submit_resource(
 
     let content_type = tokio::task::spawn_blocking(move || -> Result<String, String> {
         let result = fetch_and_extract(&url_clone).map_err(|e| e.to_string())?;
-
         write_resource_cache(&workspace_clone, &sha256_clone, &result.text)?;
-
-        let ire_dir = workspace_clone.join(".ire");
-        models::insert_resource(&ire_dir, &sha256_clone, &url_clone, &result.content_type)
-            .map_err(|e| e.to_string())?;
-
         Ok(result.content_type)
     })
     .await
     .map_err(|e| e.to_string())??;
 
+    inflight.register(&sha256, vec![url.clone()]);
     tracing::debug!(sha256 = %sha256, content_type = %content_type, "resource cached");
 
     start_resource_summary(
@@ -125,6 +132,7 @@ pub async fn submit_local_resource(
     app_handle: tauri::AppHandle,
     active: State<'_, ActiveWorkspace>,
     session: State<'_, SessionManager>,
+    inflight: State<'_, InflightResources>,
     path: String,
     options: ChatOptions,
 ) -> Result<String, String> {
@@ -148,25 +156,13 @@ pub async fn submit_local_resource(
         tokio::task::spawn_blocking(move || -> Result<(String, String, String), String> {
             let result = extract_local_file(&path_buf).map_err(|e| e.to_string())?;
             let sha256 = sha256_hex_bytes(&result.bytes);
-
             write_resource_cache(&workspace_clone, &sha256, &result.text)?;
-
-            let ire_dir = workspace_clone.join(".ire");
-            models::insert_resource_with_source(
-                &ire_dir,
-                &sha256,
-                &source_ref,
-                &result.filename,
-                "local_file",
-                &result.content_type,
-            )
-            .map_err(|e| e.to_string())?;
-
             Ok((sha256, source_ref, result.content_type))
         })
         .await
         .map_err(|e| e.to_string())??;
 
+    inflight.register(&sha256, vec![source_ref.clone()]);
     tracing::debug!(sha256 = %sha256, content_type = %content_type, "local resource cached");
 
     start_resource_summary(
@@ -190,6 +186,7 @@ pub async fn submit_resources(
     app_handle: tauri::AppHandle,
     active: State<'_, ActiveWorkspace>,
     session: State<'_, SessionManager>,
+    inflight: State<'_, InflightResources>,
     sources: Vec<ResourceSourceInput>,
     options: ChatOptions,
 ) -> Result<String, String> {
@@ -210,8 +207,8 @@ pub async fn submit_resources(
     };
 
     let workspace_clone = workspace_path.clone();
-    let (resource_id, summary_sources) =
-        tokio::task::spawn_blocking(move || -> Result<(String, Vec<SummarySource>), String> {
+    let (resource_id, summary_sources, source_refs) = tokio::task::spawn_blocking(
+        move || -> Result<(String, Vec<SummarySource>, Vec<String>), String> {
             let prepared = prepare_sources(&sources)?;
             let source_refs: Vec<String> = prepared.iter().map(|s| s.source_ref.clone()).collect();
             let resource_id = batch_resource_id(&prepared, &source_refs)?;
@@ -224,36 +221,6 @@ pub async fn submit_resources(
                 return Err(e);
             }
 
-            let source_label = batch_source_label(&prepared);
-            let source_type = if multi_source {
-                "batch".to_string()
-            } else {
-                prepared[0].source_type.clone()
-            };
-            let content_type = if multi_source {
-                "multiple".to_string()
-            } else {
-                prepared[0].content_type.clone()
-            };
-            let source_ref = if multi_source {
-                serde_json::to_string(&source_refs).map_err(|e| e.to_string())?
-            } else {
-                prepared[0].source_ref.clone()
-            };
-
-            let ire_dir = workspace_clone.join(".ire");
-            if let Err(e) = models::insert_resource_with_source(
-                &ire_dir,
-                &resource_id,
-                &source_ref,
-                &source_label,
-                &source_type,
-                &content_type,
-            ) {
-                cleanup_resource_cache(&workspace_clone, &resource_id);
-                return Err(e.to_string());
-            }
-
             let summary_sources = prepared
                 .into_iter()
                 .map(|source| SummarySource {
@@ -262,10 +229,13 @@ pub async fn submit_resources(
                 })
                 .collect();
 
-            Ok((resource_id, summary_sources))
-        })
-        .await
-        .map_err(|e| e.to_string())??;
+            Ok((resource_id, summary_sources, source_refs))
+        },
+    )
+    .await
+    .map_err(|e| e.to_string())??;
+
+    inflight.register(&resource_id, source_refs);
 
     start_resource_summary(
         app_handle,
@@ -302,11 +272,9 @@ fn prepare_sources(sources: &[ResourceSourceInput]) -> Result<Vec<PreparedSource
                     .map_err(|e| format!("source {source_number}: {e}"))?;
                 PreparedSource {
                     source_ref: trimmed.to_string(),
-                    source_label: hostname_from_url(trimmed),
                     local_content_sha256: None,
                     cache_rel: String::new(),
                     text: result.text,
-                    content_type: result.content_type,
                     source_type: "url".to_string(),
                 }
             }
@@ -317,11 +285,9 @@ fn prepare_sources(sources: &[ResourceSourceInput]) -> Result<Vec<PreparedSource
                 let sha256 = sha256_hex_bytes(&result.bytes);
                 PreparedSource {
                     source_ref: path.clone(),
-                    source_label: result.filename,
                     local_content_sha256: Some(sha256),
                     cache_rel: String::new(),
                     text: result.text,
-                    content_type: result.content_type,
                     source_type: "local_file".to_string(),
                 }
             }
@@ -374,13 +340,6 @@ fn write_prepared_sources(
         write_resource_cache(workspace_path, resource_id, &source.text)?;
     }
     Ok(())
-}
-
-fn batch_source_label(prepared: &[PreparedSource]) -> String {
-    if prepared.len() == 1 {
-        return prepared[0].source_label.clone();
-    }
-    format!("{} sources", prepared.len())
 }
 
 fn cleanup_resource_cache(workspace_path: &Path, resource_id: &str) {
@@ -443,7 +402,8 @@ fn start_resource_summary(
 
     tokio::spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
-            let mcp_config = workspace_clone2.join(".ire/mcp.json");
+            let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_clone2)?;
+            let mcp_config = home_data_dir.join("mcp.json");
             let system_prompt = build_resource_system_prompt(&workspace_clone2);
             let prompt = build_resource_summary_prompt(&sha256, &sources_clone);
 
@@ -481,9 +441,6 @@ fn start_resource_summary(
             let pid = child.id();
             let stream_id = format!("{}:{}", tab_id_clone, uuid::Uuid::new_v4());
             let mut event_id = 0_u64;
-            // Resource tabs have no frontend history uuid; key their resume id by
-            // tab_id so a wake-up (if the agent launches an experiment) can resume.
-            let ire_dir_res = workspace_clone2.join(".ire");
             let started_at_res = chrono::Local::now().to_rfc3339();
             session.set_agent_options(&tab_id_clone, &tab_id_clone, &provider, &model, effort.as_deref());
             session.set_pid(&tab_id_clone, pid);
@@ -497,7 +454,7 @@ fn start_resource_summary(
                     let mut emit_event = |event: StreamEvent| {
                         if let StreamEvent::Init { ref session_id } = event {
                             let _ = crate::db::models::upsert_chat_resume_id(
-                                &ire_dir_res,
+                                &home_data_dir,
                                 &tab_id_clone,
                                 "Ingest",
                                 &provider,
@@ -585,6 +542,7 @@ fn build_resource_summary_prompt(resource_id: &str, sources: &[SummarySource]) -
 #[tauri::command]
 pub fn read_resource_draft(
     active: State<'_, ActiveWorkspace>,
+    inflight: State<'_, InflightResources>,
     resource_id: String,
 ) -> Result<String, String> {
     let workspace_path = {
@@ -600,13 +558,17 @@ pub fn read_resource_draft(
         .join(".ire/cache")
         .join(format!("{resource_id}_draft.md"));
     let content = fs::read_to_string(&draft_path).map_err(|e| e.to_string())?;
-    normalize_resource_draft_sources(&workspace_path, &resource_id, &content)
+    Ok(normalize_resource_draft_sources(
+        &content,
+        &inflight.sources(&resource_id),
+    ))
 }
 
 #[tauri::command]
 pub fn confirm_resource(
     app: tauri::AppHandle,
     active: State<'_, ActiveWorkspace>,
+    inflight: State<'_, InflightResources>,
     resource_id: String,
 ) -> Result<(), String> {
     let workspace_path = {
@@ -623,23 +585,25 @@ pub fn confirm_resource(
         .join(".ire/cache")
         .join(format!("{resource_id}_draft.md"));
     let content = fs::read_to_string(&draft_path).map_err(|e| e.to_string())?;
-    let content = normalize_resource_draft_sources(&workspace_path, &resource_id, &content)?;
+    let content = normalize_resource_draft_sources(&content, &inflight.sources(&resource_id));
 
-    let (fm, _) = crate::wiki::frontmatter::parse(&content);
+    let (fm, _) = crate::ire::frontmatter::parse(&content);
     let title = fm
         .as_ref()
         .and_then(|m| m.get("title"))
-        .map(|t| sanitize_wiki_filename(t))
+        .map(|t| sanitize_resource_filename(t))
+        .filter(|t| !t.is_empty())
         .unwrap_or_else(|| resource_id[..8.min(resource_id.len())].to_string());
 
-    let wiki_path = format!("resources/{title}.md");
-    let store = crate::wiki::WikiStore::new(workspace_path.clone());
+    let ire_path = format!("resources/{title}.md");
+    let store = IreStore::new(workspace_path.clone());
     store
-        .write(&wiki_path, &content, &app)
+        .write_resource(&ire_path, &content, &app)
         .map_err(|e| e.to_string())?;
 
     cleanup_resource_cache(&workspace_path, &resource_id);
     let _ = fs::remove_file(&draft_path);
+    inflight.remove(&resource_id);
 
     Ok(())
 }
@@ -665,7 +629,7 @@ pub fn save_resource_draft(
     fs::write(&draft_path, content.as_bytes()).map_err(|e| e.to_string())
 }
 
-fn sanitize_wiki_filename(title: &str) -> String {
+fn sanitize_resource_filename(title: &str) -> String {
     title
         .chars()
         .map(|c| {
@@ -682,24 +646,13 @@ fn sanitize_wiki_filename(title: &str) -> String {
         .join("-")
 }
 
-fn normalize_resource_draft_sources(
-    workspace_path: &Path,
-    resource_id: &str,
-    content: &str,
-) -> Result<String, String> {
-    let ire_dir = workspace_path.join(".ire");
-    let Some(row) = models::get_resource(&ire_dir, resource_id).map_err(|e| e.to_string())? else {
-        return Ok(content.to_string());
-    };
-    let source_refs = stored_source_refs(&row.url);
+/// Inject the in-flight `source_refs` into the draft's frontmatter (overwriting
+/// any placeholder `sources:`). A no-op if there are no recorded sources.
+fn normalize_resource_draft_sources(content: &str, source_refs: &[String]) -> String {
     if source_refs.is_empty() {
-        return Ok(content.to_string());
+        return content.to_string();
     }
-    Ok(replace_frontmatter_sources(content, &source_refs))
-}
-
-fn stored_source_refs(value: &str) -> Vec<String> {
-    serde_json::from_str::<Vec<String>>(value).unwrap_or_else(|_| vec![value.to_string()])
+    replace_frontmatter_sources(content, source_refs)
 }
 
 fn replace_frontmatter_sources(content: &str, source_refs: &[String]) -> String {
@@ -774,10 +727,15 @@ fn push_sources_block(lines: &mut Vec<String>, source_refs: &[String]) {
     }
 }
 
+/// Discard a resource. For an in-flight ingestion (id present in the registry):
+/// drop the registry entry and clean its cache + draft. Otherwise the id is a
+/// confirmed resource's file path (`resources/<slug>.md`): delete the file,
+/// regenerate the index, and emit `resource-deleted`.
 #[tauri::command]
 pub fn discard_resource(
     app: tauri::AppHandle,
     active: State<'_, ActiveWorkspace>,
+    inflight: State<'_, InflightResources>,
     resource_id: String,
 ) -> Result<(), String> {
     tracing::info!(resource_id = %resource_id, "discard_resource");
@@ -791,29 +749,54 @@ pub fn discard_resource(
             .clone()
     };
 
-    cleanup_resource_cache(&workspace_path, &resource_id);
-
-    let ire_dir = workspace_path.join(".ire");
-
-    if let Ok(Some(row)) = models::get_resource(&ire_dir, &resource_id) {
-        if let Some(wiki_path) = row.wiki_path {
-            let store = crate::wiki::WikiStore::new(workspace_path.clone());
-            if let Err(e) = store.delete(&wiki_path) {
-                tracing::warn!(wiki_path = %wiki_path, error = %e, "discard_resource: failed to delete wiki file");
-            }
-        }
+    if inflight.remove(&resource_id).is_some() {
+        cleanup_resource_cache(&workspace_path, &resource_id);
+        let draft_path = workspace_path
+            .join(".ire/cache")
+            .join(format!("{resource_id}_draft.md"));
+        let _ = fs::remove_file(&draft_path);
+        return Ok(());
     }
 
-    models::update_resource_status(&ire_dir, &resource_id, "rejected")
-        .map_err(|e| e.to_string())?;
+    // Confirmed resource: id is its file path.
+    let store = IreStore::new(workspace_path.clone());
+    store
+        .delete_resource(&resource_id, &app)
+        .map_err(|e| e.to_string())
+}
 
-    events::emit_resource_deleted(&app, &resource_id);
-    Ok(())
+/// Simulated ingestion for the `resource.add` MCP tool: the agent supplies the
+/// markdown directly (no fetch). Registers the in-flight entry, writes the draft,
+/// and opens an Approve/Discard preview tab (already in the "ready" state since
+/// there is no summarization turn to wait on).
+pub fn add_resource_from_markdown(
+    app: &AppHandle,
+    workspace_root: &Path,
+    inflight: &InflightResources,
+    markdown: &str,
+    _title: Option<&str>,
+    sources: &[String],
+) -> anyhow::Result<String> {
+    let resource_id = uuid::Uuid::new_v4().to_string();
+    let draft_path = workspace_root
+        .join(".ire/cache")
+        .join(format!("{resource_id}_draft.md"));
+    crate::ire::store::atomic_write(&draft_path, markdown)?;
+    inflight.register(&resource_id, sources.to_vec());
+
+    app.emit(
+        "resource-pending",
+        serde_json::json!({
+            "resource_id": resource_id,
+            "resource_status": "ready",
+        }),
+    )?;
+    Ok(resource_id)
 }
 
 fn build_resource_system_prompt(workspace_root: &Path) -> String {
     let ire_root = workspace_root.join(".ire");
-    let wiki_root = workspace_root.join(".ire/wiki");
+    let store = IreStore::new(workspace_root.to_path_buf());
     let mut parts: Vec<String> = Vec::new();
 
     if let Ok(content) = fs::read_to_string(ire_root.join("_SYSTEM.md")) {
@@ -824,11 +807,16 @@ fn build_resource_system_prompt(workspace_root: &Path) -> String {
 
     parts.push(prompts::resource_summarizer().to_string());
 
-    for rel in &["pulse.json", "_index.md"] {
-        if let Ok(content) = fs::read_to_string(wiki_root.join(rel)) {
-            if !content.trim().is_empty() {
-                parts.push(format!("### {rel}\n\n{content}"));
-            }
+    if let Ok(ire) = store.read_ire() {
+        let focus = focus_prompt_block(&ire.focus);
+        if !focus.is_empty() {
+            parts.push(focus);
+        }
+    }
+
+    if let Ok(content) = fs::read_to_string(store.resources_dir.join("_index.md")) {
+        if !content.trim().is_empty() {
+            parts.push(format!("### resources/_index.md\n\n{content}"));
         }
     }
 

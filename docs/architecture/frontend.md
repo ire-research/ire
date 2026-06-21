@@ -28,7 +28,7 @@ The Tauri window opens in windowed mode at 1280 × 820.
 - The left rail is a vertical group `left` with panels `pulse`, `resources`, `experiments`.
 - The right rail is a vertical group `right` with panels `notes`, `ideas`, `resource-input`.
 - `FocusPane` and `NotesPane` use **inline editing**: clicking a field activates a textarea in place; blur/Enter saves.
-- `NotesPane` renders saved `notes.md` as markdown in display mode; in edit mode its textarea fills the remaining height of the resizable panel.
+- `NotesPane` renders the `ire.json` `notes` field as markdown in display mode; in edit mode its textarea fills the remaining height of the resizable panel.
 - The top navbar shows the full workspace path. The bottom `StatusBar` displays: workspace path (from workspace state) + git branch + insertions/deletions, CPU, GPU, RAM, `username@hostname`, and `Claude Code` / `codex` availability chips. Machine-level facts (CPU/RAM/GPU model, hostname, username, agent availability) come from `get_system_info`, fetched once and cached in-memory on the Rust side; volatile metrics (git branch/diff, CPU usage, GPU usage) come from `get_system_metrics`, polled every 5 s. Both run off the main thread via `spawn_blocking`.
 
 ---
@@ -68,9 +68,9 @@ When the active tab has `kind === "experiment"`, the chat pane renders `Experime
 
 ## Edit/Preview Toggle
 
-- Resource preview tabs open in **Preview** by default (`ResourcePreviewPane`): frontmatter metadata header + markdown body. Switching to Edit loads raw file contents into a textarea; switching back without Submit discards local edits (with a confirm if dirty). Submit calls `save_wiki_file`.
+- Resource preview tabs open in **Preview** by default (`ResourcePreviewPane`): frontmatter metadata header + markdown body. Switching to Edit loads raw file contents into a textarea; switching back without Submit discards local edits (with a confirm if dirty). Submit calls `save_resource`.
 - `NotesPane` renders markdown in display mode, edits inline as raw markdown, saves through `save_notes` on blur / Ctrl+Enter.
-- `IdeasPane` does not use markdown; it writes `ideas.json` directly via `save_ideas_json`.
+- `IdeasPane` does not use markdown; it writes the `ire.json` `ideas` array (ordered `{ text }[]`, identity by index) via `save_ideas`.
 
 ---
 
@@ -90,7 +90,11 @@ Typography uses bundled `geist` package font files (`Geist`, `Geist Mono`) refer
 
 ---
 
-## Workspace State (`workspace.json`)
+## Workspace State (`tauri-plugin-store`)
+
+Per-workspace UI/session state is persisted via `@tauri-apps/plugin-store` directly from the frontend — there is no Rust persistence layer and no `workspace.json`. A single store file (`workspace-state.json`, in the plugin's app-data dir) holds one entry per workspace, keyed by workspace path. The wrapper lives in `src/state/persistedStore.ts` (`loadPersisted(path)` / `savePersisted(path, state)`); `useWorkspace.persist()` saves the current workspace's state using the path from `phase`.
+
+The stored shape (`PersistedWorkspace`):
 
 ```json
 {
@@ -124,9 +128,9 @@ Typography uses bundled `geist` package font files (`Geist`, `Geist Mono`) refer
 
 Each entry under `panel_layout.groups.<group-id>` is the `Layout` map (`{ panel-id: percentage }`) that `react-resizable-panels` accepts as `defaultLayout`. `panel_layout.collapsed.left/right` stores the sidebar collapsed state.
 
-Persisted via `save_workspace_state` (debounced 1 s on layout, collapsed-state, model, provider, effort, tab, or active-tab change; also saved immediately before/after chat sends and before workspace close). Hydrated by `read_workspace_state` immediately after `open_workspace`/`init_workspace`, before the workspace transitions to `phase = "ready"`.
+Persisted via `useWorkspace.persist()` (debounced 1 s on layout, collapsed-state, model, provider, effort, tab, or active-tab change; also saved immediately before/after chat sends and before workspace close). Loaded via `loadPersisted(path)` immediately after `open_workspace`/`init_workspace`, before the workspace transitions to `phase = "ready"`.
 
-Tab `messages` are **not** stored in `workspace.json` — they live in the `chat_sessions` table (the durable store) and are hydrated on open via `chat_history_get(historySessionUuid)`. Per-tab agent resume ids are likewise persisted in `chat_sessions` (`claude_session_id` / `codex_thread_id`), so reopening a workspace resumes the underlying agent session; `SessionManager` keeps only transient per-turn state.
+Tab `messages` are **not** stored in the workspace state — they live in the `chat_sessions` table (the durable store) and are hydrated on open via `chat_history_get(historySessionUuid)`. Per-tab agent resume ids are likewise persisted in `chat_sessions` (`claude_session_id` / `codex_thread_id`), so reopening a workspace resumes the underlying agent session; `SessionManager` keeps only transient per-turn state.
 
 ---
 
@@ -142,19 +146,18 @@ Directory picking is **not** a Tauri command — the frontend calls Tauri's dial
 | `open_workspace` | `{ path }` | `WorkspaceState` (`{ path, name }`) |
 | `init_workspace` | `{ path }` | `WorkspaceState` |
 | `close_workspace` | — | `{}` |
-| `read_wiki_file` | `{ path }` | `{ content, frontmatter }` |
-| `save_wiki_file` | `{ path, content }` | `{}` (atomic write) |
-| `save_notes` | `{ content }` | `{}` (atomic write) |
-| `read_ideas` | — | `IdeaItem[]` |
-| `save_ideas_json` | `{ ideas }` | `{}` |
-| `read_pulse` | — | `{ research_question, this_week }` |
-| `save_pulse_field` | `{ field: "research_question" \| "this_week", content }` | `{}` |
-| `submit_resource` | `{ url, options }` | `resource_id: string` |
+| `read_resource` | `{ path }` | `{ content, frontmatter }` (reads `.ire/resources/*.md`) |
+| `save_resource` | `{ path, content }` | `{}` (resource file: atomic write + index + `resource-changed`) |
+| `save_notes` | `{ content }` | `{}` (patches `ire.json` notes) |
+| `save_ideas` | `{ ideas: { text }[] }` | `{}` (patches `ire.json` ideas) |
+| `save_focus_field` | `{ field: "research_question" \| "this_week", content }` | `{}` (patches `ire.json` focus) |
+| `submit_resource` | `{ url, options }` | `resource_id: string` (transient ingest id) |
 | `submit_local_resource` | `{ path, options }` | `resource_id: string` |
 | `submit_resources` | `{ sources: ({ kind: "url", url } \| { kind: "local_file", path })[], options }` | `resource_id: string` |
-| `discard_resource` | `{ resource_id }` | `{}` |
-| `list_resources` | — | `ResourceItem[]` (only `summarized` entries) |
-| `get_resource_confirm_prompt` | — | `string` |
+| `read_resource_draft` | `{ resource_id }` | `string` (draft markdown with sources normalized) |
+| `save_resource_draft` | `{ resource_id, content }` | `{}` |
+| `confirm_resource` | `{ resource_id }` | `{}` (writes `resources/<slug>.md`) |
+| `discard_resource` | `{ resource_id }` | `{}` (in-flight id → drop draft; else file path → delete file) |
 | `chat_send` | `{ tab_id, message, options: { model, provider, effort }, session_uuid, tab_label, started_at }` | `{}` (events follow) |
 | `chat_cancel` | `{ tab_id }` | `{}` |
 | `chat_reset_session` | `{ tab_id }` | `{}` |
@@ -167,8 +170,6 @@ Directory picking is **not** a Tauri command — the frontend calls Tauri's dial
 | `experiment_rename` | `{ uuid, name }` | `{}` |
 | `get_system_info` | — | `SystemInfo` (cached after first call) |
 | `get_system_metrics` | — | `SystemMetrics` |
-| `read_workspace_state` | — | `PersistedWorkspace` |
-| `save_workspace_state` | `{ state: PersistedWorkspace }` | `{}` |
 | `chat_history_save` | `{ session_uuid?, tab_label, provider, model, started_at, messages_json }` | `{}` |
 | `chat_history_list` | `{ limit? }` | `[ChatSessionRow]` ordered by `ended_at DESC` |
 | `chat_history_get` | `{ session_uuid }` | `messages_json: string \| null` |
@@ -181,7 +182,7 @@ Directory picking is **not** a Tauri command — the frontend calls Tauri's dial
 | Event | Payload |
 |---|---|
 | `chat-stream` | `{ tab_id, stream_id, event_id, event: StreamEvent }` (see [chat-agents.md — JSONL parsers](chat-agents.md#jsonl-parsers-ccstream-codexstream)) |
-| `tab-created` | `{ tab_id, label, kind: "chat"\|"resource", resource_id?, agent_options? }` |
+| `tab-created` | `{ tab_id, label, kind: "chat"\|"resource", resource_id?, resource_status?, agent_options? }` |
 | `chat-cancelled` | `{ tab_id }` |
 | `experiment-starting` | `{ tab_id, uuid, pid? }` |
 | `experiment-status` | `{ uuid, status, exit_code? }` |
@@ -196,11 +197,11 @@ A single typed channel carrying workspace-level state changes for the side panel
 
 | `kind` | Payload (excl. `source`) | Emitted from |
 |---|---|---|
-| `pulse-changed` | `{ research_question, this_week }` | `WikiStore::write` on pulse files; initial-state burst |
-| `notes-changed` | `{ content }` | `WikiStore::write` on `notes.md`; initial-state burst |
-| `ideas-changed` | `{ ideas: IdeaItem[] }` | `WikiStore::write` on `ideas.json`; initial-state burst |
-| `resource-changed` | `{ resource: ResourceItem }` | `WikiStore::write` on `resources/*.md`; initial-state burst |
-| `resource-deleted` | `{ resource_id }` | `discard_resource` command |
+| `focus-changed` | `{ research_question, this_week }` | `ire.json` writes (UI setters / `ire.edit`); initial-state burst |
+| `notes-changed` | `{ content }` | `ire.json` writes; initial-state burst |
+| `ideas-changed` | `{ ideas: { text }[] }` | `ire.json` writes; initial-state burst |
+| `resource-changed` | `{ resource: { path, title, sources } }` | `IreStore::write_resource` on `resources/*.md`; initial-state burst |
+| `resource-deleted` | `{ path }` | `discard_resource` / `IreStore::delete_resource` |
 | `experiment-changed` | `{ experiment: ExperimentRow }` | `experiments/runner.rs` on state transitions; initial-state burst |
 | `experiment-deleted` | `{ uuid }` | `experiment_delete` command |
 
@@ -210,10 +211,8 @@ The frontend has one subscriber (in `App.tsx`) that applies every variant to the
 
 At the end of `attach()` in `commands/workspace.rs`, `emit_initial_state(app, workspace_root)` fires:
 
-1. Read pulse files → one `pulse-changed` event.
-2. Read `notes.md` → one `notes-changed` event.
-3. Parse `ideas.json` → one `ideas-changed` event (silently skipped if JSON is not parseable).
-4. `models::list_resources(ire_dir)` → one `resource-changed` per row.
-5. `models::list_experiments(ire_dir, 50)` → one `experiment-changed` per row.
+1. Read `ire.json` → one `notes-changed`, one `focus-changed`, and one `ideas-changed` event.
+2. `IreStore::list_resources()` (scan `.ire/resources/*.md`) → one `resource-changed` per file.
+3. `ire.json` `experiments` → one `experiment-changed` per entry (tab_id empty on hydrate; live linkage via events).
 
 Every event in the burst carries `source: "hydrate"`. Live mutations carry `source: "mutation"`. Animation listeners can filter to `source === "mutation"` to avoid flashing every panel on workspace open.

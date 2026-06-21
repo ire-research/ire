@@ -4,10 +4,10 @@ use uuid::Uuid;
 use crate::db::models;
 use crate::workspace::state::ActiveWorkspace;
 
-fn ire_dir(active: &State<'_, ActiveWorkspace>) -> Result<std::path::PathBuf, String> {
+fn home_data_dir(active: &State<'_, ActiveWorkspace>) -> Result<std::path::PathBuf, String> {
     let guard = active.0.lock().map_err(|e| e.to_string())?;
     let handle = guard.as_ref().ok_or("no workspace open")?;
-    Ok(handle.state.path.join(".ire"))
+    Ok(handle.state.home_data_dir.clone())
 }
 
 /// Save the current tab's messages as a completed chat session.
@@ -24,7 +24,7 @@ pub fn chat_history_save(
     started_at: String,
     messages_json: String,
 ) -> Result<(), String> {
-    let dir = ire_dir(&active)?;
+    let dir = home_data_dir(&active)?;
     let session_uuid = session_uuid.unwrap_or_else(|| Uuid::new_v4().to_string());
     let ended_at = chrono::Local::now().to_rfc3339();
 
@@ -64,7 +64,7 @@ pub fn chat_history_list(
     active: State<'_, ActiveWorkspace>,
     limit: Option<u32>,
 ) -> Result<Vec<models::ChatSessionRow>, String> {
-    let dir = ire_dir(&active)?;
+    let dir = home_data_dir(&active)?;
     models::list_chat_sessions(&dir, limit.unwrap_or(50) as usize).map_err(|e| e.to_string())
 }
 
@@ -74,7 +74,7 @@ pub fn chat_history_get(
     active: State<'_, ActiveWorkspace>,
     session_uuid: String,
 ) -> Result<Option<String>, String> {
-    let dir = ire_dir(&active)?;
+    let dir = home_data_dir(&active)?;
     models::get_chat_session_messages(&dir, &session_uuid).map_err(|e| e.to_string())
 }
 
@@ -84,6 +84,6 @@ pub fn chat_history_delete(
     active: State<'_, ActiveWorkspace>,
     session_uuid: String,
 ) -> Result<(), String> {
-    let dir = ire_dir(&active)?;
+    let dir = home_data_dir(&active)?;
     models::delete_chat_session(&dir, &session_uuid).map_err(|e| e.to_string())
 }

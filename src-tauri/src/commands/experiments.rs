@@ -27,8 +27,8 @@ pub fn experiment_list(
             .path
             .clone()
     };
-    let ire_dir = workspace_path.join(".ire");
-    db::list_experiments(&ire_dir, limit.unwrap_or(50)).map_err(|e| e.to_string())
+    let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
+    db::list_experiments(&home_data_dir, limit.unwrap_or(50)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -46,7 +46,7 @@ pub fn experiment_logs(
             .path
             .clone()
     };
-    let log_dir = workspace_path.join(".ire/wiki/experiments").join(&uuid);
+    let log_dir = workspace_path.join(".ire/cache/experiments").join(&uuid);
     let max_bytes = kb.unwrap_or(64) * 1024;
 
     Ok(LogsResult {
@@ -70,9 +70,9 @@ pub fn experiment_cancel(
             .path
             .clone()
     };
-    let ire_dir = workspace_path.join(".ire");
+    let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
 
-    let row = db::get_experiment(&ire_dir, &uuid)
+    let row = db::get_experiment(&home_data_dir, &uuid)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("experiment {uuid} not found"))?;
 
@@ -80,10 +80,11 @@ pub fn experiment_cancel(
         kill_process_group(pid as u32);
     }
 
-    db::update_experiment_completed(&ire_dir, &uuid, "cancelled", None)
+    db::update_experiment_completed(&home_data_dir, &uuid, "cancelled", None)
         .map_err(|e| e.to_string())?;
 
-    if let Ok(Some(row)) = db::get_experiment(&ire_dir, &uuid) {
+    if let Ok(Some(row)) = db::get_experiment(&home_data_dir, &uuid) {
+        crate::experiments::sync_to_ire(&workspace_path, &row);
         events::emit_experiment_changed(&app, events::EventSource::Mutation, &row);
     }
     Ok(())
@@ -104,20 +105,20 @@ pub fn experiment_delete(
             .path
             .clone()
     };
-    let ire_dir = workspace_path.join(".ire");
-    let row = db::get_experiment(&ire_dir, &uuid)
+    let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
+    let row = db::get_experiment(&home_data_dir, &uuid)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("experiment {uuid} not found"))?;
     if row.status == "running" || row.status == "starting" {
         return Err(format!("experiment {uuid} is still {}", row.status));
     }
 
-    for dir in [ire_dir.join("wiki/experiments").join(&uuid)] {
-        if dir.exists() {
-            fs::remove_dir_all(&dir).map_err(|e| e.to_string())?;
-        }
+    let log_dir = workspace_path.join(".ire/cache/experiments").join(&uuid);
+    if log_dir.exists() {
+        fs::remove_dir_all(&log_dir).map_err(|e| e.to_string())?;
     }
-    db::delete_experiment(&ire_dir, &uuid).map_err(|e| e.to_string())?;
+    db::delete_experiment(&home_data_dir, &uuid).map_err(|e| e.to_string())?;
+    crate::experiments::remove_from_ire(&workspace_path, &uuid);
     events::emit_experiment_deleted(&app, &uuid);
     Ok(())
 }
@@ -138,9 +139,10 @@ pub fn experiment_rename(
             .path
             .clone()
     };
-    let ire_dir = workspace_path.join(".ire");
-    db::rename_experiment(&ire_dir, &uuid, &name).map_err(|e| e.to_string())?;
-    if let Ok(Some(row)) = db::get_experiment(&ire_dir, &uuid) {
+    let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
+    db::rename_experiment(&home_data_dir, &uuid, &name).map_err(|e| e.to_string())?;
+    if let Ok(Some(row)) = db::get_experiment(&home_data_dir, &uuid) {
+        crate::experiments::sync_to_ire(&workspace_path, &row);
         events::emit_experiment_changed(&app, events::EventSource::Mutation, &row);
     }
     Ok(())

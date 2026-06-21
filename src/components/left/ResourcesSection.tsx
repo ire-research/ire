@@ -7,7 +7,7 @@ import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
 
 interface Props {
-  onOpen: (label: string, wikiPath: string) => void;
+  onOpen: (label: string, irePath: string) => void;
 }
 
 export function ResourcesSection({ onOpen }: Props) {
@@ -20,8 +20,8 @@ export function ResourcesSection({ onOpen }: Props) {
 
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
-  const handleMouseEnter = (resourceId: string, label: string) => {
-    const span = spanRefs.current.get(resourceId);
+  const handleMouseEnter = (path: string, label: string) => {
+    const span = spanRefs.current.get(path);
     if (!span || span.scrollWidth <= span.clientWidth) return;
     const rect = span.getBoundingClientRect();
     timerRef.current = setTimeout(() => {
@@ -34,11 +34,11 @@ export function ResourcesSection({ onOpen }: Props) {
     setTooltip(null);
   };
 
-  const handleDiscard = async (e: React.MouseEvent, resourceId: string) => {
+  const handleDiscard = async (e: React.MouseEvent, path: string) => {
     e.stopPropagation();
-    setDiscardingId(resourceId);
+    setDiscardingId(path);
     try {
-      await ipc.discardResource(resourceId);
+      await ipc.discardResource(path);
     } catch (err) {
       toastError("discard resource", err);
     } finally {
@@ -46,13 +46,10 @@ export function ResourcesSection({ onOpen }: Props) {
     }
   };
 
-  const rail = resources
-    .filter((r) => r.wiki_path)
-    .map((r) => ({
-      resourceId: r.resource_id,
-      label: r.title ?? r.source_label,
-      wikiPath: r.wiki_path!,
-    }));
+  const rail = resources.map((r) => ({
+    path: r.path,
+    label: r.title,
+  }));
 
   return (
     <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
@@ -71,17 +68,17 @@ export function ResourcesSection({ onOpen }: Props) {
         {rail.length > 0 ? (
           rail.map((resource) => (
             <div
-              key={resource.resourceId}
+              key={resource.path}
               className="group w-full flex items-center px-2 py-1.5 rounded hover:bg-surface-container-high transition-colors"
               onMouseLeave={handleMouseLeave}
             >
               <button
                 className="flex-1 min-w-0 text-left"
-                onMouseEnter={() => handleMouseEnter(resource.resourceId, resource.label)}
-                onClick={() => onOpen("Resource", resource.wikiPath)}
+                onMouseEnter={() => handleMouseEnter(resource.path, resource.label)}
+                onClick={() => onOpen("Resource", resource.path)}
               >
                 <span
-                  ref={(el) => { spanRefs.current.set(resource.resourceId, el); }}
+                  ref={(el) => { spanRefs.current.set(resource.path, el); }}
                   className="text-[14px] text-on-surface truncate block"
                 >
                   {resource.label}
@@ -90,8 +87,8 @@ export function ResourcesSection({ onOpen }: Props) {
               <button
                 className="app-danger-icon-button opacity-0 group-hover:opacity-100 ml-1 p-0.5 shrink-0"
                 title="Discard resource"
-                disabled={discardingId === resource.resourceId}
-                onClick={(e) => handleDiscard(e, resource.resourceId)}
+                disabled={discardingId === resource.path}
+                onClick={(e) => handleDiscard(e, resource.path)}
               >
                 <FontAwesomeIcon icon={faTrash} className={iconClass.md} />
               </button>

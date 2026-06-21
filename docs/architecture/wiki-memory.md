@@ -1,105 +1,132 @@
-# Wiki & Memory
+# State & Memory
 
-Covers the wiki layer (atomic writes, index, git policy), the memory layer (long-term / short-term files), the context injection rules, and the SQLite schema.
+Covers the per-workspace state record (`ire.json`), file-based resources, the memory layer (long-term / short-term files), the context injection rules, and the SQLite schema.
+
+The store layer is rooted at `.ire/` (`src-tauri/src/ire/`). There is no longer a `wiki/` subtree.
 
 ---
 
-## Wiki Layer
+## `.ire/` layout
 
-### Conventions (encoded in `.ire/_SYSTEM.md`)
+```
+.ire/
+  _SYSTEM.md            git-tracked  — always-injected framework context
+  ire.json              git-tracked  — notes, focus, ideas, experiments
+  long-term.md          git-tracked
+  short-term/           git-tracked  — YYYY-MM-DD.md
+  resources/            git-tracked
+    _index.md           auto-generated (resources only)
+    <slug>.md
+  cache/                gitignored   — ingestion temp + experiments/<uuid>/{stdout,stderr}.log
+```
 
-- **Path = identity.** Every wiki page has a stable path; renames go through `wiki.rename`.
-- **Frontmatter is optional but preferred** for structured pages. Minimum:
-  ```yaml
-  ---
-  title: <human title>
-  type: summary | entity | concept | comparison | meta
-  sources: [path/to/raw/source.pdf, ...]   # optional
-  updated: 2026-05-03
-  ---
-  ```
-- **`_index.md` is canonical.** It is auto-regenerated on every wiki write. CC must consult it to navigate; it must not edit it directly.
-- **`pulse.json` is the focus file.** It contains exactly `research_question` and `this_week`.
+Runtime/local artifacts live outside the workspace, under `~/.ire/workspaces/<id>/`:
+
+```
+~/.ire/workspaces/<name>-<8-hex>/
+  local.db    — chat_sessions + experiments (operational) only
+  mcp.json    — MCP server config consumed by the agent
+  mcp.sock    — Unix socket for the MCP RPC server
+  .lock       — single-instance PID guard
+```
+
+UI/session state (panel sizes, tabs, chat options) is persisted by `tauri-plugin-store` in the app-data dir, keyed by workspace path — there is no `workspace.json`.
+
+`.gitignore` entry written at init: `.ire/cache/` (the only workspace-local thing to ignore).
+
+There is **no migration**: new workspaces only. The "is an IRE workspace" probe checks `.ire/_SYSTEM.md` + `.ire/ire.json`.
+
+---
+
+## `ire.json`
+
+The git-tracked record of shareable state. Read/written through `IreStore` (`src-tauri/src/ire/store.rs`).
+
+```json
+{
+  "notes": "free-form markdown",
+  "focus": { "research_question": "", "this_week": "" },
+  "ideas": [ { "text": "an idea" } ],
+  "experiments": [
+    { "uuid": "…", "name": "…", "command": "…", "status": "running",
+      "started_at": "RFC3339", "ended_at": null, "exit_code": null }
+  ]
+}
+```
+
+### Read/write API
+
+- `read_ire()` → typed `IreContent`; `read_ire_raw()` → `(raw_text, version)` where `version` is the sha256 of the on-disk bytes.
+- `update_ire(app, mutate)` — UI setters (`save_notes`, `save_focus_field`, `save_ideas`) take this path: read-modify-write under a process-wide `IRE_LOCK`, then emit the `notes-changed` / `focus-changed` / `ideas-changed` events.
+- `edit_ire(old, new, version, app)` — backs the `ire.edit` MCP tool. Validates `version` against the current on-disk hash (rejects a stale/missing version), requires `old` to be present and **unique**, applies the replacement, re-parses against the schema, writes, and emits the section events. The pure core is `apply_edit` (unit-tested).
+- `upsert_experiment` / `remove_experiment` — the experiment runner and commands mirror DB rows into `ire.json` here; these **do not** emit section events (`experiment-changed` is owned by the runner).
+
+Experiments are duplicated by design: `ire.json` holds the git-tracked **display** subset; `local.db.experiments` retains the **operational** fields (`pid`, `working_dir`, `wake_prompt`, `session_id`, `tab_id`). On a fresh clone, `ire.json` shows experiment history while logs/operational data are absent.
+
+---
+
+## Resources (file-based)
+
+There is **no `resources` DB table**. Each resource lives entirely in `.ire/resources/<slug>.md` — title and `sources` in frontmatter:
+
+```yaml
+---
+title: <human title>
+sources:
+  - <url or local path>
+updated: 2026-05-03
+TL;DR: <one-liner or 'Not relevant'>
+---
+```
+
+- `IreStore::write_resource(rel_path, content, app)` — atomic write, regenerate `resources/_index.md`, emit `resource-changed { path, title, sources }` derived from the file.
+- `IreStore::delete_resource(rel_path, app)` — remove the file, regenerate the index, emit `resource-deleted { path }`.
+- `IreStore::list_resources()` — scan `resources/*.md` (skip `_index.md`/dotfiles), parse frontmatter; used for the open-workspace hydration burst.
+- `resources/_index.md` is auto-generated: one bullet `- [title](./slug.md) — TL;DR/summary` per file, sorted by filename. It is the only auto-generated index (the old master `_index.md` is gone). Resources are identified by their **file path** (`resources/<slug>.md`); there is no sha256 DB key.
+
+Resources are read by the agent with the built-in `Read` tool; only ingestion goes through a tool (`resource.add`). See [chat-agents.md](chat-agents.md) for the ingestion pipeline.
 
 ### Atomic write contract
 
-All wiki mutations go through `WikiStore` (Rust) which holds the in-process `tokio::Mutex<()>` for the wiki. Per write:
-
-1. Acquire mutex.
-2. Write content to `<path>.<uuid>.tmp` in the same directory (`O_CREAT|O_EXCL`).
-3. `sync_all()` the temp file.
-4. `fs::rename(tmp, final)` — atomic on local FS.
-5. Re-derive `_index.md` from a directory walk (cheap; <1k files in MVP) and atomic-rename it.
-6. Dispatch a typed `workspace-event` variant on the `workspace-event` channel, chosen by the path (see [frontend.md — workspace-event](frontend.md#workspace-event)). For `resources/*.md`, also link the DB row inline and emit `resource-changed` with the linked row.
-7. Release mutex.
-
-No CAS, no advisory file lock, no WAL — single-instance is enforced by `.lock` (see [workspace.md](workspace.md#concurrency--data-safety)).
-
-### Index regeneration
-
-`_index.md` is a flat markdown list:
-```
-- [notes.md](./notes.md) — running user notes
-- [ideas](./ideas.json) — user ideas list
-- [pulse](./pulse.json) — current research question and weekly focus
-- [long-term](./long-term.md) — architectural decisions and durable insights
-- [resources/attention-is-all-you-need.md](./resources/attention-is-all-you-need.md) — Vaswani et al. (2017): self-attention transformer …
-```
-
-The one-line summary is sourced from frontmatter `summary:` if present, else the first non-heading paragraph truncated to 160 chars.
+`IreStore::atomic_write` writes to `<path>.<uuid>.tmp` in the same dir, `sync_all()`, then `fs::rename` (atomic on local FS). `ire.json` mutations additionally serialize under the in-process `IRE_LOCK`. No CAS, no WAL — single-instance is enforced by `.lock` (see [workspace.md](workspace.md#concurrency--data-safety)).
 
 ### Git commit policy
 
-IRE never creates git commits automatically. The application may initialize a git repository for a new workspace, write `.gitignore`, and write files under `.ire/`, but deciding when to stage and commit remains entirely with the user.
-
-`WikiStore::write` and `WikiStore::rename` atomically update the target wiki path, regenerate `_index.md`, and dispatch a typed `workspace-event` variant. They do not run `git add` or `git commit`, regardless of path. This applies equally to `pulse.json`, `long-term.md`, `short-term/**`, `_index.md`, `notes.md`, `ideas.json`, `resources/**`, and `experiments/**`.
-
-Resource approval follows the same rule: **Confirm** asks CC to write `resources/<slug>.md` via `wiki.write`. `WikiStore::write` then parses the new file's frontmatter `sources:` array, looks up each URL in the DB, updates the matching row (`status=summarized`, `wiki_path`, `title`), and emits a `workspace-event resource-changed { resource }` for each linked row — all in the same call, before `wiki.write` returns. The resulting wiki and index changes remain uncommitted until the user commits them.
+IRE never creates git commits automatically. The app may `git init` a new workspace, write `.gitignore`, and write files under `.ire/`, but staging/committing is entirely the user's decision. This applies equally to `ire.json`, `long-term.md`, `short-term/**`, and `resources/**`.
 
 ---
 
 ## Memory Layer
 
-Memory lives at the root of `wiki/`. These files are agent-written only; the user does not edit them through the UI.
+Memory files live at `.ire/` root. Agent-written only; the user does not edit them through the UI.
 
 ### `long-term.md`
 
-CC writes architectural decisions, pivots, "this approach is the one we settled on" claims here, via the MCP `memory.write_long_term` tool. Always injected into CC's system prompt context (whole file).
+Architectural decisions, pivots, and durable "settled on this" claims, written via the MCP `memory.write_long_term` tool. Always injected into the agent system prompt (whole file).
 
 ### `short-term/YYYY-MM-DD.md`
 
-CC writes daily operational notes here via `memory.write_short_term`. Only the **last two** day-files (today + yesterday) are auto-injected. Older files remain on disk for git history but are not in CC's prompt unless explicitly read.
-
-CC is told in the system prompt:
-> Use `memory.write_short_term` for detailed information about the current experiment, specific debugging steps, and daily operations. After two days these notes are no longer auto-injected — promote anything still relevant to long-term memory.
->
-> Use `memory.write_long_term` for overarching architectural decisions, pivots, abandonment of approaches, and durable insights.
+Daily operational notes via `memory.write_short_term`. Only the **last two** day-files (today + yesterday) are auto-injected. Older files remain on disk but are not in the prompt unless explicitly read.
 
 ### Context injection rules
 
-When IRE spawns an agent turn, the system prompt is composed of:
+When IRE spawns an agent turn, the system prompt (`build_system_prompt`) is:
 
-1. `.ire/_SYSTEM.md` — static IRE framework context, wiki layout, behavioral rules, and schema. MCP tool descriptions are received automatically via `tools/list` and are not duplicated here. Seeded from `assets/seed/_SYSTEM.md` on workspace init; always injected first.
-2. All agent-facing prompt text lives in `src-tauri/assets/prompts/`. Edit those files to change agent behaviour; never hardcode prompts at call sites.
-3. `wiki/_index.md` (catalog).
-4. `wiki/pulse.json`.
-5. `wiki/long-term.md` (full).
-6. The two most recent `short-term/YYYY-MM-DD.md` files.
+1. `.ire/_SYSTEM.md` — static framework context. MCP tool descriptions arrive via `tools/list` and are not duplicated here.
+2. **Focus** — rendered from `ire.json` `focus` (research question + this week).
+3. `resources/_index.md` (catalog).
+4. `long-term.md` (full).
+5. The two most recent `short-term/YYYY-MM-DD.md` files.
 
-This is added via Claude Code's `--append-system-prompt` or Codex's `-c developer_instructions=<TOML string>`. Wiki/notes/resources are read on-demand through MCP tools; they are not pre-injected.
+`notes`, `ideas`, `experiments`, and individual resources are read on demand (via `ire.read` / built-in `Read`); they are not pre-injected. Added via Claude Code's `--append-system-prompt` or Codex's `-c developer_instructions=<TOML string>`.
 
 ---
 
 ## SQLite Schema
 
-Single file at `.ire/wiki/local.db`. Migrations applied at workspace open (idempotent).
+Single file at `~/.ire/workspaces/<id>/local.db`, created on workspace open (`src-tauri/src/db/schema.rs`). Greenfield — `CREATE TABLE IF NOT EXISTS`, no `schema_migrations`, no versioned migrations. Only two tables remain:
 
 ```sql
-CREATE TABLE schema_migrations (
-  version INTEGER PRIMARY KEY,
-  applied_at TEXT NOT NULL
-);
-
 CREATE TABLE experiments (
   uuid TEXT PRIMARY KEY,
   name TEXT NOT NULL,
@@ -111,7 +138,8 @@ CREATE TABLE experiments (
   ended_at TEXT,
   pid INTEGER,
   wake_prompt TEXT,
-  session_id TEXT NOT NULL          -- chat session_uuid whose resume id the wake-up uses
+  session_id TEXT NOT NULL,         -- chat session_uuid whose resume id the wake-up uses
+  tab_id TEXT NOT NULL DEFAULT 'main'
 );
 
 CREATE INDEX idx_experiments_status ON experiments(status);
@@ -132,22 +160,6 @@ CREATE TABLE chat_sessions (
 );
 
 CREATE INDEX idx_chat_sessions_ended ON chat_sessions(ended_at DESC);
-
-CREATE TABLE resources (
-  url_sha256 TEXT PRIMARY KEY,
-  url TEXT NOT NULL,                 -- URL, local file path, or JSON array of source refs for batches
-  source_type TEXT NOT NULL DEFAULT 'url',
-  source_label TEXT,                 -- display label, e.g. URL, filename, or "<N> sources"
-  title TEXT,
-  status TEXT NOT NULL,             -- pending_fetch | pending_summary | summarized | failed
-  content_type TEXT,
-  wiki_path TEXT,                   -- e.g. resources/<slug>.md once summarized
-  fetched_at TEXT,
-  summarized_at TEXT,
-  error TEXT
-);
-
-CREATE INDEX idx_resources_status ON resources(status);
 ```
 
 `chat_sessions` is the durable store for chat transcripts and per-provider resume ids. On reopen, tab messages are hydrated from it and the next turn resumes the underlying agent session via the stored resume id.

@@ -21,7 +21,7 @@ pub struct ExperimentRow {
 
 #[allow(clippy::too_many_arguments)]
 pub fn insert_experiment(
-    ire_dir: &Path,
+    home_data_dir: &Path,
     uuid: &str,
     name: &str,
     command: &str,
@@ -30,7 +30,7 @@ pub fn insert_experiment(
     session_id: &str,
     tab_id: &str,
 ) -> Result<()> {
-    let conn = open(ire_dir)?;
+    let conn = open(home_data_dir)?;
     let now = chrono::Local::now().to_rfc3339();
     conn.execute(
         "INSERT INTO experiments (uuid, name, command, working_dir, status, started_at, wake_prompt, session_id, tab_id) \
@@ -40,8 +40,8 @@ pub fn insert_experiment(
     Ok(())
 }
 
-pub fn update_experiment_pid(ire_dir: &Path, uuid: &str, pid: u32) -> Result<()> {
-    let conn = open(ire_dir)?;
+pub fn update_experiment_pid(home_data_dir: &Path, uuid: &str, pid: u32) -> Result<()> {
+    let conn = open(home_data_dir)?;
     conn.execute(
         "UPDATE experiments SET pid = ?1 WHERE uuid = ?2",
         params![pid, uuid],
@@ -50,12 +50,12 @@ pub fn update_experiment_pid(ire_dir: &Path, uuid: &str, pid: u32) -> Result<()>
 }
 
 pub fn update_experiment_completed(
-    ire_dir: &Path,
+    home_data_dir: &Path,
     uuid: &str,
     status: &str,
     exit_code: Option<i32>,
 ) -> Result<()> {
-    let conn = open(ire_dir)?;
+    let conn = open(home_data_dir)?;
     let now = chrono::Local::now().to_rfc3339();
     conn.execute(
         "UPDATE experiments SET status = ?1, exit_code = ?2, ended_at = ?3 WHERE uuid = ?4",
@@ -64,8 +64,8 @@ pub fn update_experiment_completed(
     Ok(())
 }
 
-pub fn get_experiment(ire_dir: &Path, uuid: &str) -> Result<Option<ExperimentRow>> {
-    let conn = open(ire_dir)?;
+pub fn get_experiment(home_data_dir: &Path, uuid: &str) -> Result<Option<ExperimentRow>> {
+    let conn = open(home_data_dir)?;
     let mut stmt = conn.prepare(
         "SELECT uuid, name, command, status, exit_code, started_at, ended_at, pid, tab_id \
          FROM experiments WHERE uuid = ?1",
@@ -89,14 +89,14 @@ pub fn get_experiment(ire_dir: &Path, uuid: &str) -> Result<Option<ExperimentRow
         .context("get_experiment")
 }
 
-pub fn delete_experiment(ire_dir: &Path, uuid: &str) -> Result<()> {
-    let conn = open(ire_dir)?;
+pub fn delete_experiment(home_data_dir: &Path, uuid: &str) -> Result<()> {
+    let conn = open(home_data_dir)?;
     conn.execute("DELETE FROM experiments WHERE uuid = ?1", params![uuid])?;
     Ok(())
 }
 
-pub fn rename_experiment(ire_dir: &Path, uuid: &str, name: &str) -> Result<()> {
-    let conn = open(ire_dir)?;
+pub fn rename_experiment(home_data_dir: &Path, uuid: &str, name: &str) -> Result<()> {
+    let conn = open(home_data_dir)?;
     conn.execute(
         "UPDATE experiments SET name = ?1 WHERE uuid = ?2",
         params![name, uuid],
@@ -104,8 +104,8 @@ pub fn rename_experiment(ire_dir: &Path, uuid: &str, name: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn list_experiments(ire_dir: &Path, limit: usize) -> Result<Vec<ExperimentRow>> {
-    let conn = open(ire_dir)?;
+pub fn list_experiments(home_data_dir: &Path, limit: usize) -> Result<Vec<ExperimentRow>> {
+    let conn = open(home_data_dir)?;
     let mut stmt = conn.prepare(
         "SELECT uuid, name, command, status, exit_code, started_at, ended_at, pid, tab_id \
          FROM experiments ORDER BY started_at DESC LIMIT ?1",
@@ -126,127 +126,9 @@ pub fn list_experiments(ire_dir: &Path, limit: usize) -> Result<Vec<ExperimentRo
     rows.map(|r| r.context("experiment row")).collect()
 }
 
-// ── Resources ─────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Serialize, Clone)]
-pub struct ResourceRow {
-    pub url_sha256: String,
-    pub url: String,
-    pub source_type: String,
-    pub source_label: Option<String>,
-    pub title: Option<String>,
-    pub status: String,
-    pub content_type: Option<String>,
-    pub wiki_path: Option<String>,
-    pub fetched_at: Option<String>,
-}
-
-fn open(ire_dir: &Path) -> Result<Connection> {
-    let db_path = ire_dir.join("wiki/local.db");
+fn open(home_data_dir: &Path) -> Result<Connection> {
+    let db_path = home_data_dir.join("local.db");
     Connection::open(&db_path).with_context(|| format!("open {}", db_path.display()))
-}
-
-pub fn insert_resource(ire_dir: &Path, sha256: &str, url: &str, content_type: &str) -> Result<()> {
-    insert_resource_with_source(ire_dir, sha256, url, url, "url", content_type)
-}
-
-pub fn insert_resource_with_source(
-    ire_dir: &Path,
-    sha256: &str,
-    url: &str,
-    source_label: &str,
-    source_type: &str,
-    content_type: &str,
-) -> Result<()> {
-    let conn = open(ire_dir)?;
-    let now = chrono::Local::now().to_rfc3339();
-    conn.execute(
-        "INSERT INTO resources (url_sha256, url, source_type, source_label, status, content_type, fetched_at) \
-         VALUES (?1, ?2, ?3, ?4, 'pending_summary', ?5, ?6) \
-         ON CONFLICT(url_sha256) DO UPDATE SET \
-             url = excluded.url, \
-             source_type = excluded.source_type, \
-             source_label = excluded.source_label, \
-             status = 'pending_summary', \
-             content_type = excluded.content_type, \
-             fetched_at = excluded.fetched_at, \
-             error = NULL \
-         WHERE resources.wiki_path IS NULL",
-        params![sha256, url, source_type, source_label, content_type, now],
-    )?;
-    Ok(())
-}
-
-pub fn update_resource_status(ire_dir: &Path, sha256: &str, status: &str) -> Result<()> {
-    let conn = open(ire_dir)?;
-    conn.execute(
-        "UPDATE resources SET status = ?1 WHERE url_sha256 = ?2",
-        params![status, sha256],
-    )?;
-    Ok(())
-}
-
-pub fn get_resource(ire_dir: &Path, sha256: &str) -> Result<Option<ResourceRow>> {
-    let conn = open(ire_dir)?;
-    let mut stmt = conn.prepare(
-        "SELECT url_sha256, url, source_type, source_label, title, status, content_type, wiki_path, fetched_at \
-         FROM resources WHERE url_sha256 = ?1",
-    )?;
-    let mut rows = stmt.query(params![sha256])?;
-    if let Some(r) = rows.next()? {
-        return Ok(Some(ResourceRow {
-            url_sha256: r.get(0)?,
-            url: r.get(1)?,
-            source_type: r.get(2)?,
-            source_label: r.get(3)?,
-            title: r.get(4)?,
-            status: r.get(5)?,
-            content_type: r.get(6)?,
-            wiki_path: r.get(7)?,
-            fetched_at: r.get(8)?,
-        }));
-    }
-    Ok(None)
-}
-
-/// Rows without a linked `wiki_path` — candidates for inline indexing when CC writes
-/// a `resources/*.md` file.
-pub fn list_unindexed_resources(ire_dir: &Path) -> Result<Vec<ResourceRow>> {
-    let conn = open(ire_dir)?;
-    let mut stmt = conn.prepare(
-        "SELECT url_sha256, url, source_type, source_label, title, status, content_type, wiki_path, fetched_at \
-         FROM resources WHERE wiki_path IS NULL",
-    )?;
-    let rows = stmt.query_map([], |r| {
-        Ok(ResourceRow {
-            url_sha256: r.get(0)?,
-            url: r.get(1)?,
-            source_type: r.get(2)?,
-            source_label: r.get(3)?,
-            title: r.get(4)?,
-            status: r.get(5)?,
-            content_type: r.get(6)?,
-            wiki_path: r.get(7)?,
-            fetched_at: r.get(8)?,
-        })
-    })?;
-    rows.map(|r| r.context("resource row")).collect()
-}
-
-/// Mark a resource as fully indexed with its wiki path and extracted title.
-pub fn update_resource_indexed(
-    ire_dir: &Path,
-    sha256: &str,
-    wiki_path: &str,
-    title: &str,
-) -> Result<()> {
-    let conn = open(ire_dir)?;
-    let now = chrono::Local::now().to_rfc3339();
-    conn.execute(
-        "UPDATE resources SET status = 'summarized', wiki_path = ?1, title = ?2, summarized_at = ?3 WHERE url_sha256 = ?4",
-        params![wiki_path, title, now, sha256],
-    )?;
-    Ok(())
 }
 
 // ── Chat Sessions ─────────────────────────────────────────────────────────────
@@ -265,7 +147,7 @@ pub struct ChatSessionRow {
 
 #[allow(clippy::too_many_arguments)]
 pub fn insert_chat_session(
-    ire_dir: &Path,
+    home_data_dir: &Path,
     session_uuid: &str,
     tab_label: &str,
     provider: &str,
@@ -276,7 +158,7 @@ pub fn insert_chat_session(
     first_user_msg: Option<&str>,
     messages_json: &str,
 ) -> Result<()> {
-    let conn = open(ire_dir)?;
+    let conn = open(home_data_dir)?;
     // Upsert: insert on first save, update mutable fields on subsequent saves.
     // started_at is intentionally excluded from the UPDATE so it stays as the
     // original session start time even as the session grows.
@@ -302,7 +184,7 @@ pub fn insert_chat_session(
 /// before any messages are written). The resume column is chosen by provider.
 #[allow(clippy::too_many_arguments)]
 pub fn upsert_chat_resume_id(
-    ire_dir: &Path,
+    home_data_dir: &Path,
     session_uuid: &str,
     tab_label: &str,
     provider: &str,
@@ -311,7 +193,7 @@ pub fn upsert_chat_resume_id(
     resume_id: &str,
 ) -> Result<()> {
     let col = resume_column(provider);
-    let conn = open(ire_dir)?;
+    let conn = open(home_data_dir)?;
     let now = chrono::Local::now().to_rfc3339();
     let sql = format!(
         "INSERT INTO chat_sessions \
@@ -330,13 +212,13 @@ pub fn upsert_chat_resume_id(
 /// flow, where the row is guaranteed to exist (the conversation that launched the
 /// experiment was already saved).
 pub fn update_chat_resume_id(
-    ire_dir: &Path,
+    home_data_dir: &Path,
     session_uuid: &str,
     provider: &str,
     resume_id: &str,
 ) -> Result<()> {
     let col = resume_column(provider);
-    let conn = open(ire_dir)?;
+    let conn = open(home_data_dir)?;
     let sql = format!("UPDATE chat_sessions SET {col} = ?1 WHERE session_uuid = ?2");
     conn.execute(&sql, params![resume_id, session_uuid])?;
     Ok(())
@@ -344,12 +226,12 @@ pub fn update_chat_resume_id(
 
 /// Read the persisted resume id for a session and provider, if any.
 pub fn get_chat_resume_id(
-    ire_dir: &Path,
+    home_data_dir: &Path,
     session_uuid: &str,
     provider: &str,
 ) -> Result<Option<String>> {
     let col = resume_column(provider);
-    let conn = open(ire_dir)?;
+    let conn = open(home_data_dir)?;
     let sql = format!("SELECT {col} FROM chat_sessions WHERE session_uuid = ?1");
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt.query(params![session_uuid])?;
@@ -369,8 +251,8 @@ fn resume_column(provider: &str) -> &'static str {
     }
 }
 
-pub fn list_chat_sessions(ire_dir: &Path, limit: usize) -> Result<Vec<ChatSessionRow>> {
-    let conn = open(ire_dir)?;
+pub fn list_chat_sessions(home_data_dir: &Path, limit: usize) -> Result<Vec<ChatSessionRow>> {
+    let conn = open(home_data_dir)?;
     let mut stmt = conn.prepare(
         "SELECT session_uuid, tab_label, provider, model, started_at, ended_at, message_count, first_user_msg \
          FROM chat_sessions WHERE message_count > 0 ORDER BY ended_at DESC LIMIT ?1",
@@ -390,8 +272,8 @@ pub fn list_chat_sessions(ire_dir: &Path, limit: usize) -> Result<Vec<ChatSessio
     rows.map(|r| r.context("chat session row")).collect()
 }
 
-pub fn get_chat_session_messages(ire_dir: &Path, session_uuid: &str) -> Result<Option<String>> {
-    let conn = open(ire_dir)?;
+pub fn get_chat_session_messages(home_data_dir: &Path, session_uuid: &str) -> Result<Option<String>> {
+    let conn = open(home_data_dir)?;
     let mut stmt =
         conn.prepare("SELECT messages_json FROM chat_sessions WHERE session_uuid = ?1")?;
     let mut rows = stmt.query(params![session_uuid])?;
@@ -401,8 +283,8 @@ pub fn get_chat_session_messages(ire_dir: &Path, session_uuid: &str) -> Result<O
         .context("get_chat_session_messages")
 }
 
-pub fn delete_chat_session(ire_dir: &Path, session_uuid: &str) -> Result<()> {
-    let conn = open(ire_dir)?;
+pub fn delete_chat_session(home_data_dir: &Path, session_uuid: &str) -> Result<()> {
+    let conn = open(home_data_dir)?;
     conn.execute(
         "DELETE FROM chat_sessions WHERE session_uuid = ?1",
         params![session_uuid],
@@ -410,100 +292,3 @@ pub fn delete_chat_session(ire_dir: &Path, session_uuid: &str) -> Result<()> {
     Ok(())
 }
 
-/// Returns only confirmed (summarized) resources — the ones visible to the user.
-pub fn list_resources(ire_dir: &Path) -> Result<Vec<ResourceRow>> {
-    let conn = open(ire_dir)?;
-    let mut stmt = conn.prepare(
-        "SELECT url_sha256, url, source_type, source_label, title, status, content_type, wiki_path, fetched_at \
-         FROM resources WHERE status = 'summarized' ORDER BY summarized_at DESC LIMIT 50",
-    )?;
-    let rows = stmt.query_map([], |row| {
-        Ok(ResourceRow {
-            url_sha256: row.get(0)?,
-            url: row.get(1)?,
-            source_type: row.get(2)?,
-            source_label: row.get(3)?,
-            title: row.get(4)?,
-            status: row.get(5)?,
-            content_type: row.get(6)?,
-            wiki_path: row.get(7)?,
-            fetched_at: row.get(8)?,
-        })
-    })?;
-    rows.map(|r| r.context("db row")).collect()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{get_resource, insert_resource_with_source, update_resource_indexed};
-
-    fn temp_ire_dir() -> tempfile::TempDir {
-        let dir = tempfile::tempdir().unwrap();
-        std::fs::create_dir_all(dir.path().join("wiki")).unwrap();
-        crate::db::migrations::run(dir.path()).unwrap();
-        dir
-    }
-
-    #[test]
-    fn insert_resource_with_source_refreshes_unindexed_source_ref() {
-        let dir = temp_ire_dir();
-        let ire_dir = dir.path();
-        let sha = "same-content-sha";
-
-        insert_resource_with_source(
-            ire_dir,
-            sha,
-            "/Users/me/Downloads/paper.pdf",
-            "paper.pdf",
-            "local_file",
-            "application/pdf",
-        )
-        .unwrap();
-        insert_resource_with_source(
-            ire_dir,
-            sha,
-            "/Users/me/Documents/paper.pdf",
-            "paper.pdf",
-            "local_file",
-            "application/pdf",
-        )
-        .unwrap();
-
-        let row = get_resource(ire_dir, sha).unwrap().unwrap();
-        assert_eq!(row.url, "/Users/me/Documents/paper.pdf");
-        assert_eq!(row.source_type, "local_file");
-        assert_eq!(row.status, "pending_summary");
-    }
-
-    #[test]
-    fn insert_resource_with_source_does_not_rewrite_indexed_row() {
-        let dir = temp_ire_dir();
-        let ire_dir = dir.path();
-        let sha = "indexed-sha";
-
-        insert_resource_with_source(
-            ire_dir,
-            sha,
-            "/Users/me/Downloads/paper.pdf",
-            "paper.pdf",
-            "local_file",
-            "application/pdf",
-        )
-        .unwrap();
-        update_resource_indexed(ire_dir, sha, "resources/paper.md", "Paper").unwrap();
-        insert_resource_with_source(
-            ire_dir,
-            sha,
-            "/Users/me/Documents/paper.pdf",
-            "paper.pdf",
-            "local_file",
-            "application/pdf",
-        )
-        .unwrap();
-
-        let row = get_resource(ire_dir, sha).unwrap().unwrap();
-        assert_eq!(row.url, "/Users/me/Downloads/paper.pdf");
-        assert_eq!(row.wiki_path.as_deref(), Some("resources/paper.md"));
-        assert_eq!(row.status, "summarized");
-    }
-}

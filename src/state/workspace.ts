@@ -10,6 +10,7 @@ import { ipc } from "../ipc";
 import type { ChatMessage, Tab } from "../types";
 import { useChatOptions } from "./chatOptions";
 import { useChat } from "./chat";
+import { savePersisted } from "./persistedStore";
 
 type Phase =
   | { kind: "loading" }
@@ -28,6 +29,7 @@ interface WorkspaceStore {
   hydrateFromPersisted: (state: PersistedWorkspace) => Promise<void>;
   hydrateFromUserConfig: (config: UserConfig) => void;
   toPersisted: () => PersistedWorkspace;
+  persist: () => Promise<void>;
 }
 
 export const useWorkspace = create<WorkspaceStore>((set, get) => ({
@@ -110,5 +112,10 @@ export const useWorkspace = create<WorkspaceStore>((set, get) => ({
       tabs: tabsToSave as any[],
       active_tab_id: activeTabId,
     };
+  },
+  persist: async () => {
+    const { phase } = get();
+    if (phase.kind !== "ready") return;
+    await savePersisted(phase.workspace.path, get().toPersisted());
   },
 }));

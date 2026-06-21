@@ -17,7 +17,7 @@ import { StatusBar } from "./StatusBar";
 export function Layout() {
   const phase = useWorkspace((s) => s.phase);
   const setPhase = useWorkspace((s) => s.setPhase);
-  const toPersisted = useWorkspace((s) => s.toPersisted);
+  const persist = useWorkspace((s) => s.persist);
   const panelLayout = useWorkspace((s) => s.panelLayout);
   const setGroupLayout = useWorkspace((s) => s.setGroupLayout);
   const setPanelCollapsed = useWorkspace((s) => s.setPanelCollapsed);
@@ -60,13 +60,13 @@ export function Layout() {
   useEffect(() => {
     if (skipInitialSave.current) { skipInitialSave.current = false; return; }
     const handle = setTimeout(() => {
-      ipc.saveWorkspaceState(toPersisted()).catch((e) => toastError("save state", e));
+      persist().catch((e) => toastError("save state", e));
     }, 1000);
     return () => clearTimeout(handle);
-  }, [panelLayout, model, provider, effort, tabs, activeTabId, toPersisted]);
+  }, [panelLayout, model, provider, effort, tabs, activeTabId, persist]);
 
   const handleClose = async () => {
-    await ipc.saveWorkspaceState(toPersisted()).catch((e) => toastError("save state", e));
+    await persist().catch((e) => toastError("save state", e));
     // Save all non-empty, non-streaming chat tabs to history before closing.
     const currentTabs = useChat.getState().tabs;
     for (const tab of currentTabs) {

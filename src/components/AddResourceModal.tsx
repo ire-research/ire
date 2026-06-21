@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faLink, faXmark, faCircleExclamation, faChevronDown, faClaude, faOpenai, iconClass } from "../icons";
 import { ipc, pickResourceFiles, type ResourceSourceInput } from "../ipc";
+import { useChat } from "../state/chat";
 import { MODELS, effortLevelsForModel, useChatOptions, type ModelEntry, type Provider } from "../state/chatOptions";
 
 type QueuedSource =
@@ -120,7 +121,10 @@ export function AddResourceModal({ onClose }: Props) {
     setLoading(true);
     clearError();
     try {
+      const labels = sources.map(sourceDisplay);
       await ipc.submitResources(sources.map(toInput), { model: selectedModel, provider: selectedProvider, effort: selectedEffort });
+      const { activeTabId, addUserMessage } = useChat.getState();
+      addUserMessage(activeTabId, `Ingest ${labels.map((l) => `"${l}"`).join(", ")}`);
       onClose();
     } catch (e) {
       const message = String(e);

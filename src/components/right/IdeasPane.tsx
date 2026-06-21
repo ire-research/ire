@@ -8,16 +8,12 @@ import { faLightbulb, faPlus, faTrash, iconClass } from "../../icons";
 
 export function IdeasPane() {
   const ideas = useWorkspaceData((s) => s.ideas);
-  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [draggedIdx, setDraggedIdx] = useState<number | null>(null);
   const [draft, setDraft] = useState<string | null>(null);
   const draftRef = useRef<HTMLInputElement>(null);
 
   const save = (next: IdeaItem[]) =>
-    ipc.saveIdeasJson(next).catch((e) => toastError("save ideas", e));
-
-  const activeIdeas = ideas
-    .filter((idea) => !idea.trashed)
-    .sort((a, b) => a.order - b.order);
+    ipc.saveIdeas(next).catch((e) => toastError("save ideas", e));
 
   useEffect(() => {
     if (draft !== null) {
@@ -31,57 +27,36 @@ export function IdeasPane() {
 
   const handleSubmitDraft = async () => {
     const text = draft?.trim();
-    if (!text) return;
-    const newIdea: IdeaItem = {
-      id: crypto.randomUUID(),
-      text,
-      trashed: false,
-      order: 0,
-    };
-
-    const updated = [newIdea, ...activeIdeas].map((idea, idx) => ({ ...idea, order: idx }));
-    const allIdeas = [...updated, ...ideas.filter((idea) => idea.trashed)];
-    await save(allIdeas);
+    if (!text) {
+      setDraft(null);
+      return;
+    }
+    await save([{ text }, ...ideas]);
     setDraft(null);
   };
 
-  const handleTrash = async (id: string) => {
-    const updated = ideas.map((idea) =>
-      idea.id === id ? { ...idea, trashed: true } : idea
-    );
-    await save(updated);
+  const handleTrash = async (idx: number) => {
+    await save(ideas.filter((_, i) => i !== idx));
   };
 
-  const handleDragStart = (id: string) => {
-    setDraggedId(id);
+  const handleDragStart = (idx: number) => {
+    setDraggedIdx(idx);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
   };
 
-  const handleDrop = async (targetId: string) => {
-    if (!draggedId || draggedId === targetId) {
-      setDraggedId(null);
+  const handleDrop = async (targetIdx: number) => {
+    if (draggedIdx === null || draggedIdx === targetIdx) {
+      setDraggedIdx(null);
       return;
     }
-
-    const draggedIdx = activeIdeas.findIndex((idea) => idea.id === draggedId);
-    const targetIdx = activeIdeas.findIndex((idea) => idea.id === targetId);
-
-    if (draggedIdx === -1 || targetIdx === -1) {
-      setDraggedId(null);
-      return;
-    }
-
-    const reordered = [...activeIdeas];
+    const reordered = [...ideas];
     const [moved] = reordered.splice(draggedIdx, 1);
     reordered.splice(targetIdx, 0, moved);
-
-    const updated = reordered.map((idea, idx) => ({ ...idea, order: idx }));
-    const allIdeas = [...updated, ...ideas.filter((idea) => idea.trashed)];
-    await save(allIdeas);
-    setDraggedId(null);
+    await save(reordered);
+    setDraggedIdx(null);
   };
 
   const handleDraftKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -109,7 +84,7 @@ export function IdeasPane() {
         </button>
       </div>
 
-      {draft !== null || activeIdeas.length > 0 ? (
+      {draft !== null || ideas.length > 0 ? (
         <div className="space-y-2">
           {draft !== null && (
             <div className="bg-surface-container border border-outline-variant p-2 rounded text-[14px] text-on-surface flex items-start justify-between gap-2">
@@ -118,25 +93,26 @@ export function IdeasPane() {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={handleDraftKeyDown}
+                onBlur={handleSubmitDraft}
                 className="flex-1 min-w-0 bg-transparent border-none outline-none text-[14px] text-on-surface placeholder-on-surface-variant/50"
                 placeholder="New idea"
               />
             </div>
           )}
-          {activeIdeas.map((idea) => (
+          {ideas.map((idea, idx) => (
             <div
-              key={idea.id}
+              key={idx}
               draggable
-              onDragStart={() => handleDragStart(idea.id)}
+              onDragStart={() => handleDragStart(idx)}
               onDragOver={handleDragOver}
-              onDrop={() => handleDrop(idea.id)}
+              onDrop={() => handleDrop(idx)}
               className="group idea-entry bg-surface-container border border-outline-variant p-2 rounded text-[14px] text-on-surface cursor-pointer hover:border-outline transition-colors flex items-start justify-between gap-2"
             >
               <span className="flex-1">{idea.text}</span>
               <button
                 className="app-danger-icon-button p-0.5 shrink-0 mt-0.5 opacity-0 group-hover:opacity-100"
                 title="Remove idea"
-                onClick={() => handleTrash(idea.id)}
+                onClick={() => handleTrash(idx)}
               >
                 <FontAwesomeIcon icon={faTrash} className={iconClass.md} />
               </button>

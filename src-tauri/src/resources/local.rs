@@ -7,17 +7,10 @@ use anyhow::{bail, Context, Result};
 pub struct LocalFileResult {
     pub text: String,
     pub content_type: String,
-    pub filename: String,
     pub bytes: Vec<u8>,
 }
 
 pub fn extract_local_file(path: &Path) -> Result<LocalFileResult> {
-    let filename = path
-        .file_name()
-        .and_then(|s| s.to_str())
-        .context("local file has no valid filename")?
-        .to_string();
-
     let extension = path
         .extension()
         .and_then(|s| s.to_str())
@@ -49,7 +42,6 @@ pub fn extract_local_file(path: &Path) -> Result<LocalFileResult> {
     Ok(LocalFileResult {
         text: cap_text(text),
         content_type: content_type.to_string(),
-        filename,
         bytes,
     })
 }
