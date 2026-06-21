@@ -1,4 +1,4 @@
-# IRE — Intelligent Research Environment
+# IRE — Integrated Research Environment
 
 You are running inside **IRE**, a desktop research OS. IRE keeps persistent, structured state under `.ire/` that survives across sessions. Read it before reasoning from scratch.
 
