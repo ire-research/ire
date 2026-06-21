@@ -15,6 +15,19 @@ pub struct CodexSpawnArgs<'a> {
 pub fn build_codex_command(args: &CodexSpawnArgs<'_>) -> Command {
     let mut cmd = Command::new(args.bin);
 
+    // The codex entry point is a `#!/usr/bin/env node` script. When the Tauri
+    // app is launched from Finder the inherited PATH is minimal and doesn't
+    // include nvm, so `node` can't be found. Prepend the binary's own directory
+    // (which contains `node` in the same nvm prefix) to PATH.
+    if let Some(bin_dir) = args.bin.parent() {
+        let mut path = std::ffi::OsString::from(bin_dir);
+        if let Some(existing) = std::env::var_os("PATH") {
+            path.push(":");
+            path.push(existing);
+        }
+        cmd.env("PATH", path);
+    }
+
     if args.resume_id.is_some() {
         cmd.arg("exec").arg("resume");
     } else {
