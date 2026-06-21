@@ -10,45 +10,45 @@ interface Props {
   onSave?: (content: string) => Promise<void>;
 }
 
-interface Frontmatter {
-  title?: string;
-  sources?: string[];
-  updated?: string;
-  tldr?: string;
-}
+type FmEntry = { key: string; value: string } | { key: string; list: string[] };
 
-function parseFrontmatter(content: string): { fm: Frontmatter | null; body: string } {
-  if (!content.startsWith("---\n")) return { fm: null, body: content };
+function parseFrontmatter(content: string): { entries: FmEntry[]; body: string } {
+  if (!content.startsWith("---\n")) return { entries: [], body: content };
   const end = content.indexOf("\n---\n", 4);
-  if (end === -1) return { fm: null, body: content };
+  if (end === -1) return { entries: [], body: content };
 
   const raw = content.slice(4, end);
   const body = content.slice(end + 5);
-  const fm: Frontmatter = {};
-  let currentKey: string | null = null;
+  const entries: FmEntry[] = [];
 
   for (const line of raw.split("\n")) {
     const listMatch = line.match(/^\s+-\s+(.+)$/);
-    if (listMatch && currentKey === "sources") {
-      fm.sources = [...(fm.sources ?? []), listMatch[1].trim()];
+    if (listMatch && entries.length > 0) {
+      const last = entries[entries.length - 1];
+      if ("list" in last) {
+        last.list.push(listMatch[1].trim());
+      } else {
+        entries[entries.length - 1] = { key: last.key, list: last.value ? [last.value, listMatch[1].trim()] : [listMatch[1].trim()] };
+      }
       continue;
     }
     const kvMatch = line.match(/^([^:]+):\s*(.*)$/);
     if (!kvMatch) continue;
     const key = kvMatch[1].trim();
     const val = kvMatch[2].trim().replace(/^"(.*)"$/, "$1");
-    currentKey = key;
-    if (key === "title") fm.title = val;
-    else if (key === "sources" && val) fm.sources = [val];
-    else if (key === "updated") fm.updated = val;
-    else if (key === "TL;DR") fm.tldr = val;
+    entries.push({ key, value: val });
   }
 
-  return { fm: Object.keys(fm).length > 0 ? fm : null, body };
+  return { entries: entries.length > 0 ? entries : [], body };
+}
+
+function fmGet(entries: FmEntry[], key: string): string | undefined {
+  const e = entries.find((e) => e.key === key);
+  return e && "value" in e ? e.value : undefined;
 }
 
 export function resourcePreviewTitle(content: string, fallback = "Resource"): string {
-  return parseFrontmatter(content).fm?.title?.trim() || fallback;
+  return fmGet(parseFrontmatter(content).entries, "title")?.trim() || fallback;
 }
 
 function FmRow({ label, value, valueClass = "text-on-surface-variant" }: { label: string; value: React.ReactNode; valueClass?: string }) {
@@ -184,16 +184,53 @@ export function ResourcePreviewPane({ title, content, onSave }: Props) {
     );
   }
 
-  const { fm, body } = parseFrontmatter(content);
+  const { entries, body } = parseFrontmatter(content);
 
-  // Normalize repeated sources and render a deterministic preview date.
-  if (fm) {
-    fm.sources = fm.sources ? [...new Set(fm.sources)] : undefined;
-    fm.updated = new Date().toISOString().slice(0, 10);
+  // Override updated to today's date for the preview.
+  const updatedEntry = entries.find((e) => e.key === "updated");
+  if (updatedEntry && "value" in updatedEntry) {
+    updatedEntry.value = new Date().toISOString().slice(0, 10);
   }
 
-  const isNotRelevant = fm?.tldr?.toLowerCase() === "not relevant";
-  const displayTitle = fm?.title || title;
+  // Deduplicate sources.
+  const sourcesEntry = entries.find((e) => e.key === "sources");
+  if (sourcesEntry && "list" in sourcesEntry) {
+    sourcesEntry.list = [...new Set(sourcesEntry.list)];
+  }
+
+  const tldr = fmGet(entries, "TL;DR");
+  const isNotRelevant = tldr?.toLowerCase() === "not relevant";
+  const displayTitle = fmGet(entries, "title") || title;
+
+  const renderEntry = (entry: FmEntry, i: number) => {
+    const label = `${entry.key}:`;
+
+    if (entry.key === "sources" && "list" in entry && entry.list.length > 0) {
+      return (
+        <div key={i} className="grid grid-cols-[72px_1fr] gap-1.5 leading-[1.6]">
+          <span className="text-on-surface-variant/40">{label}</span>
+          <div className="min-w-0 flex flex-col gap-px text-on-surface-variant">
+            {entry.list.length > 1 ? (
+              <ul className="min-w-0 list-disc pl-4 m-0 flex flex-col gap-px">
+                {entry.list.map((s, j) => <li key={j} className="min-w-0"><SourceText source={s} /></li>)}
+              </ul>
+            ) : (
+              <SourceText source={entry.list[0]} />
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    const val = "list" in entry ? entry.list.join(", ") : entry.value;
+    if (!val) return null;
+
+    const valueClass = entry.key === "TL;DR" && isNotRelevant
+      ? "text-[#c4714a]"
+      : "text-on-surface-variant";
+
+    return <FmRow key={i} label={label} value={val} valueClass={valueClass} />;
+  };
 
   return (
     <div className="absolute inset-0 overflow-y-auto px-4 md:px-8 lg:px-12 pt-6 pb-8">
@@ -211,33 +248,11 @@ export function ResourcePreviewPane({ title, content, onSave }: Props) {
       </div>
       <h2 className="text-base font-semibold text-on-surface mb-2">{displayTitle}</h2>
 
-      {fm && (
+      {entries.length > 0 && (
         <div className={`font-mono text-[11px] border rounded px-3 py-2 mb-5 flex flex-col gap-[3px] ${
           isNotRelevant ? "bg-[#231e1b] border-[#4a3428]" : "bg-surface-container-low border-outline"
         }`}>
-          {fm.title && <FmRow label="title:" value={fm.title} />}
-          {fm.sources && fm.sources.length > 0 && (
-            <div className="grid grid-cols-[72px_1fr] gap-1.5 leading-[1.6]">
-              <span className="text-on-surface-variant/40">sources:</span>
-              <div className="min-w-0 flex flex-col gap-px text-on-surface-variant">
-                {fm.sources.length > 1 ? (
-                  <ul className="min-w-0 list-disc pl-4 m-0 flex flex-col gap-px">
-                    {fm.sources.map((s, i) => <li key={i} className="min-w-0"><SourceText source={s} /></li>)}
-                  </ul>
-                ) : (
-                  <SourceText source={fm.sources[0]} />
-                )}
-              </div>
-            </div>
-          )}
-          {fm.updated && <FmRow label="updated:" value={fm.updated} />}
-          {fm.tldr !== undefined && (
-            <FmRow
-              label="TL;DR:"
-              value={fm.tldr}
-              valueClass={isNotRelevant ? "text-[#c4714a]" : "text-on-surface-variant"}
-            />
-          )}
+          {entries.map(renderEntry)}
         </div>
       )}
 
