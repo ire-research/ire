@@ -12,8 +12,8 @@ use crate::db::models as db;
 use crate::ire::store::atomic_write;
 use crate::ire::IreStore;
 
-pub fn socket_path(ire_dir: &Path) -> PathBuf {
-    ire_dir.join("mcp.sock")
+pub fn socket_path(home_data_dir: &Path) -> PathBuf {
+    home_data_dir.join("mcp.sock")
 }
 
 /// Spawn the background Unix-socket RPC server. Returns a handle that can be
@@ -293,9 +293,9 @@ fn experiment_status(
     let uuid = params["uuid"]
         .as_str()
         .ok_or_else(|| anyhow!("missing uuid"))?;
-    let ire_dir = crate::workspace::init::home_data_dir(workspace_root)
+    let home_data_dir = crate::workspace::init::home_data_dir(workspace_root)
         .ok_or_else(|| anyhow!("cannot determine home directory"))?;
-    let row = db::get_experiment(&ire_dir, uuid)?
+    let row = db::get_experiment(&home_data_dir, uuid)?
         .ok_or_else(|| anyhow!("experiment {uuid} not found"))?;
     Ok(serde_json::json!({
         "uuid": row.uuid,

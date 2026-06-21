@@ -402,9 +402,8 @@ fn start_resource_summary(
 
     tokio::spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
-            let data_dir = crate::workspace::init::home_data_dir(&workspace_clone2)
-                .ok_or("cannot determine home directory")?;
-            let mcp_config = data_dir.join("mcp.json");
+            let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_clone2)?;
+            let mcp_config = home_data_dir.join("mcp.json");
             let system_prompt = build_resource_system_prompt(&workspace_clone2);
             let prompt = build_resource_summary_prompt(&sha256, &sources_clone);
 
@@ -442,9 +441,6 @@ fn start_resource_summary(
             let pid = child.id();
             let stream_id = format!("{}:{}", tab_id_clone, uuid::Uuid::new_v4());
             let mut event_id = 0_u64;
-            // Resource tabs have no frontend history uuid; key their resume id by
-            // tab_id so a wake-up (if the agent launches an experiment) can resume.
-            let ire_dir_res = data_dir;
             let started_at_res = chrono::Local::now().to_rfc3339();
             session.set_agent_options(&tab_id_clone, &tab_id_clone, &provider, &model, effort.as_deref());
             session.set_pid(&tab_id_clone, pid);
@@ -458,7 +454,7 @@ fn start_resource_summary(
                     let mut emit_event = |event: StreamEvent| {
                         if let StreamEvent::Init { ref session_id } = event {
                             let _ = crate::db::models::upsert_chat_resume_id(
-                                &ire_dir_res,
+                                &home_data_dir,
                                 &tab_id_clone,
                                 "Ingest",
                                 &provider,
@@ -595,7 +591,7 @@ pub fn confirm_resource(
     let title = fm
         .as_ref()
         .and_then(|m| m.get("title"))
-        .map(|t| sanitize_ire_filename(t))
+        .map(|t| sanitize_resource_filename(t))
         .filter(|t| !t.is_empty())
         .unwrap_or_else(|| resource_id[..8.min(resource_id.len())].to_string());
 
@@ -633,7 +629,7 @@ pub fn save_resource_draft(
     fs::write(&draft_path, content.as_bytes()).map_err(|e| e.to_string())
 }
 
-fn sanitize_ire_filename(title: &str) -> String {
+fn sanitize_resource_filename(title: &str) -> String {
     title
         .chars()
         .map(|c| {

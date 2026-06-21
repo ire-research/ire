@@ -151,28 +151,28 @@ fn attach(
     path: PathBuf,
     app: tauri::AppHandle,
 ) -> Result<WorkspaceState, String> {
-    let data_dir = ws_init::home_data_dir(&path).ok_or("cannot determine home directory")?;
-    std::fs::create_dir_all(&data_dir).map_err(|e| format!("create data dir: {e}"))?;
+    let home_data_dir = ws_init::require_home_data_dir(&path)?;
+    std::fs::create_dir_all(&home_data_dir).map_err(|e| format!("create home data dir: {e}"))?;
 
-    let lock = WorkspaceLock::acquire(&data_dir).map_err(|e| match e {
+    let lock = WorkspaceLock::acquire(&home_data_dir).map_err(|e| match e {
         LockError::AlreadyHeld { pid } => {
             format!("workspace is already open (process {pid})")
         }
         LockError::Io(io) => io.to_string(),
     })?;
 
-    schema::run(&data_dir).map_err(|e| e.to_string())?;
+    schema::run(&home_data_dir).map_err(|e| e.to_string())?;
 
     // Start the MCP RPC server and write the mcp.json config for CC.
-    let socket = crate::mcp::rpc::socket_path(&data_dir);
+    let socket = crate::mcp::rpc::socket_path(&home_data_dir);
     let task = crate::mcp::rpc::start(socket.clone(), path.clone(), session_manager, app.clone());
-    crate::mcp::config::write_mcp_config(&data_dir, &path, &socket).map_err(|e| e.to_string())?;
+    crate::mcp::config::write_mcp_config(&home_data_dir, &path, &socket).map_err(|e| e.to_string())?;
     *mcp.0.lock().map_err(|e| e.to_string())? = Some(McpHandle {
         task,
         socket_path: socket,
     });
 
-    let state = WorkspaceState::from_path(path.clone(), data_dir);
+    let state = WorkspaceState::from_path(path.clone(), home_data_dir);
     *active.0.lock().map_err(|e| e.to_string())? = Some(WorkspaceHandle::new(state.clone(), lock));
 
     // Initial-state burst: every panel listener sees its data through the same

@@ -27,9 +27,8 @@ pub fn experiment_list(
             .path
             .clone()
     };
-    let ire_dir = crate::workspace::init::home_data_dir(&workspace_path)
-        .ok_or("cannot determine home directory")?;
-    db::list_experiments(&ire_dir, limit.unwrap_or(50)).map_err(|e| e.to_string())
+    let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
+    db::list_experiments(&home_data_dir, limit.unwrap_or(50)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -71,10 +70,9 @@ pub fn experiment_cancel(
             .path
             .clone()
     };
-    let ire_dir = crate::workspace::init::home_data_dir(&workspace_path)
-        .ok_or("cannot determine home directory")?;
+    let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
 
-    let row = db::get_experiment(&ire_dir, &uuid)
+    let row = db::get_experiment(&home_data_dir, &uuid)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("experiment {uuid} not found"))?;
 
@@ -82,10 +80,10 @@ pub fn experiment_cancel(
         kill_process_group(pid as u32);
     }
 
-    db::update_experiment_completed(&ire_dir, &uuid, "cancelled", None)
+    db::update_experiment_completed(&home_data_dir, &uuid, "cancelled", None)
         .map_err(|e| e.to_string())?;
 
-    if let Ok(Some(row)) = db::get_experiment(&ire_dir, &uuid) {
+    if let Ok(Some(row)) = db::get_experiment(&home_data_dir, &uuid) {
         crate::experiments::sync_to_ire(&workspace_path, &row);
         events::emit_experiment_changed(&app, events::EventSource::Mutation, &row);
     }
@@ -107,20 +105,19 @@ pub fn experiment_delete(
             .path
             .clone()
     };
-    let ire_dir = crate::workspace::init::home_data_dir(&workspace_path)
-        .ok_or("cannot determine home directory")?;
-    let row = db::get_experiment(&ire_dir, &uuid)
+    let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
+    let row = db::get_experiment(&home_data_dir, &uuid)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("experiment {uuid} not found"))?;
     if row.status == "running" || row.status == "starting" {
         return Err(format!("experiment {uuid} is still {}", row.status));
     }
 
-    let log_dir = ire_dir.join("cache/experiments").join(&uuid);
+    let log_dir = home_data_dir.join("cache/experiments").join(&uuid);
     if log_dir.exists() {
         fs::remove_dir_all(&log_dir).map_err(|e| e.to_string())?;
     }
-    db::delete_experiment(&ire_dir, &uuid).map_err(|e| e.to_string())?;
+    db::delete_experiment(&home_data_dir, &uuid).map_err(|e| e.to_string())?;
     crate::experiments::remove_from_ire(&workspace_path, &uuid);
     events::emit_experiment_deleted(&app, &uuid);
     Ok(())
@@ -142,10 +139,9 @@ pub fn experiment_rename(
             .path
             .clone()
     };
-    let ire_dir = crate::workspace::init::home_data_dir(&workspace_path)
-        .ok_or("cannot determine home directory")?;
-    db::rename_experiment(&ire_dir, &uuid, &name).map_err(|e| e.to_string())?;
-    if let Ok(Some(row)) = db::get_experiment(&ire_dir, &uuid) {
+    let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
+    db::rename_experiment(&home_data_dir, &uuid, &name).map_err(|e| e.to_string())?;
+    if let Ok(Some(row)) = db::get_experiment(&home_data_dir, &uuid) {
         crate::experiments::sync_to_ire(&workspace_path, &row);
         events::emit_experiment_changed(&app, events::EventSource::Mutation, &row);
     }

@@ -64,9 +64,8 @@ pub async fn chat_send(
     } else {
         find_claude_binary().map_err(|e| e.to_string())?.path
     };
-    let ire_dir = crate::workspace::init::home_data_dir(&workspace_path)
-        .ok_or("cannot determine home directory")?;
-    let resume_id = match crate::db::models::get_chat_resume_id(&ire_dir, &session_uuid, &provider) {
+    let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
+    let resume_id = match crate::db::models::get_chat_resume_id(&home_data_dir, &session_uuid, &provider) {
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(tab_id = %tab_id, session_uuid = %session_uuid, provider = %provider, error = %e, "load resume id failed");
@@ -75,7 +74,7 @@ pub async fn chat_send(
     };
 
     let mcp_config = {
-        let p = ire_dir.join("mcp.json");
+        let p = home_data_dir.join("mcp.json");
         if p.exists() {
             Some(p)
         } else {
@@ -89,7 +88,7 @@ pub async fn chat_send(
     let session_clone = (*session).clone();
     let tab_id_outer = tab_id.clone();
     // Owned copies for the blocking closure that persists the resume id on Init.
-    let ire_dir_cl = ire_dir.clone();
+    let home_data_dir_cl = home_data_dir.clone();
     let session_uuid_cl = session_uuid.clone();
     let tab_label_cl = tab_label.clone();
     let started_at_cl = started_at.clone();
@@ -151,7 +150,7 @@ pub async fn chat_send(
                 let mut emit_event = |event: StreamEvent| {
                     if let StreamEvent::Init { ref session_id } = event {
                         if let Err(e) = crate::db::models::upsert_chat_resume_id(
-                            &ire_dir_cl,
+                            &home_data_dir_cl,
                             &session_uuid_cl,
                             &tab_label_cl,
                             &provider,

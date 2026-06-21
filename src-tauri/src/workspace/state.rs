@@ -12,11 +12,11 @@ pub struct WorkspaceState {
     /// `~/.ire/workspaces/<id>/` — home for runtime artifacts (local.db,
     /// mcp.json, mcp.sock, .lock). Not exposed to the frontend.
     #[serde(skip)]
-    pub data_dir: PathBuf,
+    pub home_data_dir: PathBuf,
 }
 
 impl WorkspaceState {
-    pub fn from_path(path: PathBuf, data_dir: PathBuf) -> Self {
+    pub fn from_path(path: PathBuf, home_data_dir: PathBuf) -> Self {
         let name = path
             .file_name()
             .and_then(|n| n.to_str())
@@ -25,7 +25,7 @@ impl WorkspaceState {
         Self {
             path,
             name,
-            data_dir,
+            home_data_dir,
         }
     }
 }

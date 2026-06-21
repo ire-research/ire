@@ -43,7 +43,7 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         session_manager,
     } = args;
 
-    let Some(data_dir) = crate::workspace::init::home_data_dir(workspace_root) else {
+    let Some(home_data_dir) = crate::workspace::init::home_data_dir(workspace_root) else {
         tracing::warn!("cannot determine home directory for experiment wake-up");
         return;
     };
@@ -62,7 +62,7 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         stderr_tail: &stderr_tail,
     });
 
-    let mcp_config = data_dir.join("mcp.json");
+    let mcp_config = home_data_dir.join("mcp.json");
     let mcp_config = if mcp_config.exists() {
         Some(mcp_config)
     } else {
@@ -94,7 +94,7 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         },
     };
 
-    let resume_id = match crate::db::models::get_chat_resume_id(&data_dir, session_uuid, provider) {
+    let resume_id = match crate::db::models::get_chat_resume_id(&home_data_dir, session_uuid, provider) {
         Ok(v) => v,
         Err(e) => {
             tracing::warn!(error = %e, session_uuid = %session_uuid, provider = %provider, "wake-up: load resume id failed");
@@ -159,7 +159,7 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         let mut emit_event = |event: StreamEvent| {
             if let StreamEvent::Init { ref session_id } = event {
                 let _ = crate::db::models::update_chat_resume_id(
-                    &data_dir,
+                    &home_data_dir,
                     session_uuid,
                     &provider_owned,
                     session_id,

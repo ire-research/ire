@@ -125,13 +125,16 @@ fn run_git(cwd: &Path, args: &[&str]) -> Result<()> {
     Ok(())
 }
 
+/// Like [`home_data_dir`] but returns a `Result` with a consistent error
+/// message, eliminating the repeated `.ok_or("cannot determine home directory")`
+/// at every call site.
+pub fn require_home_data_dir(path: &Path) -> Result<PathBuf, String> {
+    home_data_dir(path).ok_or_else(|| "cannot determine home directory".to_string())
+}
+
 /// `~/.ire/workspaces/<sanitized-name>-<8-hex>/` for a workspace path — the
 /// per-user home for runtime/local artifacts (local.db, mcp.json, mcp.sock,
 /// .lock) that must not live in the git-tracked workspace `.ire/`.
-///
-/// 8 hex chars of SHA-256(canonical path) disambiguate same-named workspaces;
-/// the name is sanitized (alphanumeric/`-`/`_`, truncated to 32 chars) so the
-/// full socket path stays well under the macOS 104-char limit.
 pub fn home_data_dir(path: &Path) -> Option<PathBuf> {
     let home = crate::binary::home_dir()?;
     let hash = Sha256::digest(path.to_string_lossy().as_bytes());
