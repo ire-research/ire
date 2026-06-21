@@ -160,6 +160,13 @@ export interface TabCreatedPayload {
   agent_options?: ChatOptions;
 }
 
+/** Payload for the "resource-pending" Tauri event (agent-supplied resource
+ *  awaiting user approval on the current tab). */
+export interface ResourcePendingPayload {
+  resource_id: string;
+  resource_status: ResourceStatus;
+}
+
 /** A file-based resource discovered under `.ire/resources/`. Identity is the
  *  `path` (`resources/<slug>.md`); title and sources come from frontmatter. */
 export interface ResourceItem {

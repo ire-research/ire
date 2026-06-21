@@ -9,6 +9,7 @@ import {
   onExperimentLogLine,
   onExperimentStarting,
   onExperimentStatus,
+  onResourcePending,
   onTabCreated,
 } from "../../ipc";
 import { MessageList } from "./MessageList";
@@ -73,6 +74,7 @@ export function ChatPane() {
     setMessageError,
     setStreaming,
     setResourceStatus,
+    setResourcePending,
     addTool,
     markToolDone,
     addAskQuestion,
@@ -224,6 +226,11 @@ export function ChatPane() {
       setActiveTab(payload.tab_id);
     }));
 
+    reg(onResourcePending((payload) => {
+      const currentTabId = useChat.getState().activeTabId;
+      setResourcePending(currentTabId, payload.resource_id, payload.resource_status);
+    }));
+
     reg(onExperimentStarting(({ tab_id, uuid, pid }) => {
       linkExperimentUuid(tab_id, uuid, pid);
     }));
@@ -361,14 +368,20 @@ export function ChatPane() {
       .catch((e) => toastError("save state", e));
   };
 
+  const clearResourceFromTab = () => {
+    setResourcePending(activeTabId, undefined, undefined);
+  };
+
   const handleConfirmResource = async () => {
     if (!activeTab.resourceId) return;
     setResourceStatus(activeTabId, "confirmed");
     try {
       await ipc.confirmResource(activeTab.resourceId);
-      // WikiStore::write emits resource-changed, which triggers tab close via the
-      // Done handler path — but since there's no streaming here, close directly.
-      closeTab(activeTabId);
+      if (activeTab.kind === "resource") {
+        closeTab(activeTabId);
+      } else {
+        clearResourceFromTab();
+      }
     } catch (err) {
       toastError("confirm resource", String(err));
       setResourceStatus(activeTabId, "ready");
@@ -408,7 +421,11 @@ export function ChatPane() {
     if (activeTab.resourceId) {
       ipc.discardResource(activeTab.resourceId).catch((e) => toastError("discard resource", e));
     }
-    closeTab(activeTabId);
+    if (activeTab.kind === "resource") {
+      closeTab(activeTabId);
+    } else {
+      clearResourceFromTab();
+    }
   };
 
   const activeHistorySessionUuids = tabs
@@ -445,7 +462,7 @@ export function ChatPane() {
   );
 
   const showResourceBar =
-    activeTab?.kind === "resource" && activeTab.resourceStatus === "ready";
+    activeTab?.resourceId != null && activeTab.resourceStatus === "ready";
 
   if (tabs.length === 0) {
     return (

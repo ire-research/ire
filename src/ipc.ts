@@ -9,6 +9,7 @@ import type {
   ExperimentStartingPayload,
   ExperimentStatusPayload,
   IdeaItem,
+  ResourcePendingPayload,
   SystemInfo,
   SystemMetrics,
   TabCreatedPayload,
@@ -167,6 +168,12 @@ export function onTabCreated(
   cb: (payload: TabCreatedPayload) => void
 ): Promise<() => void> {
   return listen<TabCreatedPayload>("tab-created", (event) => cb(event.payload));
+}
+
+export function onResourcePending(
+  cb: (payload: ResourcePendingPayload) => void
+): Promise<() => void> {
+  return listen<ResourcePendingPayload>("resource-pending", (e) => cb(e.payload));
 }
 
 export function onExperimentStatus(

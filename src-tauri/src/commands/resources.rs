@@ -774,7 +774,7 @@ pub fn add_resource_from_markdown(
     workspace_root: &Path,
     inflight: &InflightResources,
     markdown: &str,
-    title: Option<&str>,
+    _title: Option<&str>,
     sources: &[String],
 ) -> anyhow::Result<String> {
     let resource_id = uuid::Uuid::new_v4().to_string();
@@ -784,13 +784,9 @@ pub fn add_resource_from_markdown(
     crate::ire::store::atomic_write(&draft_path, markdown)?;
     inflight.register(&resource_id, sources.to_vec());
 
-    let tab_id = uuid::Uuid::new_v4().to_string();
     app.emit(
-        "tab-created",
+        "resource-pending",
         serde_json::json!({
-            "tab_id": tab_id,
-            "label": title.unwrap_or("Ingest"),
-            "kind": "resource",
             "resource_id": resource_id,
             "resource_status": "ready",
         }),

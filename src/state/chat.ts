@@ -28,6 +28,7 @@ interface ChatStore {
   setMessageError: (tabId: string, msgId: string, error: string) => void;
   setStreaming: (tabId: string, v: boolean) => void;
   setResourceStatus: (tabId: string, status: ResourceStatus) => void;
+  setResourcePending: (tabId: string, resourceId: string | undefined, status: ResourceStatus | undefined) => void;
   clearMessages: (tabId: string) => void;
 
   // AskUserQuestion
@@ -283,6 +284,11 @@ export const useChat = create<ChatStore>((set) => ({
   setResourceStatus: (tabId, status) =>
     set((s) => ({
       tabs: updateTab(s.tabs, tabId, (t) => ({ ...t, resourceStatus: status })),
+    })),
+
+  setResourcePending: (tabId, resourceId, status) =>
+    set((s) => ({
+      tabs: updateTab(s.tabs, tabId, (t) => ({ ...t, resourceId, resourceStatus: status })),
     })),
 
   clearMessages: (tabId) =>
