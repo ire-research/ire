@@ -25,6 +25,9 @@ pub fn read_resource(
     active: State<'_, ActiveWorkspace>,
 ) -> Result<IreFileResult, String> {
     tracing::debug!(path = %path, "read_resource");
+    if !path.starts_with("resources/") || !path.ends_with(".md") || path.contains("..") {
+        return Err(format!("invalid resource path: {path}"));
+    }
     let store = ire_store(&active)?;
     store
         .read_resource(&path)
@@ -44,6 +47,9 @@ pub fn save_resource(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     tracing::info!(path = %path, bytes = content.len(), "save_resource");
+    if !path.starts_with("resources/") || !path.ends_with(".md") || path.contains("..") {
+        return Err(format!("invalid resource path: {path}"));
+    }
     let store = ire_store(&active)?;
     store
         .write_resource(&path, &content, &app)

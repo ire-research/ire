@@ -19,8 +19,8 @@ pub struct WorkspaceLock {
 }
 
 impl WorkspaceLock {
-    pub fn acquire(ire_dir: &Path) -> Result<Self, LockError> {
-        let path = ire_dir.join(".lock");
+    pub fn acquire(home_data_dir: &Path) -> Result<Self, LockError> {
+        let path = home_data_dir.join(".lock");
         let our_pid = std::process::id();
 
         loop {

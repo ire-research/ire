@@ -113,7 +113,7 @@ pub fn experiment_delete(
         return Err(format!("experiment {uuid} is still {}", row.status));
     }
 
-    let log_dir = home_data_dir.join("cache/experiments").join(&uuid);
+    let log_dir = workspace_path.join(".ire/cache/experiments").join(&uuid);
     if log_dir.exists() {
         fs::remove_dir_all(&log_dir).map_err(|e| e.to_string())?;
     }

@@ -43,8 +43,8 @@ CREATE INDEX IF NOT EXISTS idx_chat_sessions_ended ON chat_sessions(ended_at DES
 ";
 
 /// Create the local DB tables if they don't already exist.
-pub fn run(ire_dir: &Path) -> Result<()> {
-    let db_path = ire_dir.join("local.db");
+pub fn run(home_data_dir: &Path) -> Result<()> {
+    let db_path = home_data_dir.join("local.db");
     let conn = Connection::open(&db_path).with_context(|| format!("open {}", db_path.display()))?;
     conn.execute_batch(SCHEMA).context("create schema")?;
     Ok(())

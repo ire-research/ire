@@ -21,7 +21,7 @@ pub struct ExperimentRow {
 
 #[allow(clippy::too_many_arguments)]
 pub fn insert_experiment(
-    ire_dir: &Path,
+    home_data_dir: &Path,
     uuid: &str,
     name: &str,
     command: &str,
@@ -30,7 +30,7 @@ pub fn insert_experiment(
     session_id: &str,
     tab_id: &str,
 ) -> Result<()> {
-    let conn = open(ire_dir)?;
+    let conn = open(home_data_dir)?;
     let now = chrono::Local::now().to_rfc3339();
     conn.execute(
         "INSERT INTO experiments (uuid, name, command, working_dir, status, started_at, wake_prompt, session_id, tab_id) \
@@ -40,8 +40,8 @@ pub fn insert_experiment(
     Ok(())
 }
 
-pub fn update_experiment_pid(ire_dir: &Path, uuid: &str, pid: u32) -> Result<()> {
-    let conn = open(ire_dir)?;
+pub fn update_experiment_pid(home_data_dir: &Path, uuid: &str, pid: u32) -> Result<()> {
+    let conn = open(home_data_dir)?;
     conn.execute(
         "UPDATE experiments SET pid = ?1 WHERE uuid = ?2",
         params![pid, uuid],
@@ -50,12 +50,12 @@ pub fn update_experiment_pid(ire_dir: &Path, uuid: &str, pid: u32) -> Result<()>
 }
 
 pub fn update_experiment_completed(
-    ire_dir: &Path,
+    home_data_dir: &Path,
     uuid: &str,
     status: &str,
     exit_code: Option<i32>,
 ) -> Result<()> {
-    let conn = open(ire_dir)?;
+    let conn = open(home_data_dir)?;
     let now = chrono::Local::now().to_rfc3339();
     conn.execute(
         "UPDATE experiments SET status = ?1, exit_code = ?2, ended_at = ?3 WHERE uuid = ?4",
@@ -64,8 +64,8 @@ pub fn update_experiment_completed(
     Ok(())
 }
 
-pub fn get_experiment(ire_dir: &Path, uuid: &str) -> Result<Option<ExperimentRow>> {
-    let conn = open(ire_dir)?;
+pub fn get_experiment(home_data_dir: &Path, uuid: &str) -> Result<Option<ExperimentRow>> {
+    let conn = open(home_data_dir)?;
     let mut stmt = conn.prepare(
         "SELECT uuid, name, command, status, exit_code, started_at, ended_at, pid, tab_id \
          FROM experiments WHERE uuid = ?1",
@@ -89,14 +89,14 @@ pub fn get_experiment(ire_dir: &Path, uuid: &str) -> Result<Option<ExperimentRow
         .context("get_experiment")
 }
 
-pub fn delete_experiment(ire_dir: &Path, uuid: &str) -> Result<()> {
-    let conn = open(ire_dir)?;
+pub fn delete_experiment(home_data_dir: &Path, uuid: &str) -> Result<()> {
+    let conn = open(home_data_dir)?;
     conn.execute("DELETE FROM experiments WHERE uuid = ?1", params![uuid])?;
     Ok(())
 }
 
-pub fn rename_experiment(ire_dir: &Path, uuid: &str, name: &str) -> Result<()> {
-    let conn = open(ire_dir)?;
+pub fn rename_experiment(home_data_dir: &Path, uuid: &str, name: &str) -> Result<()> {
+    let conn = open(home_data_dir)?;
     conn.execute(
         "UPDATE experiments SET name = ?1 WHERE uuid = ?2",
         params![name, uuid],
@@ -104,8 +104,8 @@ pub fn rename_experiment(ire_dir: &Path, uuid: &str, name: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn list_experiments(ire_dir: &Path, limit: usize) -> Result<Vec<ExperimentRow>> {
-    let conn = open(ire_dir)?;
+pub fn list_experiments(home_data_dir: &Path, limit: usize) -> Result<Vec<ExperimentRow>> {
+    let conn = open(home_data_dir)?;
     let mut stmt = conn.prepare(
         "SELECT uuid, name, command, status, exit_code, started_at, ended_at, pid, tab_id \
          FROM experiments ORDER BY started_at DESC LIMIT ?1",
@@ -126,8 +126,8 @@ pub fn list_experiments(ire_dir: &Path, limit: usize) -> Result<Vec<ExperimentRo
     rows.map(|r| r.context("experiment row")).collect()
 }
 
-fn open(ire_dir: &Path) -> Result<Connection> {
-    let db_path = ire_dir.join("local.db");
+fn open(home_data_dir: &Path) -> Result<Connection> {
+    let db_path = home_data_dir.join("local.db");
     Connection::open(&db_path).with_context(|| format!("open {}", db_path.display()))
 }
 
@@ -147,7 +147,7 @@ pub struct ChatSessionRow {
 
 #[allow(clippy::too_many_arguments)]
 pub fn insert_chat_session(
-    ire_dir: &Path,
+    home_data_dir: &Path,
     session_uuid: &str,
     tab_label: &str,
     provider: &str,
@@ -158,7 +158,7 @@ pub fn insert_chat_session(
     first_user_msg: Option<&str>,
     messages_json: &str,
 ) -> Result<()> {
-    let conn = open(ire_dir)?;
+    let conn = open(home_data_dir)?;
     // Upsert: insert on first save, update mutable fields on subsequent saves.
     // started_at is intentionally excluded from the UPDATE so it stays as the
     // original session start time even as the session grows.
@@ -184,7 +184,7 @@ pub fn insert_chat_session(
 /// before any messages are written). The resume column is chosen by provider.
 #[allow(clippy::too_many_arguments)]
 pub fn upsert_chat_resume_id(
-    ire_dir: &Path,
+    home_data_dir: &Path,
     session_uuid: &str,
     tab_label: &str,
     provider: &str,
@@ -193,7 +193,7 @@ pub fn upsert_chat_resume_id(
     resume_id: &str,
 ) -> Result<()> {
     let col = resume_column(provider);
-    let conn = open(ire_dir)?;
+    let conn = open(home_data_dir)?;
     let now = chrono::Local::now().to_rfc3339();
     let sql = format!(
         "INSERT INTO chat_sessions \
@@ -212,13 +212,13 @@ pub fn upsert_chat_resume_id(
 /// flow, where the row is guaranteed to exist (the conversation that launched the
 /// experiment was already saved).
 pub fn update_chat_resume_id(
-    ire_dir: &Path,
+    home_data_dir: &Path,
     session_uuid: &str,
     provider: &str,
     resume_id: &str,
 ) -> Result<()> {
     let col = resume_column(provider);
-    let conn = open(ire_dir)?;
+    let conn = open(home_data_dir)?;
     let sql = format!("UPDATE chat_sessions SET {col} = ?1 WHERE session_uuid = ?2");
     conn.execute(&sql, params![resume_id, session_uuid])?;
     Ok(())
@@ -226,12 +226,12 @@ pub fn update_chat_resume_id(
 
 /// Read the persisted resume id for a session and provider, if any.
 pub fn get_chat_resume_id(
-    ire_dir: &Path,
+    home_data_dir: &Path,
     session_uuid: &str,
     provider: &str,
 ) -> Result<Option<String>> {
     let col = resume_column(provider);
-    let conn = open(ire_dir)?;
+    let conn = open(home_data_dir)?;
     let sql = format!("SELECT {col} FROM chat_sessions WHERE session_uuid = ?1");
     let mut stmt = conn.prepare(&sql)?;
     let mut rows = stmt.query(params![session_uuid])?;
@@ -251,8 +251,8 @@ fn resume_column(provider: &str) -> &'static str {
     }
 }
 
-pub fn list_chat_sessions(ire_dir: &Path, limit: usize) -> Result<Vec<ChatSessionRow>> {
-    let conn = open(ire_dir)?;
+pub fn list_chat_sessions(home_data_dir: &Path, limit: usize) -> Result<Vec<ChatSessionRow>> {
+    let conn = open(home_data_dir)?;
     let mut stmt = conn.prepare(
         "SELECT session_uuid, tab_label, provider, model, started_at, ended_at, message_count, first_user_msg \
          FROM chat_sessions WHERE message_count > 0 ORDER BY ended_at DESC LIMIT ?1",
@@ -272,8 +272,8 @@ pub fn list_chat_sessions(ire_dir: &Path, limit: usize) -> Result<Vec<ChatSessio
     rows.map(|r| r.context("chat session row")).collect()
 }
 
-pub fn get_chat_session_messages(ire_dir: &Path, session_uuid: &str) -> Result<Option<String>> {
-    let conn = open(ire_dir)?;
+pub fn get_chat_session_messages(home_data_dir: &Path, session_uuid: &str) -> Result<Option<String>> {
+    let conn = open(home_data_dir)?;
     let mut stmt =
         conn.prepare("SELECT messages_json FROM chat_sessions WHERE session_uuid = ?1")?;
     let mut rows = stmt.query(params![session_uuid])?;
@@ -283,8 +283,8 @@ pub fn get_chat_session_messages(ire_dir: &Path, session_uuid: &str) -> Result<O
         .context("get_chat_session_messages")
 }
 
-pub fn delete_chat_session(ire_dir: &Path, session_uuid: &str) -> Result<()> {
-    let conn = open(ire_dir)?;
+pub fn delete_chat_session(home_data_dir: &Path, session_uuid: &str) -> Result<()> {
+    let conn = open(home_data_dir)?;
     conn.execute(
         "DELETE FROM chat_sessions WHERE session_uuid = ?1",
         params![session_uuid],
