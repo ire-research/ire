@@ -68,7 +68,7 @@ When the active tab has `kind === "experiment"`, the chat pane renders `Experime
 
 ## Edit/Preview Toggle
 
-- Resource preview tabs open in **Preview** by default (`ResourcePreviewPane`): frontmatter metadata header + markdown body. Switching to Edit loads raw file contents into a textarea; switching back without Submit discards local edits (with a confirm if dirty). Submit calls `save_wiki_file`.
+- Resource preview tabs open in **Preview** by default (`ResourcePreviewPane`): frontmatter metadata header + markdown body. Switching to Edit loads raw file contents into a textarea; switching back without Submit discards local edits (with a confirm if dirty). Submit calls `save_resource`.
 - `NotesPane` renders markdown in display mode, edits inline as raw markdown, saves through `save_notes` on blur / Ctrl+Enter.
 - `IdeasPane` does not use markdown; it writes the `ire.json` `ideas` array (ordered `{ text }[]`, identity by index) via `save_ideas`.
 
@@ -146,8 +146,8 @@ Directory picking is **not** a Tauri command — the frontend calls Tauri's dial
 | `open_workspace` | `{ path }` | `WorkspaceState` (`{ path, name }`) |
 | `init_workspace` | `{ path }` | `WorkspaceState` |
 | `close_workspace` | — | `{}` |
-| `read_wiki_file` | `{ path }` | `{ content, frontmatter }` (reads `.ire/resources/*.md`) |
-| `save_wiki_file` | `{ path, content }` | `{}` (resource file: atomic write + index + `resource-changed`) |
+| `read_resource` | `{ path }` | `{ content, frontmatter }` (reads `.ire/resources/*.md`) |
+| `save_resource` | `{ path, content }` | `{}` (resource file: atomic write + index + `resource-changed`) |
 | `save_notes` | `{ content }` | `{}` (patches `ire.json` notes) |
 | `save_ideas` | `{ ideas: { text }[] }` | `{}` (patches `ire.json` ideas) |
 | `save_focus_field` | `{ field: "research_question" \| "this_week", content }` | `{}` (patches `ire.json` focus) |
@@ -200,8 +200,8 @@ A single typed channel carrying workspace-level state changes for the side panel
 | `focus-changed` | `{ research_question, this_week }` | `ire.json` writes (UI setters / `ire.edit`); initial-state burst |
 | `notes-changed` | `{ content }` | `ire.json` writes; initial-state burst |
 | `ideas-changed` | `{ ideas: { text }[] }` | `ire.json` writes; initial-state burst |
-| `resource-changed` | `{ resource: { path, title, sources } }` | `WikiStore::write_resource` on `resources/*.md`; initial-state burst |
-| `resource-deleted` | `{ path }` | `discard_resource` / `WikiStore::delete_resource` |
+| `resource-changed` | `{ resource: { path, title, sources } }` | `IreStore::write_resource` on `resources/*.md`; initial-state burst |
+| `resource-deleted` | `{ path }` | `discard_resource` / `IreStore::delete_resource` |
 | `experiment-changed` | `{ experiment: ExperimentRow }` | `experiments/runner.rs` on state transitions; initial-state burst |
 | `experiment-deleted` | `{ uuid }` | `experiment_delete` command |
 
@@ -212,7 +212,7 @@ The frontend has one subscriber (in `App.tsx`) that applies every variant to the
 At the end of `attach()` in `commands/workspace.rs`, `emit_initial_state(app, workspace_root)` fires:
 
 1. Read `ire.json` → one `notes-changed`, one `focus-changed`, and one `ideas-changed` event.
-2. `WikiStore::list_resources()` (scan `.ire/resources/*.md`) → one `resource-changed` per file.
+2. `IreStore::list_resources()` (scan `.ire/resources/*.md`) → one `resource-changed` per file.
 3. `ire.json` `experiments` → one `experiment-changed` per entry (tab_id empty on hydrate; live linkage via events).
 
 Every event in the burst carries `source: "hydrate"`. Live mutations carry `source: "mutation"`. Animation listeners can filter to `source === "mutation"` to avoid flashing every panel on workspace open.

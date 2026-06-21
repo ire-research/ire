@@ -56,7 +56,7 @@ The selected agent writes the draft markdown file and streams one short confirma
 
 In-flight ingestion state (the source refs for a transient resource id) lives in an in-memory `InflightResources` registry in app state, not in the DB.
 
-**Confirm** (`confirm_resource`): reads `.ire/cache/<resource_id>_draft.md`, injects the `sources:` frontmatter from the registry entry, writes it to `resources/<slug>.md` through `WikiStore::write_resource` (which regenerates `resources/_index.md` and emits `resource-changed`), removes the cache + draft, and drops the registry entry. Frontmatter: `title`, `sources`, `updated`, and `TL;DR`. No git commit is created.
+**Confirm** (`confirm_resource`): reads `.ire/cache/<resource_id>_draft.md`, injects the `sources:` frontmatter from the registry entry, writes it to `resources/<slug>.md` through `IreStore::write_resource` (which regenerates `resources/_index.md` and emits `resource-changed`), removes the cache + draft, and drops the registry entry. Frontmatter: `title`, `sources`, `updated`, and `TL;DR`. No git commit is created.
 
 **Discard** (`discard_resource`): for an in-flight id, drops the registry entry and deletes `.ire/cache/<id>.txt` / `.ire/cache/<id>/` + the draft, closing the tab. For a confirmed resource (the id is its `resources/<slug>.md` path), deletes the file, regenerates the index, and emits `resource-deleted`.
 
@@ -85,7 +85,7 @@ User types in central pane → Send
         -m <model>
         -c model_reasoning_effort=<low|medium|high|xhigh>
         -c developer_instructions="<composed per context injection rules>"
-        -c mcp_servers.ire.command="node" -c mcp_servers.ire.args=[...]
+        -c mcp_servers.ire.command="<ire-binary>" -c mcp_servers.ire.args=["--mcp-stdio"]
         -C <workspace>
         --dangerously-bypass-approvals-and-sandbox
         -- "<message>"
@@ -204,7 +204,7 @@ Always pair `--output-format stream-json` with `--verbose --include-partial-mess
 
 `--disallowedTools AskUserQuestion` is always passed: the built-in `AskUserQuestion` tool can't be answered in one-shot `-p` mode (no stdin to carry the `tool_result` back to a pending `tool_use`). IRE's `mcp__ire__ask_user_question` MCP tool replaces it, answered synchronously within the same subprocess via the MCP backend socket (see `ask_user_question` handshake above and [mcp.md](mcp.md)).
 
-Codex spawn uses `codex exec`, `--json`, `-m <model>`, `--dangerously-bypass-approvals-and-sandbox`, and `-c model_reasoning_effort=<low|medium|high|xhigh>`. Fresh turns pass `-C <workspace>`; resumed turns run with `Command::current_dir(workspace_root)` because `codex exec resume` does not accept `-C`. The prompt is passed after a `--` separator so messages beginning with `-` are not parsed as Codex CLI flags. `~/.ire/workspaces/<id>/mcp.json` is translated into Codex config flags such as `-c mcp_servers.ire.command="node"`, `-c mcp_servers.ire.args=[...]`, and `-c mcp_servers.ire.env.IRE_WORKSPACE="..."`.
+Codex spawn uses `codex exec`, `--json`, `-m <model>`, `--dangerously-bypass-approvals-and-sandbox`, and `-c model_reasoning_effort=<low|medium|high|xhigh>`. Fresh turns pass `-C <workspace>`; resumed turns run with `Command::current_dir(workspace_root)` because `codex exec resume` does not accept `-C`. The prompt is passed after a `--` separator so messages beginning with `-` are not parsed as Codex CLI flags. `~/.ire/workspaces/<id>/mcp.json` is translated into Codex config flags such as `-c mcp_servers.ire.command="<ire-binary>"`, `-c mcp_servers.ire.args=["--mcp-stdio"]`, and `-c mcp_servers.ire.env.IRE_WORKSPACE="..."`.
 
 ### JSONL parsers (`cc::stream`, `codex::stream`)
 

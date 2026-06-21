@@ -69,7 +69,7 @@ Following the decision to **not** adopt the heavy thread-safety blueprint, the m
    - Created with `OpenOptions::write().create_new(true)` (atomic).
    - Stale detection: parse PID; if not alive (`kill -0` / `OpenProcess`), reclaim.
    - Released on graceful shutdown; orphan-safe via stale reclaim.
-2. **In-process serialisation** of wiki writes via `tokio::Mutex<()>` held by `WikiStore`.
+2. **In-process serialisation** of `ire.json` writes via `std::sync::Mutex<()>` (`IRE_LOCK`) held by `IreStore`.
 3. **Atomic file replacement** for every wiki mutation: temp file in same dir → `fs::rename`. `sync_all` on the temp file before rename.
 4. **Agent turn serialisation per session**: one outstanding agent subprocess per session id; new sends queue.
 5. **Experiment subprocesses** are detached with their own process group; they outlive an agent subprocess crash.

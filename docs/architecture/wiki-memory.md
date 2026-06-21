@@ -2,7 +2,7 @@
 
 Covers the per-workspace state record (`ire.json`), file-based resources, the memory layer (long-term / short-term files), the context injection rules, and the SQLite schema.
 
-The store layer is rooted at `.ire/` (`src-tauri/src/wiki/`). There is no longer a `wiki/` subtree.
+The store layer is rooted at `.ire/` (`src-tauri/src/ire/`). There is no longer a `wiki/` subtree.
 
 ---
 
@@ -40,7 +40,7 @@ There is **no migration**: new workspaces only. The "is an IRE workspace" probe 
 
 ## `ire.json`
 
-The git-tracked record of shareable state. Read/written through `WikiStore` (`src-tauri/src/wiki/store.rs`).
+The git-tracked record of shareable state. Read/written through `IreStore` (`src-tauri/src/ire/store.rs`).
 
 ```json
 {
@@ -79,16 +79,16 @@ TL;DR: <one-liner or 'Not relevant'>
 ---
 ```
 
-- `WikiStore::write_resource(rel_path, content, app)` — atomic write, regenerate `resources/_index.md`, emit `resource-changed { path, title, sources }` derived from the file.
-- `WikiStore::delete_resource(rel_path, app)` — remove the file, regenerate the index, emit `resource-deleted { path }`.
-- `WikiStore::list_resources()` — scan `resources/*.md` (skip `_index.md`/dotfiles), parse frontmatter; used for the open-workspace hydration burst.
+- `IreStore::write_resource(rel_path, content, app)` — atomic write, regenerate `resources/_index.md`, emit `resource-changed { path, title, sources }` derived from the file.
+- `IreStore::delete_resource(rel_path, app)` — remove the file, regenerate the index, emit `resource-deleted { path }`.
+- `IreStore::list_resources()` — scan `resources/*.md` (skip `_index.md`/dotfiles), parse frontmatter; used for the open-workspace hydration burst.
 - `resources/_index.md` is auto-generated: one bullet `- [title](./slug.md) — TL;DR/summary` per file, sorted by filename. It is the only auto-generated index (the old master `_index.md` is gone). Resources are identified by their **file path** (`resources/<slug>.md`); there is no sha256 DB key.
 
 Resources are read by the agent with the built-in `Read` tool; only ingestion goes through a tool (`resource.add`). See [chat-agents.md](chat-agents.md) for the ingestion pipeline.
 
 ### Atomic write contract
 
-`WikiStore::atomic_write` writes to `<path>.<uuid>.tmp` in the same dir, `sync_all()`, then `fs::rename` (atomic on local FS). `ire.json` mutations additionally serialize under the in-process `IRE_LOCK`. No CAS, no WAL — single-instance is enforced by `.lock` (see [workspace.md](workspace.md#concurrency--data-safety)).
+`IreStore::atomic_write` writes to `<path>.<uuid>.tmp` in the same dir, `sync_all()`, then `fs::rename` (atomic on local FS). `ire.json` mutations additionally serialize under the in-process `IRE_LOCK`. No CAS, no WAL — single-instance is enforced by `.lock` (see [workspace.md](workspace.md#concurrency--data-safety)).
 
 ### Git commit policy
 

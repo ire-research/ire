@@ -36,7 +36,7 @@ Two design-driving pain points:
 ┌──────────────────────────────────────────────────────────────────────┐
 │ Rust backend (Tauri)                                                 │
 │   ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐   │
-│   │ Workspace    │  │ Wiki         │  │ Agent subprocess manager │   │
+│   │ Workspace    │  │ IreStore     │  │ Agent subprocess manager │   │
 │   │ + .lock      │  │ (atomic I/O) │  │ (JSONL parser, resume)   │   │
 │   └──────────────┘  └──────────────┘  └──────────────────────────┘   │
 │   ┌──────────────┐  ┌──────────────┐  ┌──────────────────────────┐   │
@@ -48,7 +48,7 @@ Two design-driving pain points:
                        │                         │
               ┌────────────────┐         ┌────────────────────────┐
               │ Claude/Codex   │ ◀─────▶ │ IRE MCP server         │
-              │ CLI subprocess │  tools  │ (Node, stdio transport)│
+              │ CLI subprocess │  tools  │ (Rust, stdio transport)│
               └────────────────┘         └────────────────────────┘
                        │
                        ▼ Bash tool / MCP experiment.start
@@ -75,13 +75,13 @@ Two design-driving pain points:
 | Markdown | `react-markdown` + `remark-gfm` for preview; `<textarea>` for edit | Toggle-based, not split. |
 | Layout | `react-resizable-panels` | Resizable + collapsible splits. |
 | Persistence | SQLite via `rusqlite` | Single DB file at `~/.ire/workspaces/<id>/local.db` (chat sessions + experiment operational rows). Git-tracked state is `.ire/ire.json`. UI/session state via `tauri-plugin-store` (app-data dir). |
-| MCP server | Node + `@modelcontextprotocol/sdk` | Stdio transport. Bundled with the app. |
+| MCP server | Rust (`ire --mcp-stdio`) | Stdio transport. Same binary as the app, re-invoked as a subprocess. |
 | PDF extract | `pdf-extract` crate | Pure Rust, no system deps. |
 | HTML extract | `reqwest` + `scraper` + readability | Strip nav/ads; keep article text. |
 | Filesystem | `std::fs` + `tempfile` for atomic writes | No `notify` watcher in MVP. |
 | Logging | `tracing` + `tracing-subscriber` | Console logging only. |
 
-Claude Code and Codex are invoked as external CLI binaries; neither is a dependency in `Cargo.toml` or `package.json`. The Node MCP server's runtime (`node`) is also assumed installed.
+Claude Code and Codex are invoked as external CLI binaries; neither is a dependency in `Cargo.toml` or `package.json`.
 
 ---
 
@@ -216,7 +216,7 @@ ire/
 │       ├── events.rs                   # workspace-event emit helpers + EventSource
 │       ├── commands/
 │       │   ├── workspace.rs            # setup_status, open/init/close_workspace, emit_initial_state
-│       │   ├── wiki.rs                 # read/save resource files, notes, focus, ideas (ire.json setters)
+│       │   ├── ire.rs                  # read/save resource files, notes, focus, ideas (ire.json setters)
 │       │   ├── chat.rs                 # chat_send, chat_cancel, chat_reset_session, generate_chat_title
 │       │   ├── history.rs              # chat_history_save/list/get/delete
 │       │   ├── resources.rs            # submit/confirm/discard + InflightResources registry
@@ -225,7 +225,7 @@ ire/
 │       │   ├── lock.rs                 # .lock PID file (in ~/.ire/workspaces/<id>/)
 │       │   ├── init.rs                 # scaffold + git init; home_data_dir(path) → ~/.ire/workspaces/<id>/
 │       │   └── state.rs                # WorkspaceState (path + data_dir) + ActiveWorkspace managed state
-│       ├── wiki/                       # store rooted at .ire/
+│       ├── ire/                        # store rooted at .ire/
 │       │   ├── store.rs                # ire.json read/edit/upsert + resource write/delete; atomic writes + events
 │       │   ├── index.rs                # resources/_index.md regenerator
 │       │   └── frontmatter.rs
@@ -250,7 +250,4 @@ ire/
 │       └── db/
 │           ├── schema.rs               # CREATE TABLE IF NOT EXISTS (experiments, chat_sessions)
 │           └── models.rs               # Experiment + chat-session row access
-└── mcp/                                # bundled Node MCP server
-    ├── server.js                       # stdio server, JSON-RPC bridge to Rust
-    └── tools.js                        # tool schema definitions
 ```
