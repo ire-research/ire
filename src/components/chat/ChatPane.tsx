@@ -101,8 +101,8 @@ export function ChatPane() {
     if (activeTab?.kind !== "preview") return;
     if (activeTab.draftContent) {
       setPreviewContent(activeTab.draftContent);
-    } else if (activeTab.wikiPath) {
-      ipc.readWikiFile(activeTab.wikiPath).then((f) => {
+    } else if (activeTab.irePath) {
+      ipc.readResource(activeTab.irePath).then((f) => {
         setPreviewContent(f.content);
         renameTab(activeTab.id, resourcePreviewTitle(f.content));
       });
@@ -181,7 +181,7 @@ export function ChatPane() {
           if (msgId) setMessageError(tab_id, msgId, event.message);
           setStreaming(tab_id, false);
           assistantIdByTab.current.delete(tab_id);
-          void ipc.saveWorkspaceState(useWorkspace.getState().toPersisted())
+          void useWorkspace.getState().persist()
             .catch((e) => toastError("save state", e));
           break;
 
@@ -190,7 +190,7 @@ export function ChatPane() {
           setStreaming(tab_id, false);
           assistantIdByTab.current.delete(tab_id);
           void persistChat(tab_id);
-          void ipc.saveWorkspaceState(useWorkspace.getState().toPersisted())
+          void useWorkspace.getState().persist()
             .catch((e) => toastError("save state", e));
 
           const currentTab = useChat.getState().tabs.find((t) => t.id === tab_id);
@@ -215,7 +215,10 @@ export function ChatPane() {
         kind: payload.kind,
         agentOptions: payload.agent_options,
         resourceId: payload.resource_id,
-        resourceStatus: payload.kind === "resource" ? "summarizing" : undefined,
+        resourceStatus:
+          payload.kind === "resource"
+            ? (payload.resource_status ?? "summarizing")
+            : undefined,
       };
       addTab(newTab);
       setActiveTab(payload.tab_id);
@@ -315,8 +318,9 @@ export function ChatPane() {
     }
 
     try {
-      await ipc
-        .saveWorkspaceState(useWorkspace.getState().toPersisted())
+      await useWorkspace
+        .getState()
+        .persist()
         .catch((e) => toastError("save chat options", e));
       await ipc.chatSend(activeTabId, text, { model, provider, effort }, sessionUuid, tabLabel, startedAt);
     } catch (err) {
@@ -325,7 +329,7 @@ export function ChatPane() {
       assistantIdByTab.current.delete(activeTabId);
       setStreaming(activeTabId, false);
       void persistChat(activeTabId);
-      void ipc.saveWorkspaceState(useWorkspace.getState().toPersisted())
+      void useWorkspace.getState().persist()
         .catch((e) => toastError("save state", e));
     }
   };
@@ -353,7 +357,7 @@ export function ChatPane() {
       sessionStartedAtByTab.current.delete(tabId);
     }
     closeTab(tabId);
-    void ipc.saveWorkspaceState(useWorkspace.getState().toPersisted())
+    void useWorkspace.getState().persist()
       .catch((e) => toastError("save state", e));
   };
 
@@ -501,8 +505,8 @@ export function ChatPane() {
 
   if (activeTab.kind === "preview") {
     const handleSaveResource = async (content: string) => {
-      if (activeTab.wikiPath) {
-        await ipc.saveWikiFile(activeTab.wikiPath, content).catch((e) => toastError("save resource", e));
+      if (activeTab.irePath) {
+        await ipc.saveResource(activeTab.irePath, content).catch((e) => toastError("save resource", e));
       } else if (activeTab.resourceId) {
         await ipc.saveResourceDraft(activeTab.resourceId, content).catch((e) => toastError("save draft", e));
       }

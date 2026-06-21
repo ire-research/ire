@@ -6,17 +6,17 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCrosshairs, faPenToSquare, iconClass } from "../../icons";
 
 export function FocusPane() {
-  const pulse = useWorkspaceData((s) => s.pulse);
+  const focus = useWorkspaceData((s) => s.focus);
   const [editingField, setEditingField] = useState<"research_question" | "this_week" | null>(null);
-  const [draftRq, setDraftRq] = useState(pulse.research_question);
-  const [draftTw, setDraftTw] = useState(pulse.this_week);
+  const [draftRq, setDraftRq] = useState(focus.research_question);
+  const [draftTw, setDraftTw] = useState(focus.this_week);
   const rqRef = useRef<HTMLTextAreaElement>(null);
   const twRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    setDraftRq(pulse.research_question);
-    setDraftTw(pulse.this_week);
-  }, [pulse]);
+    setDraftRq(focus.research_question);
+    setDraftTw(focus.this_week);
+  }, [focus]);
 
   const autoResize = (el: HTMLTextAreaElement) => {
     el.style.height = "auto";
@@ -36,7 +36,7 @@ export function FocusPane() {
   const handleSave = async (field: "research_question" | "this_week") => {
     const content = field === "research_question" ? draftRq : draftTw;
     const trimmed = content.trim();
-    const original = field === "research_question" ? pulse.research_question : pulse.this_week;
+    const original = field === "research_question" ? focus.research_question : focus.this_week;
 
     if (trimmed === original.trim()) {
       setEditingField(null);
@@ -44,7 +44,7 @@ export function FocusPane() {
     }
 
     try {
-      await ipc.savePulseField(field, trimmed);
+      await ipc.saveFocusField(field, trimmed);
       setEditingField(null);
     } catch (e) {
       toastError("save focus", e);
@@ -53,9 +53,9 @@ export function FocusPane() {
 
   const handleCancel = (field: "research_question" | "this_week") => {
     if (field === "research_question") {
-      setDraftRq(pulse.research_question);
+      setDraftRq(focus.research_question);
     } else {
-      setDraftTw(pulse.this_week);
+      setDraftTw(focus.this_week);
     }
     setEditingField(null);
   };
@@ -102,8 +102,8 @@ export function FocusPane() {
           />
         ) : (
           <p className="text-[14px] text-on-surface leading-relaxed">
-            {pulse.research_question ? (
-              pulse.research_question
+            {focus.research_question ? (
+              focus.research_question
             ) : (
               <span className="italic text-on-surface-variant">No research question set</span>
             )}
@@ -136,8 +136,8 @@ export function FocusPane() {
           />
         ) : (
           <p className="text-[14px] text-on-surface leading-relaxed">
-            {pulse.this_week ? (
-              pulse.this_week
+            {focus.this_week ? (
+              focus.this_week
             ) : (
               <span className="italic text-on-surface-variant">No focus set for this week</span>
             )}

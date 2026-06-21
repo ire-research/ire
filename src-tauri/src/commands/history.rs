@@ -7,7 +7,7 @@ use crate::workspace::state::ActiveWorkspace;
 fn ire_dir(active: &State<'_, ActiveWorkspace>) -> Result<std::path::PathBuf, String> {
     let guard = active.0.lock().map_err(|e| e.to_string())?;
     let handle = guard.as_ref().ok_or("no workspace open")?;
-    Ok(handle.state.path.join(".ire"))
+    Ok(handle.state.data_dir.clone())
 }
 
 /// Save the current tab's messages as a completed chat session.

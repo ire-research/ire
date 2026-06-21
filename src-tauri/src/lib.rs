@@ -11,7 +11,7 @@ mod prompts;
 mod resources;
 mod tool_cards;
 mod user_config;
-mod wiki;
+mod ire;
 mod workspace;
 
 use claude_code::session::SessionManager;
@@ -26,15 +26,15 @@ use commands::history::{
 };
 use commands::resources::{
     confirm_resource, discard_resource, read_resource_draft, save_resource_draft,
-    submit_local_resource, submit_resource, submit_resources,
+    submit_local_resource, submit_resource, submit_resources, InflightResources,
 };
 use commands::system::{get_system_info, get_system_metrics, CpuMonitor, SystemInfoCache};
-use commands::wiki::{
-    read_wiki_file, save_ideas_json, save_notes, save_pulse_field, save_wiki_file,
+use commands::ire::{
+    read_resource, save_focus_field, save_ideas, save_notes, save_resource,
 };
 use commands::workspace::{
     close_workspace, init_workspace, open_in_vscode, open_workspace, read_user_config,
-    read_workspace_state, save_user_config, save_workspace_state, setup_status,
+    save_user_config, setup_status,
 };
 use mcp::McpState;
 use workspace::ActiveWorkspace;
@@ -58,9 +58,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .manage(ActiveWorkspace::default())
         .manage(SessionManager::default())
         .manage(McpState::default())
+        .manage(InflightResources::default())
         .manage(SystemInfoCache::default())
         .manage(CpuMonitor::default())
         .invoke_handler(tauri::generate_handler![
@@ -69,15 +71,13 @@ pub fn run() {
             init_workspace,
             close_workspace,
             open_in_vscode,
-            read_workspace_state,
-            save_workspace_state,
             read_user_config,
             save_user_config,
-            read_wiki_file,
-            save_wiki_file,
+            read_resource,
+            save_resource,
             save_notes,
-            save_pulse_field,
-            save_ideas_json,
+            save_focus_field,
+            save_ideas,
             get_system_info,
             get_system_metrics,
             chat_send,

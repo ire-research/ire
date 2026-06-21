@@ -133,56 +133,38 @@ fn tool(name: &'static str, description: &'static str, input_schema: Value) -> T
 fn tool_catalog() -> Vec<Tool> {
     vec![
         tool(
-            "wiki.read",
-            "Read any wiki markdown file. Returns content and frontmatter.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string", "description": "Path relative to wiki root (e.g. \"notes.md\", \"pulse.json\")" }
-                },
-                "required": ["path"]
-            }),
-        ),
-        tool(
-            "wiki.write",
-            "Atomically write a wiki file and update _index.md.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string", "description": "Path relative to wiki root" },
-                    "content": { "type": "string", "description": "File content" },
-                    "summary": { "type": "string", "description": "One-line summary for the index (optional)" }
-                },
-                "required": ["path", "content"]
-            }),
-        ),
-        tool(
-            "wiki.append",
-            "Append content to a wiki file.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "path": { "type": "string", "description": "Path relative to wiki root" },
-                    "content": { "type": "string", "description": "Content to append" }
-                },
-                "required": ["path", "content"]
-            }),
-        ),
-        tool(
-            "wiki.list",
-            "List all wiki file paths.",
+            "ire.read",
+            "Read the workspace's ire.json (notes, focus, ideas, experiments). Returns its raw JSON `content` and a `version` token. You MUST call this before ire.edit.",
             json!({ "type": "object", "properties": {} }),
         ),
         tool(
-            "wiki.rename",
-            "Atomically rename a wiki file and update _index.md.",
+            "ire.edit",
+            "Edit ire.json by exact string replacement (like the built-in Edit tool): replace `old` with `new`. Requires the `version` from a prior ire.read; fails if the version is stale (the file changed) or if `old` is missing or not unique. The result must remain valid against the ire.json schema.",
             json!({
                 "type": "object",
                 "properties": {
-                    "from": { "type": "string", "description": "Source path relative to wiki root" },
-                    "to": { "type": "string", "description": "Destination path relative to wiki root" }
+                    "old": { "type": "string", "description": "Exact substring to replace (must be unique in ire.json)" },
+                    "new": { "type": "string", "description": "Replacement text" },
+                    "version": { "type": "string", "description": "The version token returned by the latest ire.read" }
                 },
-                "required": ["from", "to"]
+                "required": ["old", "new", "version"]
+            }),
+        ),
+        tool(
+            "resource.add",
+            "Add a research resource directly from markdown you supply (no fetching). Opens an Approve/Discard preview tab in the UI; on Approve it is written to resources/<slug>.md. The markdown should be a complete wiki file with frontmatter (title, TL;DR, etc.); IRE injects the `sources` you pass into the frontmatter.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "markdown": { "type": "string", "description": "Full markdown body of the resource (ideally with frontmatter)" },
+                    "title": { "type": "string", "description": "Optional human-readable title" },
+                    "sources": {
+                        "type": "array",
+                        "description": "Optional source references (URLs or file paths) to record in frontmatter",
+                        "items": { "type": "string" }
+                    }
+                },
+                "required": ["markdown"]
             }),
         ),
         tool(
@@ -206,17 +188,6 @@ fn tool_catalog() -> Vec<Tool> {
                     "content": { "type": "string", "description": "Content to append to today's notes" }
                 },
                 "required": ["content"]
-            }),
-        ),
-        tool(
-            "pulse.update",
-            "Update the research pulse (pulse.json). Patch either or both fields.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "research_question": { "type": "string", "description": "Current research question" },
-                    "this_week": { "type": "string", "description": "Current weekly focus" }
-                }
             }),
         ),
         tool(
@@ -279,16 +250,6 @@ fn tool_catalog() -> Vec<Tool> {
                     "uuid": { "type": "string", "description": "Experiment uuid returned by experiment.start" }
                 },
                 "required": ["uuid"]
-            }),
-        ),
-        tool(
-            "experiment.list",
-            "List recent experiments.",
-            json!({
-                "type": "object",
-                "properties": {
-                    "limit": { "type": "number", "description": "Max results (default 20)" }
-                }
             }),
         ),
         tool(

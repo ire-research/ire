@@ -12,15 +12,15 @@ Covers the ingestion pipelines, the chat system (send flow, experiment lifecycle
 User edits the notes pane (raw text)
   → blur or Ctrl+Enter after content changed
   → save_notes(content) Tauri command
-    → Rust writes content to .ire/wiki/notes.md (atomic)
+    → Rust patches the `notes` field in .ire/ire.json (atomic, under IRE_LOCK)
   → `workspace-event notes-changed { content }` is emitted
 ```
 
-No agent turn is triggered. The selected agent reads `notes.md` only if the user explicitly requests it; it is never injected into the system prompt by default.
+No agent turn is triggered. The agent reads `notes` (via `ire.read`) only if the user explicitly requests it; it is never injected into the system prompt by default.
 
 ### Ideas ingestion
 
-Ideas are stored directly in `wiki/ideas.json` through `read_ideas` / `save_ideas_json`. Clicking Add in `IdeasPane` opens an inline draft card; pressing Enter writes a new `{ id, text, trashed: false, order }` entry and reorders active ideas. Clicking the trash icon soft-deletes by setting `trashed: true`; trashed ideas remain in JSON but are hidden from the pane. Drag-to-reorder rewrites active `order` values. No agent turn is triggered.
+Ideas are stored in the `ire.json` `ideas` array (ordered `{ text }[]`) through `save_ideas`. Clicking Add in `IdeasPane` opens an inline draft card; pressing Enter prepends a new `{ text }` entry. The trash icon removes the entry; drag-to-reorder reorders the array; React keys by index. Each action writes the full array via `save_ideas`. No agent turn is triggered.
 
 ### Resource ingestion
 
@@ -54,9 +54,13 @@ User queues one or more URLs/files → Ingest
 
 The selected agent writes the draft markdown file and streams one short confirmation into the resource tab. When the turn ends, **Confirm** and **Discard** buttons appear.
 
-**Confirm**: reads `.ire/cache/<resource_id>_draft.md`, normalizes its `sources:` frontmatter from the stored DB source refs, writes it to `resources/<slug>.md` through `WikiStore`, then removes the cache. Frontmatter: `title`, `sources`, `updated`, and `TL;DR`. Body starts with a `#` heading matching the title, then the summary. The written file is indexed in SQLite by matching every stored source ref in `sources`, but no git commit is created.
+In-flight ingestion state (the source refs for a transient resource id) lives in an in-memory `InflightResources` registry in app state, not in the DB.
 
-**Discard**: deletes `.ire/cache/<sha256>.txt` or `.ire/cache/<batch_sha>/`, marks the DB row `status=rejected`, closes the tab immediately. No wiki file is written.
+**Confirm** (`confirm_resource`): reads `.ire/cache/<resource_id>_draft.md`, injects the `sources:` frontmatter from the registry entry, writes it to `resources/<slug>.md` through `WikiStore::write_resource` (which regenerates `resources/_index.md` and emits `resource-changed`), removes the cache + draft, and drops the registry entry. Frontmatter: `title`, `sources`, `updated`, and `TL;DR`. No git commit is created.
+
+**Discard** (`discard_resource`): for an in-flight id, drops the registry entry and deletes `.ire/cache/<id>.txt` / `.ire/cache/<id>/` + the draft, closing the tab. For a confirmed resource (the id is its `resources/<slug>.md` path), deletes the file, regenerates the index, and emits `resource-deleted`.
+
+`resource.add` (MCP) is a simulated ingestion: the agent supplies the markdown directly (no fetch), it registers the same in-flight entry, writes the draft, and emits `tab-created` with `resource_status: "ready"` so the Approve/Discard bar appears immediately.
 
 ---
 
@@ -74,7 +78,7 @@ User types in central pane → Send
         --model <model>
         [--effort <low|medium|high|xhigh|max>]
         --output-format stream-json --verbose --include-partial-messages
-        --mcp-config .ire/mcp.json
+        --mcp-config ~/.ire/workspaces/<id>/mcp.json
         --append-system-prompt "<composed per context injection rules>"
         --resume <session_id_if_any>
       codex exec --json
@@ -120,13 +124,14 @@ T4  Backend monitor task waits on the child PID (off-thread). Frontend
     receives experiment-status events (started, log lines, …) and renders
     a live tail.
 T5  Process exits. Backend:
-       - updates DB row (status, exit_code, end_time)
-       - reads tail of stdout/stderr (last N kB)
+       - updates the DB row (status, exit_code, end_time) and mirrors it
+         into ire.json (`upsert_experiment`)
+       - reads tail of stdout/stderr (last N kB) from .ire/cache/experiments/<uuid>/
        - composes wake-up message and spawns the same provider with its
          resume id and that message
-T6  The agent reads result files, calls wiki.write for any new findings,
-    memory.write_short_term for daily notes, memory.write_long_term for
-    durable conclusions, and pulse.update if the research question changed.
+T6  The agent reads result files, uses memory.write_short_term for daily
+    notes, memory.write_long_term for durable conclusions, and ire.read +
+    ire.edit to update focus/notes/ideas if the research direction changed.
 ```
 
 **Subtleties:**
@@ -158,7 +163,7 @@ IRE supports multiple independent chat tabs in the central pane.
 
 **Event routing.** `chat-stream` events are wrapped as `{ tab_id, stream_id, event_id, event }` before being emitted. The frontend maintains a single global listener, routes each event to the correct tab's message list using `tab_id`, and ignores any already-seen `{tab_id, stream_id, event_id}` delivery.
 
-**History persistence.** `chat_sessions` is the single durable store for chat content **and** resume ids. Chat tabs carry optional `historySessionUuid`, `historyStartedAt`, and `agentOptions`; `.ire/workspace.json` persists only this small UI metadata (tab id/label/kind/pinned/options + `panel_layout` and `active_tab_id`) — **not** the `messages` array. The frontend creates the history UUID/start time on first send, passes them to `chat_send` (so the backend can upsert the resume id) and to `chat_history_save`. Messages are written to `chat_sessions` on `Done`/`Error`/close and on a ~1 s debounce while streaming (crash safety). On workspace open, each tab's messages are hydrated from `chat_sessions` by `historySessionUuid`. The History menu lists rows with `message_count > 0`, filtering out any UUID currently open as a chat tab; restoring a row binds a new tab to it (no delete), preserving its resume id.
+**History persistence.** `chat_sessions` is the single durable store for chat content **and** resume ids. Chat tabs carry optional `historySessionUuid`, `historyStartedAt`, and `agentOptions`; the `tauri-plugin-store` workspace state persists only this small UI metadata (tab id/label/kind/pinned/options + `panel_layout` and `active_tab_id`) — **not** the `messages` array. The frontend creates the history UUID/start time on first send, passes them to `chat_send` (so the backend can upsert the resume id) and to `chat_history_save`. Messages are written to `chat_sessions` on `Done`/`Error`/close and on a ~1 s debounce while streaming (crash safety). On workspace open, each tab's messages are hydrated from `chat_sessions` by `historySessionUuid`. The History menu lists rows with `message_count > 0`, filtering out any UUID currently open as a chat tab; restoring a row binds a new tab to it (no delete), preserving its resume id.
 
 **IPC changes from single-session baseline**
 
@@ -169,7 +174,7 @@ IRE supports multiple independent chat tabs in the central pane.
 | `chat_reset_session` | `{}` | `{ tab_id }` |
 | `submit_ask_answer` | — (new) | `{ tab_id, answers }` |
 | `chat-stream` event | `StreamEvent` | `{ tab_id, stream_id, event_id, event: StreamEvent }` |
-| `tab-created` event | — | `{ tab_id, label, kind, resource_id?, agent_options? }` |
+| `tab-created` event | — | `{ tab_id, label, kind, resource_id?, resource_status?, agent_options? }` |
 
 ---
 
@@ -199,7 +204,7 @@ Always pair `--output-format stream-json` with `--verbose --include-partial-mess
 
 `--disallowedTools AskUserQuestion` is always passed: the built-in `AskUserQuestion` tool can't be answered in one-shot `-p` mode (no stdin to carry the `tool_result` back to a pending `tool_use`). IRE's `mcp__ire__ask_user_question` MCP tool replaces it, answered synchronously within the same subprocess via the MCP backend socket (see `ask_user_question` handshake above and [mcp.md](mcp.md)).
 
-Codex spawn uses `codex exec`, `--json`, `-m <model>`, `--dangerously-bypass-approvals-and-sandbox`, and `-c model_reasoning_effort=<low|medium|high|xhigh>`. Fresh turns pass `-C <workspace>`; resumed turns run with `Command::current_dir(workspace_root)` because `codex exec resume` does not accept `-C`. The prompt is passed after a `--` separator so messages beginning with `-` are not parsed as Codex CLI flags. `.ire/mcp.json` is translated into Codex config flags such as `-c mcp_servers.ire.command="node"`, `-c mcp_servers.ire.args=[...]`, and `-c mcp_servers.ire.env.IRE_WORKSPACE="..."`.
+Codex spawn uses `codex exec`, `--json`, `-m <model>`, `--dangerously-bypass-approvals-and-sandbox`, and `-c model_reasoning_effort=<low|medium|high|xhigh>`. Fresh turns pass `-C <workspace>`; resumed turns run with `Command::current_dir(workspace_root)` because `codex exec resume` does not accept `-C`. The prompt is passed after a `--` separator so messages beginning with `-` are not parsed as Codex CLI flags. `~/.ire/workspaces/<id>/mcp.json` is translated into Codex config flags such as `-c mcp_servers.ire.command="node"`, `-c mcp_servers.ire.args=[...]`, and `-c mcp_servers.ire.env.IRE_WORKSPACE="..."`.
 
 ### JSONL parsers (`cc::stream`, `codex::stream`)
 
@@ -220,9 +225,9 @@ enum StreamEvent {
 }
 ```
 
-`ToolCall` is the provider-neutral tool-card contract defined in `tool_cards.rs`: `{ tool_id, provider, kind, raw_name, title, input, output, status, meta }`. `kind` is one of `command`, `file_read`, `file_write`, `file_edit`, `file_search`, `web_fetch`, `wiki_read`, `wiki_write`, `wiki_append`, `wiki_rename`, `memory_write`, `pulse_update`, `experiment_start`, `experiment_status`, `experiment_tail_logs`, or `other`.
+`ToolCall` is the provider-neutral tool-card contract defined in `tool_cards.rs`: `{ tool_id, provider, kind, raw_name, title, input, output, status, meta }`. `kind` is one of `command`, `file_read`, `file_write`, `file_edit`, `file_search`, `web_fetch`, `ire_read`, `ire_edit`, `resource_add`, `memory_write`, `experiment_start`, `experiment_status`, `experiment_tail_logs`, or `other`.
 
-Claude and Codex both normalize native tool records into `ToolCall` before emitting `ToolStart`. Claude maps built-ins such as `Bash`, `Read`, `Write`, `Edit`/`MultiEdit`, `Grep`/`Glob`/`LS`, and `WebFetch`; MCP names such as `ire__wiki.read` normalize through the `wiki.*`, `memory.*`, `pulse.update`, and `experiment.*` mapping.
+Claude and Codex both normalize native tool records into `ToolCall` before emitting `ToolStart`. Claude maps built-ins such as `Bash`, `Read`, `Write`, `Edit`/`MultiEdit`, `Grep`/`Glob`/`LS`, and `WebFetch`; MCP names such as `ire__ire.read` normalize through the `ire.read`/`ire.edit`, `resource.add`, `memory.*`, and `experiment.*` mapping.
 
 `AskUserQuestion` is emitted when CC calls IRE's `mcp__ire__ask_user_question` tool (the built-in `AskUserQuestion` tool is passed via `--disallowedTools`, see below). The parser intercepts that `tool_use` block, parses its `questions[]` payload, and tracks the tool id so the matching `tool_result` is suppressed. The frontend renders an `AskQuestionCard` and, on submit, calls `submit_ask_answer(tab_id, answers)` to deliver the answers back to the blocked MCP call in the same subprocess turn.
 

@@ -9,16 +9,24 @@ use super::lock::WorkspaceLock;
 pub struct WorkspaceState {
     pub path: PathBuf,
     pub name: String,
+    /// `~/.ire/workspaces/<id>/` — home for runtime artifacts (local.db,
+    /// mcp.json, mcp.sock, .lock). Not exposed to the frontend.
+    #[serde(skip)]
+    pub data_dir: PathBuf,
 }
 
 impl WorkspaceState {
-    pub fn from_path(path: PathBuf) -> Self {
+    pub fn from_path(path: PathBuf, data_dir: PathBuf) -> Self {
         let name = path
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("workspace")
             .to_string();
-        Self { path, name }
+        Self {
+            path,
+            name,
+            data_dir,
+        }
     }
 }
 

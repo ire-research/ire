@@ -1,14 +1,14 @@
 import { create } from "zustand";
 import type {
   ExperimentRow,
+  FocusContent,
   IdeaItem,
-  PulseContent,
   ResourceItem,
   WorkspaceEvent,
 } from "../types";
 
 interface WorkspaceDataStore {
-  pulse: PulseContent;
+  focus: FocusContent;
   notes: string;
   ideas: IdeaItem[];
   resources: ResourceItem[];
@@ -17,14 +17,14 @@ interface WorkspaceDataStore {
   apply: (event: WorkspaceEvent) => void;
 }
 
-const emptyPulse: PulseContent = { research_question: "", this_week: "" };
+const emptyFocus: FocusContent = { research_question: "", this_week: "" };
 
 // The slice receives all its data — both the initial workspace burst and live
 // mutations — through `apply(event)`. The Rust side emits `workspace-event`
 // with `source: "hydrate"` for the open-workspace burst and `source: "mutation"`
 // for everything else; the reducer treats them identically.
 export const useWorkspaceData = create<WorkspaceDataStore>((set) => ({
-  pulse: emptyPulse,
+  focus: emptyFocus,
   notes: "",
   ideas: [],
   resources: [],
@@ -32,7 +32,7 @@ export const useWorkspaceData = create<WorkspaceDataStore>((set) => ({
 
   reset: () =>
     set({
-      pulse: emptyPulse,
+      focus: emptyFocus,
       notes: "",
       ideas: [],
       resources: [],
@@ -42,9 +42,9 @@ export const useWorkspaceData = create<WorkspaceDataStore>((set) => ({
   apply: (event) =>
     set((s) => {
       switch (event.kind) {
-        case "pulse-changed":
+        case "focus-changed":
           return {
-            pulse: {
+            focus: {
               research_question: event.research_question,
               this_week: event.this_week,
             },
@@ -55,7 +55,7 @@ export const useWorkspaceData = create<WorkspaceDataStore>((set) => ({
           return { ideas: event.ideas };
         case "resource-changed": {
           const incoming = event.resource;
-          const idx = s.resources.findIndex((r) => r.resource_id === incoming.resource_id);
+          const idx = s.resources.findIndex((r) => r.path === incoming.path);
           if (idx === -1) return { resources: [incoming, ...s.resources] };
           const next = s.resources.slice();
           next[idx] = incoming;
@@ -63,7 +63,7 @@ export const useWorkspaceData = create<WorkspaceDataStore>((set) => ({
         }
         case "resource-deleted":
           return {
-            resources: s.resources.filter((r) => r.resource_id !== event.resource_id),
+            resources: s.resources.filter((r) => r.path !== event.path),
           };
         case "experiment-changed": {
           const incoming = event.experiment;

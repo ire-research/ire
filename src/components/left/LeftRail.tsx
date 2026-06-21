@@ -14,7 +14,7 @@ export function LeftRail() {
   const setGroupLayout = useWorkspace((s) => s.setGroupLayout);
   const defaultLayout =
     groupLayout &&
-    Number.isFinite(groupLayout.pulse) &&
+    Number.isFinite(groupLayout.focus) &&
     Number.isFinite(groupLayout.resources) &&
     Number.isFinite(groupLayout.experiments)
       ? groupLayout
@@ -29,7 +29,7 @@ export function LeftRail() {
         defaultLayout={defaultLayout}
         onLayoutChanged={(layout) => setGroupLayout("left", layout)}
       >
-        <Panel id="pulse" className="flex flex-col overflow-hidden" defaultSize={33.33} minSize="80px">
+        <Panel id="focus" className="flex flex-col overflow-hidden" defaultSize={33.33} minSize="80px">
           <FocusPane />
         </Panel>
         <Separator id="left-focus-resources" className="drag-handle-row border-t border-outline-variant" />

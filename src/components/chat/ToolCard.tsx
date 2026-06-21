@@ -10,12 +10,10 @@ interface Props {
 
 /** Tool kinds that belong to IRE (shown with the IRE text badge instead of a material icon). */
 const IRE_KINDS = new Set<ToolKind>([
-  "wiki_read",
-  "wiki_write",
-  "wiki_append",
-  "wiki_rename",
+  "ire_read",
+  "ire_edit",
+  "resource_add",
   "memory_write",
-  "pulse_update",
   "experiment_start",
   "experiment_status",
   "experiment_tail_logs",
