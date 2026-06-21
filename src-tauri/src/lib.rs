@@ -33,7 +33,7 @@ use commands::ire::{
     read_resource, save_focus_field, save_ideas, save_notes, save_resource,
 };
 use commands::workspace::{
-    close_workspace, init_workspace, open_in_vscode, open_workspace, read_user_config,
+    close_workspace, open_in_vscode, open_workspace, read_user_config,
     save_user_config, setup_status,
 };
 use mcp::McpState;
@@ -68,7 +68,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             setup_status,
             open_workspace,
-            init_workspace,
             close_workspace,
             open_in_vscode,
             read_user_config,

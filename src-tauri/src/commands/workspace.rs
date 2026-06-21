@@ -76,8 +76,11 @@ pub fn open_workspace(
 ) -> Result<WorkspaceState, String> {
     tracing::info!(path = %path, "open_workspace");
     let path = PathBuf::from(path);
-    ws_init::validate_existing(&path).map_err(|e| e.to_string())?;
-    ws_init::ensure_git(&path).map_err(|e| e.to_string())?;
+    if ws_init::validate_existing(&path).is_err() {
+        ws_init::initialize(&path).map_err(|e| e.to_string())?;
+    } else {
+        ws_init::ensure_git(&path).map_err(|e| e.to_string())?;
+    }
     let sm = (*session).clone();
     let result = attach(&active, &mcp, sm, path.clone(), app);
     match &result {
@@ -86,29 +89,6 @@ pub fn open_workspace(
             user_config::push_recent(&path).ok();
         }
         Err(e) => tracing::warn!(error = %e, "open_workspace failed"),
-    }
-    result
-}
-
-#[tauri::command]
-pub fn init_workspace(
-    path: String,
-    active: State<'_, ActiveWorkspace>,
-    mcp: State<'_, McpState>,
-    session: State<'_, SessionManager>,
-    app: tauri::AppHandle,
-) -> Result<WorkspaceState, String> {
-    tracing::info!(path = %path, "init_workspace");
-    let path = PathBuf::from(path);
-    ws_init::initialize(&path).map_err(|e| e.to_string())?;
-    let sm = (*session).clone();
-    let result = attach(&active, &mcp, sm, path.clone(), app);
-    match &result {
-        Ok(s) => {
-            tracing::info!(name = %s.name, path = ?s.path, "workspace initialized");
-            user_config::push_recent(&path).ok();
-        }
-        Err(e) => tracing::warn!(error = %e, "init_workspace failed"),
     }
     result
 }

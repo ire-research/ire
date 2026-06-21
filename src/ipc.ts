@@ -67,8 +67,6 @@ export const ipc = {
   setupStatus: (): Promise<SetupStatus> => invoke("setup_status"),
   openWorkspace: (path: string): Promise<WorkspaceState> =>
     invoke("open_workspace", { path }),
-  initWorkspace: (path: string): Promise<WorkspaceState> =>
-    invoke("init_workspace", { path }),
   closeWorkspace: (): Promise<void> => invoke("close_workspace"),
   readResource: (path: string): Promise<WikiFile> =>
     invoke("read_resource", { path }),
