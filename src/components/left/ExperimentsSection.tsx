@@ -93,11 +93,12 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
   };
 
   return (
-    <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
-      <div className="sticky top-0 z-10 flex items-center gap-2 py-1 mb-2 bg-surface-container-low text-on-surface-variant font-mono text-[14px]">
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="px-4 pt-4 shrink-0 flex items-center gap-2 py-1 mb-2 bg-surface-container-low text-on-surface-variant font-mono text-[14px]">
         <FontAwesomeIcon icon={faFlask} className={`${iconClass.lg} shrink-0`} />
         Experiments
       </div>
+      <div className="px-4 pb-3 overflow-y-auto flex-1">
       <div className="space-y-0.5">
         {experiments.length > 0 ? (
           experiments.map((exp) => {
@@ -169,6 +170,7 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
           {tooltip.label}
         </div>
       )}
+      </div>
     </div>
   );
 }

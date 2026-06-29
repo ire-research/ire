@@ -52,8 +52,8 @@ export function NotesPane() {
   const hasNotes = content.trim().length > 0;
 
   return (
-    <div className="px-4 pt-4 pb-3 overflow-hidden flex-1 min-h-0 flex flex-col">
-      <div className="sticky top-0 z-10 flex items-center gap-2 py-1 mb-2 bg-surface-container-low shrink-0">
+    <div className="flex-1 min-h-0 flex flex-col">
+      <div className="px-4 pt-4 shrink-0 flex items-center gap-2 py-1 mb-2 bg-surface-container-low">
         <FontAwesomeIcon icon={faPenToSquare} className={`${iconClass.lg} shrink-0 text-on-surface-variant`} />
         <span className="text-[14px] text-on-surface-variant flex-1">
           Notes
@@ -67,6 +67,7 @@ export function NotesPane() {
         </button>
       </div>
 
+      <div className="px-4 pb-3 flex flex-col flex-1 min-h-0">
       {isEditing ? (
         <textarea
           ref={textareaRef}
@@ -89,6 +90,7 @@ export function NotesPane() {
           )}
         </>
       )}
+      </div>
     </div>
   );
 }

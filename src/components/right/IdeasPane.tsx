@@ -69,8 +69,8 @@ export function IdeasPane() {
   };
 
   return (
-    <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
-      <div className="sticky top-0 z-10 flex items-center gap-2 py-1 mb-2 bg-surface-container-low">
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="px-4 pt-4 shrink-0 flex items-center gap-2 py-1 mb-2 bg-surface-container-low">
         <FontAwesomeIcon icon={faLightbulb} className={`${iconClass.lg} shrink-0 text-on-surface-variant`} />
         <span className="text-[14px] text-on-surface-variant flex-1">
           Ideas
@@ -83,7 +83,7 @@ export function IdeasPane() {
           <FontAwesomeIcon icon={faPlus} className={iconClass.md} />
         </button>
       </div>
-
+      <div className="px-4 pb-3 overflow-y-auto flex-1">
       {draft !== null || ideas.length > 0 ? (
         <div className="space-y-2">
           {draft !== null && (
@@ -124,6 +124,7 @@ export function IdeasPane() {
           No ideas yet.
         </p>
       )}
+      </div>
     </div>
   );
 }

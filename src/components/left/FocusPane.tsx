@@ -70,13 +70,13 @@ export function FocusPane() {
   };
 
   return (
-    <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Header */}
-      <div className="sticky top-0 z-10 flex items-center gap-2 px-0 py-1 mb-2 bg-surface-container-low">
+      <div className="px-4 pt-4 shrink-0 flex items-center gap-2 py-1 mb-2 bg-surface-container-low">
         <FontAwesomeIcon icon={faCrosshairs} className={`${iconClass.lg} shrink-0 text-on-surface-variant`} />
         <span className="font-mono text-[14px] text-on-surface-variant">Focus</span>
       </div>
-
+      <div className="px-4 pb-3 overflow-y-auto flex-1">
       {/* Research Question */}
       <div className="mb-3 group/rq pl-1">
         <div className="flex items-center justify-between mb-1.5">
@@ -143,6 +143,7 @@ export function FocusPane() {
             )}
           </p>
         )}
+      </div>
       </div>
     </div>
   );
