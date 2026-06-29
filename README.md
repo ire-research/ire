@@ -72,6 +72,7 @@ Thanks to these projects for inspiration and ideas:
 - [Tolaria](https://github.com/refactoringhq/tolaria)
 - [Karpathy's LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)
 - [Conductor](https://conductor.build)
+- [OpenClaw](https://github.com/openclaw/openclaw)
 
 ## License
 
