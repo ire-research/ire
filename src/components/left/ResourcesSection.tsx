@@ -52,8 +52,8 @@ export function ResourcesSection({ onOpen }: Props) {
   }));
 
   return (
-    <div className="px-4 pt-4 pb-3 overflow-y-auto flex-1">
-      <div className="sticky top-0 z-10 flex items-center gap-2 py-1 mb-2 bg-surface-container-low text-on-surface-variant font-mono text-[14px]">
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="px-4 pt-4 shrink-0 flex items-center gap-2 py-1 mb-2 bg-surface-container-low text-on-surface-variant font-mono text-[14px]">
         <FontAwesomeIcon icon={faFileLines} className={`${iconClass.lg} shrink-0`} />
         <span className="flex-1">Resources</span>
         <button
@@ -64,49 +64,51 @@ export function ResourcesSection({ onOpen }: Props) {
           +
         </button>
       </div>
-      <div className="space-y-0.5">
-        {rail.length > 0 ? (
-          rail.map((resource) => (
-            <div
-              key={resource.path}
-              className="group w-full flex items-center px-2 py-1.5 rounded hover:bg-surface-container-high transition-colors"
-              onMouseLeave={handleMouseLeave}
-            >
-              <button
-                className="flex-1 min-w-0 text-left"
-                onMouseEnter={() => handleMouseEnter(resource.path, resource.label)}
-                onClick={() => onOpen("Resource", resource.path)}
+      <div className="px-4 pb-3 overflow-y-auto flex-1">
+        <div className="space-y-0.5">
+          {rail.length > 0 ? (
+            rail.map((resource) => (
+              <div
+                key={resource.path}
+                className="group w-full flex items-center px-2 py-1.5 rounded hover:bg-surface-container-high transition-colors"
+                onMouseLeave={handleMouseLeave}
               >
-                <span
-                  ref={(el) => { spanRefs.current.set(resource.path, el); }}
-                  className="text-[14px] text-on-surface truncate block"
+                <button
+                  className="flex-1 min-w-0 text-left"
+                  onMouseEnter={() => handleMouseEnter(resource.path, resource.label)}
+                  onClick={() => onOpen("Resource", resource.path)}
                 >
-                  {resource.label}
-                </span>
-              </button>
-              <button
-                className="app-danger-icon-button opacity-0 group-hover:opacity-100 ml-1 p-0.5 shrink-0"
-                title="Discard resource"
-                disabled={discardingId === resource.path}
-                onClick={(e) => handleDiscard(e, resource.path)}
-              >
-                <FontAwesomeIcon icon={faTrash} className={iconClass.md} />
-              </button>
-            </div>
-          ))
-        ) : (
-          <p className="text-[13px] text-on-surface-variant italic">no resources yet</p>
-        )}
-      </div>
-      {tooltip && (
-        <div
-          className="fixed z-50 px-2 py-1 bg-surface-container-high border border-outline/30 text-on-surface text-[13px] rounded shadow-md whitespace-nowrap pointer-events-none"
-          style={{ left: tooltip.x, top: tooltip.y }}
-        >
-          {tooltip.label}
+                  <span
+                    ref={(el) => { spanRefs.current.set(resource.path, el); }}
+                    className="text-[14px] text-on-surface truncate block"
+                  >
+                    {resource.label}
+                  </span>
+                </button>
+                <button
+                  className="app-danger-icon-button opacity-0 group-hover:opacity-100 ml-1 p-0.5 shrink-0"
+                  title="Discard resource"
+                  disabled={discardingId === resource.path}
+                  onClick={(e) => handleDiscard(e, resource.path)}
+                >
+                  <FontAwesomeIcon icon={faTrash} className={iconClass.md} />
+                </button>
+              </div>
+            ))
+          ) : (
+            <p className="text-[13px] text-on-surface-variant italic">no resources yet</p>
+          )}
         </div>
-      )}
-      {modalOpen && <AddResourceModal onClose={() => setModalOpen(false)} />}
+        {tooltip && (
+          <div
+            className="fixed z-50 px-2 py-1 bg-surface-container-high border border-outline/30 text-on-surface text-[13px] rounded shadow-md whitespace-nowrap pointer-events-none"
+            style={{ left: tooltip.x, top: tooltip.y }}
+          >
+            {tooltip.label}
+          </div>
+        )}
+        {modalOpen && <AddResourceModal onClose={() => setModalOpen(false)} />}
+      </div>
     </div>
   );
 }
