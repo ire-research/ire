@@ -1,12 +1,26 @@
 // Nav scroll effect
 const nav = document.getElementById('main-nav');
 window.addEventListener('scroll', () => {
-  if (window.scrollY > 16) {
-    nav.classList.add('scrolled');
-  } else {
-    nav.classList.remove('scrolled');
-  }
+  nav.classList.toggle('scrolled', window.scrollY > 16);
 }, { passive: true });
+
+// Hamburger menu
+const hamburger = document.getElementById('hamburger');
+const navDrawer = document.getElementById('nav-drawer');
+
+hamburger.addEventListener('click', () => {
+  const open = navDrawer.classList.toggle('open');
+  hamburger.classList.toggle('open', open);
+  hamburger.setAttribute('aria-expanded', open);
+});
+
+navDrawer.querySelectorAll('a').forEach(a => {
+  a.addEventListener('click', () => {
+    navDrawer.classList.remove('open');
+    hamburger.classList.remove('open');
+    hamburger.setAttribute('aria-expanded', 'false');
+  });
+});
 
 // Scroll-triggered fade-in animation
 const observer = new IntersectionObserver((entries) => {
