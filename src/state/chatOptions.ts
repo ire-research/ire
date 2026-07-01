@@ -10,16 +10,13 @@ export interface ModelEntry {
 }
 
 export const MODELS: ModelEntry[] = [
+  { id: "claude-sonnet-5",           label: "Sonnet 5",      provider: "claude" },
   { id: "claude-opus-4-8",           label: "Opus 4.8",      provider: "claude" },
-  { id: "claude-opus-4-7",           label: "Opus 4.7",      provider: "claude" },
-  { id: "claude-opus-4-6",           label: "Opus 4.6",      provider: "claude" },
-  { id: "claude-sonnet-4-6",         label: "Sonnet 4.6",    provider: "claude" },
   { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5",     provider: "claude" },
   { id: "gpt-5.5",                   label: "GPT-5.5",       provider: "codex" },
   { id: "gpt-5.4",                   label: "GPT-5.4",       provider: "codex" },
   { id: "gpt-5.4-mini",              label: "GPT-5.4-Mini",  provider: "codex" },
   { id: "gpt-5.3-codex",             label: "GPT-5.3-Codex", provider: "codex" },
-  { id: "gpt-5.2",                   label: "GPT-5.2",       provider: "codex" },
 ];
 
 export const CLAUDE_EFFORT_LEVELS: { value: EffortLevel; label: string }[] = [
@@ -38,7 +35,7 @@ export const CODEX_EFFORT_LEVELS: { value: EffortLevel; label: string }[] = [
 ];
 
 export const DEFAULT_CHAT_OPTIONS = {
-  model: "claude-sonnet-4-6",
+  model: "claude-sonnet-5",
   provider: "claude" as Provider,
   effort: "low" as EffortLevel | null,
 };
@@ -78,7 +75,7 @@ export function defaultModelForProvider(provider: Provider): string {
 
 /** Smallest/cheapest model per provider — used for background chat-title generation. */
 export function lightweightModelForProvider(provider: Provider): string {
-  return provider === "codex" ? "gpt-5.2" : "claude-haiku-4-5-20251001";
+  return provider === "codex" ? "gpt-5.4-mini" : "claude-haiku-4-5-20251001";
 }
 
 export function optionsForAvailableProviders(

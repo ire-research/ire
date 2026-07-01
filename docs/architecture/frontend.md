@@ -108,7 +108,7 @@ The stored shape (`PersistedWorkspace`):
     "collapsed": { "left": false, "right": false }
   },
   "last_opened": "2026-05-06T10:14:00Z",
-  "model": "claude-sonnet-4-6",
+  "model": "claude-sonnet-5",
   "provider": "claude",
   "effort": "low",
   "tabs": [
