@@ -6,11 +6,14 @@ import { useWorkspace } from "./state/workspace";
 import { useWorkspaceData } from "./state/workspaceData";
 import { ipc, onBackendError, onWorkspaceEvent } from "./ipc";
 import { useToasts } from "./state/toasts";
+import { useAutoUpdater } from "./hooks/useAutoUpdater";
 
 export default function App() {
   const phase = useWorkspace((s) => s.phase);
   const setPhase = useWorkspace((s) => s.setPhase);
   const hydrateFromUserConfig = useWorkspace((s) => s.hydrateFromUserConfig);
+
+  useAutoUpdater();
 
   useEffect(() => {
     const unlisten = onBackendError(({ scope, message }) => {
