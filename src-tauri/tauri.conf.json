@@ -38,7 +38,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQzNTI1NTQxMzhBRTcxODMKUldTRGNhNDRRVlZTMDhQSnZkNnNzSkJ3QUF5K3FGSXZJdUNFZGlZUGpDbGIxdXV6dzQwT2dLVUUK",
       "endpoints": [
-        "https://github.com/giacomo-ciro/ire/releases/latest/download/latest.json"
+        "https://github.com/ire-research/ire/releases/latest/download/latest.json"
       ]
     }
   }
