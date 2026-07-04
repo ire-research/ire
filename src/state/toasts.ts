@@ -7,6 +7,12 @@ export interface Toast {
   kind: ToastKind;
   message: string;
   scope?: string;
+  /** Skip auto-dismiss; the toast stays until the user closes it. */
+  persistent?: boolean;
+  /** Clickable label (e.g. a version) that opens `url` in the default browser. */
+  link?: { label: string; url: string };
+  /** Action button; receives this toast's id (e.g. to dismiss itself on click). */
+  action?: { label: string; onClick: (id: string) => void };
 }
 
 interface ToastStore {
