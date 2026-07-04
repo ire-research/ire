@@ -12,6 +12,7 @@ export interface ModelEntry {
 export const MODELS: ModelEntry[] = [
   { id: "claude-sonnet-5",           label: "Sonnet 5",      provider: "claude" },
   { id: "claude-opus-4-8",           label: "Opus 4.8",      provider: "claude" },
+  { id: "claude-fable-5",            label: "Fable 5",       provider: "claude" },
   { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5",     provider: "claude" },
   { id: "gpt-5.5",                   label: "GPT-5.5",       provider: "codex" },
   { id: "gpt-5.4",                   label: "GPT-5.4",       provider: "codex" },

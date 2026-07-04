@@ -57,8 +57,8 @@ Assistant output is stored and rendered as ordered content blocks. Text deltas, 
 ### Composer footer
 
 - Textarea: starts at 60px, grows with content, caps at 240px, then scrolls internally. Fixed placeholder `Ask IRE to brainstorm directions, ingest resources, or run experiments...`.
-- **Model selector** — grouped options from `MODELS` in `state/chatOptions.ts`, filtered by `availableProviders`. Claude Code models: Opus 4.7, Sonnet 4.6, Haiku 4.5. Codex models: GPT-5.5, GPT-5.4, GPT-5.4-Mini, GPT-5.3-Codex, GPT-5.2. Default (both providers): Claude Code / Sonnet 4.6.
-- **Effort / Reasoning** — Codex: Low → Med → High → XHigh, labelled `reasoning`. Claude: labelled `effort`, filtered by model: Opus 4.7 (Low–Max), Sonnet 4.6 (Low–Max), Haiku 4.5 (no effort selector). Default: **Low**.
+- **Model selector** — grouped options from `MODELS` in `state/chatOptions.ts`, filtered by `availableProviders`. Claude Code models: Sonnet 5, Opus 4.8, Fable 5, Haiku 4.5. Codex models: GPT-5.5, GPT-5.4, GPT-5.4-Mini, GPT-5.3-Codex. Default (both providers): Claude Code / Sonnet 5.
+- **Effort / Reasoning** — Codex: Low → Med → High → XHigh, labelled `reasoning`. Claude: labelled `effort`, filtered by model: Opus 4.8 (Low–Max), Sonnet 5 / Fable 5 (Low–Max, no XHigh), Haiku 4.5 (no effort selector). Default: **Low**.
 
 ### ExperimentTabView
 
