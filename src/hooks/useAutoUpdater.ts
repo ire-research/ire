@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { check } from "@tauri-apps/plugin-updater";
 import { useToasts } from "../state/toasts";
 
@@ -8,7 +8,14 @@ import { useToasts } from "../state/toasts";
  * user restarts the app — this avoids killing an in-progress experiment.
  */
 export function useAutoUpdater() {
+  const hasChecked = useRef(false);
+
   useEffect(() => {
+    // Guard against React.StrictMode's dev-only double-invoke of effects,
+    // which would otherwise download and install the update twice.
+    if (hasChecked.current) return;
+    hasChecked.current = true;
+
     check()
       .then(async (update) => {
         if (!update) return;
