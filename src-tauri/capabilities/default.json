@@ -8,6 +8,8 @@
     "opener:default",
     "dialog:default",
     "dialog:allow-open",
-    "store:default"
+    "store:default",
+    "updater:default",
+    "process:allow-restart"
   ]
 }

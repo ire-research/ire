@@ -140,6 +140,8 @@ Tab `messages` are **not** stored in the workspace state — they live in the `c
 
 Directory picking is **not** a Tauri command — the frontend calls Tauri's dialog plugin directly (`@tauri-apps/plugin-dialog`) via the `pickDirectory` helper in `ipc.ts`.
 
+Auto-update is likewise not a Tauri command: `useAutoUpdater` (`src/hooks/useAutoUpdater.ts`), called once from `App.tsx`, uses `@tauri-apps/plugin-updater`'s `check()` on launch. If an update is found it is downloaded and installed immediately in the background (not applied until the user restarts the app, so an in-progress experiment is never interrupted), surfaced via a toast. The update manifest is served from `latest.json` on the published GitHub release, built and signed by `tauri-plugin-updater`/`tauri-action` in `.github/workflows/release.yml` using the `TAURI_SIGNING_PRIVATE_KEY`(`_PASSWORD`) secrets; the corresponding public key lives in `src-tauri/tauri.conf.json` under `plugins.updater.pubkey`.
+
 | Command | Args | Returns |
 |---|---|---|
 | `setup_status` | — | `{ binary: BinaryStatus, codex_binary: BinaryStatus }` |
