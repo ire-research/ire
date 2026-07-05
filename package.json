@@ -1,7 +1,7 @@
 {
   "name": "ire",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "The first general-purpose Integrated Research Environment (IRE) — a local-first desktop environment for ML researchers.",
   "license": "MIT",
   "author": "Giacomo Cirò and Vittorio Rossi",

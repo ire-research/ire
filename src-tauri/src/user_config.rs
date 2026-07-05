@@ -9,6 +9,11 @@ pub struct UserConfig {
     pub theme: Option<String>,
     #[serde(default)]
     pub recent_workspaces: Vec<String>,
+    #[serde(default)]
+    pub analytics_id: Option<String>,
+    /// `None` until the user answers the first-run consent prompt.
+    #[serde(default)]
+    pub analytics_enabled: Option<bool>,
 }
 
 fn config_path() -> Option<PathBuf> {
@@ -48,6 +53,23 @@ pub fn push_recent(workspace_path: &Path) -> Result<()> {
     write(&config)
 }
 
+/// Returns the anonymous analytics device ID, generating and persisting one on first call.
+pub fn analytics_id() -> String {
+    let mut config = read();
+    if let Some(id) = &config.analytics_id {
+        return id.clone();
+    }
+    let id = uuid::Uuid::new_v4().to_string();
+    config.analytics_id = Some(id.clone());
+    let _ = write(&config);
+    id
+}
+
+/// Whether the user has opted in to analytics via the first-run consent prompt.
+pub fn analytics_enabled() -> bool {
+    read().analytics_enabled == Some(true)
+}
+
 fn remove_missing_recent_workspaces(config: &mut UserConfig) -> bool {
     let before = config.recent_workspaces.len();
     config.recent_workspaces.retain(|p| Path::new(p).is_dir());
@@ -74,6 +96,8 @@ mod tests {
                 missing.to_string_lossy().to_string(),
                 file.to_string_lossy().to_string(),
             ],
+            analytics_id: None,
+            analytics_enabled: None,
         };
 
         assert!(remove_missing_recent_workspaces(&mut config));
