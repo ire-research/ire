@@ -1,0 +1,76 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- App background: soft radial, lit slightly above center -->
+    <radialGradient id="bg" gradientUnits="userSpaceOnUse" cx="512" cy="307" r="1024" gradientTransform="matrix(1.2 0 0 1 -102.4 0)">
+      <stop offset="0%" stop-color="#1f1f26"/>
+      <stop offset="55%" stop-color="#131317"/>
+      <stop offset="100%" stop-color="#0a0a0c"/>
+    </radialGradient>
+
+    <!-- Grid tile (96px), faint white 1px lines -->
+    <pattern id="grid" width="96" height="96" patternUnits="userSpaceOnUse" patternTransform="translate(32 32)">
+      <path d="M 96 0 H 0 V 96" fill="none" stroke="#ffffff" stroke-opacity="0.05" stroke-width="1"/>
+    </pattern>
+
+    <!-- Fade the grid out toward the edges -->
+    <radialGradient id="gridFade" gradientUnits="userSpaceOnUse" cx="512" cy="512" r="922">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="50%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+    <mask id="gridMask">
+      <rect width="1024" height="1024" fill="url(#gridFade)"/>
+    </mask>
+
+    <!-- Glow off the top-left, away from the mark -->
+    <radialGradient id="glow" gradientUnits="userSpaceOnUse" cx="120" cy="120" r="280">
+      <stop offset="0%" stop-color="#c6c6c9" stop-opacity="0.10"/>
+      <stop offset="70%" stop-color="#c6c6c9" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glowBlur" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="30"/>
+    </filter>
+
+    <!-- Edge vignette for depth -->
+    <radialGradient id="vignette" gradientUnits="userSpaceOnUse" cx="512" cy="512" r="819">
+      <stop offset="55%" stop-color="#000000" stop-opacity="0"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.55"/>
+    </radialGradient>
+
+    <!-- Silver gradient for the mark (logo-local coordinates) -->
+    <linearGradient id="silverGrad" gradientUnits="userSpaceOnUse" x1="20" y1="10" x2="320" y2="150">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="60%" stop-color="#c6c6c9"/>
+      <stop offset="100%" stop-color="#6b6b73"/>
+    </linearGradient>
+
+    <filter id="markShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#000000" flood-opacity="0.45"/>
+    </filter>
+    <clipPath id="roundedBorder">
+      <rect width="1024" height="1024" rx="220" ry="220"/>
+    </clipPath>
+  </defs>
+
+  <g clip-path="url(#roundedBorder)">
+  <!-- Background -->
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <!-- Grid -->
+  <rect width="1024" height="1024" fill="url(#grid)" mask="url(#gridMask)"/>
+  <!-- Glow -->
+  <circle cx="120" cy="120" r="280" fill="url(#glow)" filter="url(#glowBlur)"/>
+  <!-- Vignette -->
+  <rect width="1024" height="1024" fill="url(#vignette)"/>
+
+  <!-- IRE mark, centered at 70% width -->
+  <g transform="translate(153.6 340.8) scale(2.1397)" filter="url(#markShadow)">
+    <g stroke-width="14" stroke-linecap="square" stroke-linejoin="miter" fill="none">
+      <line stroke="url(#silverGrad)" x1="50" y1="14" x2="50" y2="146"/>
+      <path stroke="url(#silverGrad)" d="M 110,14 L 140,14 C 175,14 175,80 140,80 L 110,80 L 168,146"/>
+      <line stroke="#c6c6c9" x1="215" y1="20" x2="295" y2="20"/>
+      <line stroke="#c6c6c9" x1="215" y1="80" x2="295" y2="80"/>
+      <line stroke="#c6c6c9" x1="215" y1="140" x2="295" y2="140"/>
+    </g>
+  </g>
+  </g>
+</svg>
