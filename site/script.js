@@ -60,6 +60,8 @@ fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
       'download-dmg': findAsset('.dmg'),
       'download-exe': findAsset('.exe'),
       'download-appimage': findAsset('.AppImage'),
+      'download-deb': findAsset('.deb'),
+      'download-rpm': findAsset('.rpm'),
     };
 
     Object.entries(links).forEach(([id, asset]) => {
@@ -71,7 +73,7 @@ fetch(`https://api.github.com/repos/${REPO}/releases/latest`)
   })
   .catch(() => {
     // Fall back to the releases page if the API call fails
-    ['download-dmg', 'download-exe', 'download-appimage'].forEach((id) => {
+    ['download-dmg', 'download-exe', 'download-appimage', 'download-deb', 'download-rpm'].forEach((id) => {
       const btn = document.getElementById(id);
       if (btn) btn.href = RELEASES_URL;
     });

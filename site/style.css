@@ -584,6 +584,7 @@ body {
 .platform-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
+  align-items: start;
   gap: 16px;
   margin-top: 56px;
   margin-bottom: 28px;
