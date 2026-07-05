@@ -47,6 +47,7 @@ export interface PersistedWorkspace {
 export interface UserConfig {
   theme?: "dark" | "light" | null;
   recent_workspaces?: string[];
+  analytics_enabled?: boolean | null;
 }
 
 export interface PanelLayouts {

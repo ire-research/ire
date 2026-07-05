@@ -1,7 +1,8 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Layout } from "./components/Layout";
 import { SetupScreen } from "./components/setup/SetupScreen";
 import { ToastStack } from "./components/ToastStack";
+import { AnalyticsConsentModal } from "./components/AnalyticsConsentModal";
 import { useWorkspace } from "./state/workspace";
 import { useWorkspaceData } from "./state/workspaceData";
 import { ipc, onBackendError, onWorkspaceEvent } from "./ipc";
@@ -12,6 +13,7 @@ export default function App() {
   const phase = useWorkspace((s) => s.phase);
   const setPhase = useWorkspace((s) => s.setPhase);
   const hydrateFromUserConfig = useWorkspace((s) => s.hydrateFromUserConfig);
+  const [needsAnalyticsConsent, setNeedsAnalyticsConsent] = useState(false);
 
   useAutoUpdater();
 
@@ -53,7 +55,10 @@ export default function App() {
         ipc.setupStatus(),
         ipc.readUserConfig().catch(() => null),
       ]);
-      if (config) hydrateFromUserConfig(config);
+      if (config) {
+        hydrateFromUserConfig(config);
+        setNeedsAnalyticsConsent(config.analytics_enabled == null);
+      }
       setPhase({ kind: "setup", status });
     } catch (e) {
       // Not running inside a Tauri window (e.g. plain browser dev).
@@ -68,6 +73,12 @@ export default function App() {
     refreshSetup();
   }, [refreshSetup]);
 
+  const handleAnalyticsConsent = async (enabled: boolean) => {
+    setNeedsAnalyticsConsent(false);
+    const config = await ipc.readUserConfig().catch(() => ({}));
+    await ipc.saveUserConfig({ ...config, analytics_enabled: enabled }).catch(() => {});
+  };
+
   if (phase.kind === "loading") {
     return (
       <>
@@ -81,12 +92,14 @@ export default function App() {
       <>
         <SetupScreen status={phase.status} onRefresh={refreshSetup} />
         <ToastStack />
+        {needsAnalyticsConsent && <AnalyticsConsentModal onAnswer={handleAnalyticsConsent} />}
       </>
     );
   }
   return (
     <>
       <Layout />
+      {needsAnalyticsConsent && <AnalyticsConsentModal onAnswer={handleAnalyticsConsent} />}
       <ToastStack />
     </>
   );

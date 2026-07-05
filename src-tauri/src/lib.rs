@@ -1,3 +1,4 @@
+mod analytics;
 mod binary;
 #[path = "claude-code/mod.rs"]
 mod claude_code;
@@ -46,6 +47,8 @@ pub fn run_mcp_stdio() {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let launch_at = std::time::Instant::now();
+
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -61,6 +64,12 @@ pub fn run() {
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .setup(|_app| {
+            if !cfg!(debug_assertions) && user_config::analytics_enabled() {
+                analytics::track_app_launched(user_config::analytics_id());
+            }
+            Ok(())
+        })
         .manage(ActiveWorkspace::default())
         .manage(SessionManager::default())
         .manage(McpState::default())
@@ -103,6 +112,13 @@ pub fn run() {
             chat_history_get,
             chat_history_delete,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(move |_app_handle, event| {
+            if let tauri::RunEvent::Exit = event {
+                if !cfg!(debug_assertions) && user_config::analytics_enabled() {
+                    analytics::track_app_closed(user_config::analytics_id(), launch_at.elapsed());
+                }
+            }
+        });
 }

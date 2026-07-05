@@ -11,6 +11,7 @@ import { toastError } from "../state/toasts";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFolder, faChevronDown, faSidebarLeft, faSidebarRight, faGear, faCircleQuestion, faCircleInfo, iconClass } from "../icons";
 import { ChatPane } from "./chat/ChatPane";
+import { SettingsModal } from "./SettingsModal";
 import { LeftRail } from "./left/LeftRail";
 import { RightRail } from "./right/RightRail";
 import { StatusBar } from "./StatusBar";
@@ -33,6 +34,8 @@ export function Layout() {
   const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
   const wsDropdownRef = useRef<HTMLDivElement>(null);
 
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const helpRef = useRef<HTMLDivElement>(null);
   const [appVersion, setAppVersion] = useState("");
@@ -48,6 +51,9 @@ export function Layout() {
       }
       if (helpRef.current && !helpRef.current.contains(e.target as Node)) {
         setHelpOpen(false);
+      }
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setSettingsOpen(false);
       }
     };
     document.addEventListener("mousedown", handler);
@@ -213,12 +219,18 @@ export function Layout() {
               <FontAwesomeIcon icon={faSidebarRight} className={iconClass.lg} />
             </button>
           </div>
-          <button
-            className="topbar-icon-button p-1"
-            aria-label="Settings"
-          >
-            <FontAwesomeIcon icon={faGear} className={iconClass.lg} />
-          </button>
+          <div className="relative" ref={settingsRef}>
+            <button
+              className={`topbar-icon-button w-7 h-7 rounded border ${settingsOpen ? "border-outline-variant bg-surface-container-low text-on-surface" : "border-transparent"}`}
+              onClick={() => setSettingsOpen((o) => !o)}
+              aria-label="Settings"
+              aria-haspopup="true"
+              aria-expanded={settingsOpen}
+            >
+              <FontAwesomeIcon icon={faGear} className={iconClass.lg} />
+            </button>
+            {settingsOpen && <SettingsModal />}
+          </div>
           <div className="relative" ref={helpRef}>
             <button
               className={`topbar-icon-button w-7 h-7 rounded border ${helpOpen ? "border-outline-variant bg-surface-container-low text-on-surface" : "border-transparent"}`}
