@@ -44,12 +44,23 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
+      - name: Verify version increases
+        if: inputs.release
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          LATEST=$(curl -fsSL https://github.com/${{ github.repository }}/releases/latest/download/latest.json | jq -r .version || echo "")
+          if [ -n "$LATEST" ] && [ "$(printf '%s\n%s' "$LATEST" "$VERSION" | sort -V | tail -1)" != "$VERSION" -o "$LATEST" = "$VERSION" ]; then
+            echo "Tag version $VERSION must be greater than published version $LATEST"
+            exit 1
+          fi
+
       - name: Patch version from tag
         if: inputs.release
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           jq --arg v "$VERSION" '.version = $v' src-tauri/tauri.conf.json > tmp.json && mv tmp.json src-tauri/tauri.conf.json
           sed -i.bak "s/^version = \".*\"/version = \"$VERSION\"/" src-tauri/Cargo.toml && rm src-tauri/Cargo.toml.bak
+          jq --arg v "$VERSION" '.version = $v' package.json > tmp.json && mv tmp.json package.json
 
       - name: Install frontend dependencies
         run: npm ci
