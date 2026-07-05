@@ -16,7 +16,7 @@ in a pull request.
 ### Getting started
 
 ```bash
-git clone https://github.com/giacomo-ciro/ire.git
+git clone https://github.com/ire-research/ire.git
 cd ire
 npm install
 ```

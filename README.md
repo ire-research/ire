@@ -1,8 +1,8 @@
 <p align="left">
-  <a href="https://github.com/giacomo-ciro/ire/releases/latest"><img src="https://img.shields.io/github/v/release/giacomo-ciro/ire" alt="GitHub release" /></a>
+  <a href="https://github.com/ire-research/ire/releases/latest"><img src="https://img.shields.io/github/v/release/ire-research/ire?color=green" alt="GitHub release" /></a>
   <a href="https://ire-research.com"><img src="https://img.shields.io/badge/Website-ire--research.com-000000" alt="Website" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
-  <a href="https://github.com/giacomo-ciro/ire/releases/latest"><img src="https://img.shields.io/badge/MacOS_|_Linux-supported-blue" alt="MacOS | Linux supported" /></a>
+  <a href="https://github.com/ire-research/ire/releases/latest"><img src="https://img.shields.io/badge/MacOS_|_Linux-supported-blue" alt="MacOS | Linux supported" /></a>
 </p>
 
 <p align="center">
@@ -30,7 +30,7 @@ ML research workflows are fragmented. You lose context between sessions, AI sugg
 
 ## Quick Start
 
-Grab the latest build from the [**Releases**](https://github.com/giacomo-ciro/ire/releases/latest) page:
+Grab the latest build from the [**Releases**](https://github.com/ire-research/ire/releases/latest) page:
 
 | Platform | File |
 |----------|------|
@@ -49,7 +49,7 @@ You'll also need [Claude Code](https://docs.anthropic.com/en/docs/claude-code) o
 To build from source instead (Node.js 18+, Rust 1.70+, Git):
 
 ```bash
-git clone https://github.com/giacomo-ciro/ire.git
+git clone https://github.com/ire-research/ire.git
 cd ire
 npm install
 npm run tauri dev
