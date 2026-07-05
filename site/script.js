@@ -47,7 +47,7 @@ animateTargets.forEach(selector => {
 });
 
 // Populate download buttons with links to the latest GitHub release
-const REPO = 'giacomo-ciro/ire';
+const REPO = 'ire-research/ire';
 const RELEASES_URL = `https://github.com/${REPO}/releases/latest`;
 
 fetch(`https://api.github.com/repos/${REPO}/releases/latest`)

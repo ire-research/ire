@@ -5,13 +5,13 @@
   "description": "The first general-purpose Integrated Research Environment (IRE) — a local-first desktop environment for ML researchers.",
   "license": "MIT",
   "author": "Giacomo Cirò and Vittorio Rossi",
-  "homepage": "https://github.com/giacomo-ciro/ire#readme",
+  "homepage": "https://github.com/ire-research/ire#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/giacomo-ciro/ire.git"
+    "url": "git+https://github.com/ire-research/ire.git"
   },
   "bugs": {
-    "url": "https://github.com/giacomo-ciro/ire/issues"
+    "url": "https://github.com/ire-research/ire/issues"
   },
   "type": "module",
   "scripts": {

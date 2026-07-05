@@ -233,7 +233,7 @@ export function Layout() {
               <div className="absolute top-full right-0 mt-1.5 w-[200px] bg-surface-container-high border border-outline-variant rounded-lg shadow-lg z-50 overflow-hidden">
                 <a
                   className="flex items-center gap-2 w-full px-3 py-2 text-xs font-medium text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors"
-                  href="https://github.com/giacomo-ciro/ire/issues"
+                  href="https://github.com/ire-research/ire/issues"
                   target="_blank"
                   rel="noopener noreferrer"
                 >
