@@ -217,5 +217,14 @@ pub fn read_user_config() -> UserConfig {
 
 #[tauri::command]
 pub fn save_user_config(config: UserConfig) -> Result<(), String> {
-    user_config::write(&config).map_err(|e| e.to_string())
+    let was_enabled = user_config::analytics_enabled();
+    user_config::write(&config).map_err(|e| e.to_string())?;
+    // `setup()` only fires `app_launched` for sessions that were already opted
+    // in at native startup, so the session in which the user answers the
+    // consent modal would otherwise never send it. Fire it here instead, once,
+    // right at the moment consent flips on.
+    if !cfg!(debug_assertions) && !was_enabled && config.analytics_enabled == Some(true) {
+        crate::analytics::track_app_launched(user_config::analytics_id());
+    }
+    Ok(())
 }
