@@ -23,7 +23,7 @@ export function SettingsModal() {
         <div className="flex-1 min-w-0">
           <p className="text-[12px] font-medium text-on-surface">Anonymous usage analytics</p>
           <p className="text-[11px] text-on-surface-variant mt-0.5">
-            Helps us understand app usage. No file paths or chat content is ever sent.
+            Anonymous, minimal data (app launches, session length) helps us understand usage and improve IRE. No file paths or chat content is ever sent.
           </p>
         </div>
         <button

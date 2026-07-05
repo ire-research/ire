@@ -16,20 +16,20 @@ export function AnalyticsConsentModal({ onAnswer }: Props) {
 
         <div className="px-4 pt-3.5 pb-4 flex flex-col gap-3">
           <p className="text-[12px] text-on-surface-variant">
-            IRE can send anonymous usage analytics (app launches, session length) to help us understand how the app is used. No file paths, chat content, or personal data is ever sent. You can change this anytime in Settings.
+            Sharing anonymous, minimal usage data (app launches, session length) helps us understand how IRE is used and make it better. No file paths, chat content, or personal data is ever sent. You can change this anytime.
           </p>
           <div className="flex items-center justify-end gap-2">
             <button
               onClick={() => onAnswer(false)}
               className="border border-outline-variant text-on-surface-variant px-3 py-1.5 rounded text-[12px] hover:bg-surface-container-high transition-colors"
             >
-              Disable
+              No thanks
             </button>
             <button
               onClick={() => onAnswer(true)}
               className="border border-outline text-on-surface px-3 py-1.5 rounded text-[12px] hover:bg-surface-container-high transition-colors"
             >
-              Enable
+              Yes, help improve IRE
             </button>
           </div>
         </div>
