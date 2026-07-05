@@ -40,7 +40,7 @@ pub fn track_app_launched(distinct_id: String) {
         {
             Ok(client) => client,
             Err(err) => {
-                tracing::debug!(%err, "analytics client build failed");
+                tracing::warn!(%err, "analytics client build failed");
                 return;
             }
         };
@@ -56,8 +56,8 @@ pub fn track_app_launched(distinct_id: String) {
 
             match result {
                 Ok(resp) if resp.status().is_success() => return,
-                Ok(resp) => tracing::debug!(status = %resp.status(), attempt, "analytics ping rejected"),
-                Err(err) => tracing::debug!(%err, attempt, "analytics ping failed"),
+                Ok(resp) => tracing::warn!(status = %resp.status(), attempt, "analytics ping rejected"),
+                Err(err) => tracing::warn!(%err, attempt, "analytics ping failed"),
             }
 
             if attempt < MAX_LAUNCH_ATTEMPTS {
@@ -79,7 +79,7 @@ pub fn track_app_closed(distinct_id: String, session_duration: Duration) {
     {
         Ok(client) => client,
         Err(err) => {
-            tracing::debug!(%err, "analytics client build failed");
+            tracing::warn!(%err, "analytics client build failed");
             return;
         }
     };
@@ -96,6 +96,6 @@ pub fn track_app_closed(distinct_id: String, session_duration: Duration) {
         .body(body)
         .send()
     {
-        tracing::debug!(%err, "analytics close ping failed");
+        tracing::warn!(%err, "analytics close ping failed");
     }
 }
