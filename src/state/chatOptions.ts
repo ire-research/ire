@@ -139,8 +139,7 @@ export const useChatOptions = create<ChatOptionsState>((set) => ({
   setOptions: (options) => set(options),
   setAvailableProviders: (providers) => set((state) => {
     const availableProviders = Array.from(new Set(providers));
-    if (availableProviders.length === 0) return state;
-    if (availableProviders.includes(state.provider)) {
+    if (availableProviders.length === 0 || availableProviders.includes(state.provider)) {
       return { availableProviders };
     }
     const provider = availableProviders[0];

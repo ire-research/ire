@@ -35,7 +35,7 @@ interface Props {
 }
 
 export function AddResourceModal({ onClose }: Props) {
-  const { model: globalModel, provider: globalProvider, effort: globalEffort } = useChatOptions();
+  const { model: globalModel, provider: globalProvider, effort: globalEffort, availableProviders } = useChatOptions();
 
   const [url, setUrl] = useState("");
   const [sources, setSources] = useState<QueuedSource[]>([]);
@@ -51,6 +51,17 @@ export function AddResourceModal({ onClose }: Props) {
   const [effortOpen, setEffortOpen] = useState(false);
   const modelRef = useRef<HTMLDivElement>(null);
   const effortRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (availableProviders.length === 0 || availableProviders.includes(selectedProvider)) return;
+    const provider = availableProviders[0];
+    const entry = MODELS.find((m) => m.provider === provider);
+    if (!entry) return;
+    setSelectedProvider(provider);
+    setSelectedModel(entry.id);
+    const levels = effortLevelsForModel(provider, entry.id);
+    setSelectedEffort(levels[0]?.value ?? null);
+  }, [availableProviders, selectedProvider]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -143,11 +154,13 @@ export function AddResourceModal({ onClose }: Props) {
     setModelOpen(false);
   };
 
+  const noProvidersAvailable = availableProviders.length === 0;
   const effortLevels = effortLevelsForModel(selectedProvider, selectedModel);
-  const modelLabel = MODELS.find((m) => m.id === selectedModel)?.label ?? selectedModel;
+  const modelLabel = noProvidersAvailable ? "n/a" : MODELS.find((m) => m.id === selectedModel)?.label ?? selectedModel;
   const effortLabel = effortLevels.find((l) => l.value === selectedEffort)?.label ?? selectedEffort;
-  const claudeModels = MODELS.filter((m) => m.provider === "claude");
-  const codexModels = MODELS.filter((m) => m.provider === "codex");
+  const showEffortPicker = !noProvidersAvailable && effortLevels.length > 0;
+  const claudeModels = availableProviders.includes("claude") ? MODELS.filter((m) => m.provider === "claude") : [];
+  const codexModels = availableProviders.includes("codex") ? MODELS.filter((m) => m.provider === "codex") : [];
   const hasQueue = sources.length > 0;
 
   const ProviderSection = ({ label, provider: sectionProvider, models }: { label: string; provider: Provider; models: ModelEntry[] }) => (
@@ -270,21 +283,26 @@ export function AddResourceModal({ onClose }: Props) {
               {/* Model picker */}
               <div className="relative" ref={modelRef}>
                 <button
-                  className="flex items-center gap-1 px-2 py-1 text-on-surface-variant hover:bg-surface-container-high rounded hover:text-on-surface transition-colors text-[11px] border border-outline-variant/50"
-                  onClick={() => { setModelOpen((o) => !o); setEffortOpen(false); }}
+                  className={`flex items-center gap-1 px-2 py-1 rounded transition-colors text-[11px] border border-outline-variant/50 ${
+                    noProvidersAvailable
+                      ? "text-on-surface-variant/50 cursor-not-allowed"
+                      : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+                  }`}
+                  onClick={() => { if (noProvidersAvailable) return; setModelOpen((o) => !o); setEffortOpen(false); }}
+                  disabled={noProvidersAvailable}
                 >
                   <span className="text-[10px] text-on-surface-variant/60 mr-0.5">model</span>
                   {modelLabel}
-                  <FontAwesomeIcon icon={faChevronDown} className={iconClass.sm} />
+                  {!noProvidersAvailable && <FontAwesomeIcon icon={faChevronDown} className={iconClass.sm} />}
                 </button>
                 <div className={`${modelOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 min-w-[230px] overflow-hidden z-50`}>
-                  <ProviderSection label="Claude Code" provider="claude" models={claudeModels} />
+                  {claudeModels.length > 0 && <ProviderSection label="Claude Code" provider="claude" models={claudeModels} />}
                   {codexModels.length > 0 && <ProviderSection label="Codex" provider="codex" models={codexModels} />}
                 </div>
               </div>
 
               {/* Effort picker */}
-              {effortLevels.length > 0 && (
+              {showEffortPicker && (
                 <div className="relative" ref={effortRef}>
                   <button
                     className="flex items-center gap-1 px-2 py-1 text-on-surface-variant hover:bg-surface-container-high rounded hover:text-on-surface transition-colors text-[11px] border border-outline-variant/50"

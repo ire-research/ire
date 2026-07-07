@@ -193,6 +193,8 @@ Claude candidates include `.local/bin/claude`, `.claude/local/claude`, mise/asdf
 
 Returns `Result<DiscoveredBinary, DiscoveryError>` with three error variants: `NotFound`, `NotExecutable`, `Io`.
 
+Discovery alone only proves the binary is installed, not that it's authenticated. `binary::binary_status(name, result, is_logged_in)` folds a `DiscoveredBinary` result and a login check into one `BinaryStatus` (`Ready { path, version }`, `LoggedOut { path, version }`, or `Missing`), used by both `setup_status` and `get_system_metrics`. The login check runs the binary with a 5s timeout via `binary::run_with_timeout` (spawns the child, waits for output on a background thread, and gives up — leaving the child to finish on its own — if the timeout elapses): `is_claude_logged_in` parses `claude auth status --json`'s `loggedIn` field, and `is_codex_logged_in` treats a zero exit from `codex login status` as logged in. Any failure (not found, timeout, malformed output) is treated as not logged in.
+
 ### Spawn (`cc::spawn`, `codex::spawn`)
 
 Claude Code spawn non-negotiables:

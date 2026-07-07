@@ -1,11 +1,29 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 
-use crate::binary::{find_binary, home_dir};
+use crate::binary::{find_binary, home_dir, run_with_timeout};
 
 pub use crate::binary::{DiscoveredBinary, DiscoveryError};
 
+const LOGIN_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
+
 pub fn find_claude_binary() -> Result<DiscoveredBinary, DiscoveryError> {
     find_binary("claude", candidate_paths())
+}
+
+/// Checks `claude auth status --json` for `"loggedIn": true`. Returns `false`
+/// on any failure (not found, timeout, non-JSON output) so callers can treat
+/// "unknown" the same as "not ready".
+pub fn is_claude_logged_in(bin: &Path) -> bool {
+    let Some(out) = run_with_timeout(bin, &["auth", "status", "--json"], LOGIN_CHECK_TIMEOUT)
+    else {
+        return false;
+    };
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    serde_json::from_str::<serde_json::Value>(&stdout)
+        .ok()
+        .and_then(|v| v.get("loggedIn").and_then(|b| b.as_bool()))
+        .unwrap_or(false)
 }
 
 fn candidate_paths() -> Vec<PathBuf> {

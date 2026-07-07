@@ -5,8 +5,9 @@ use std::sync::{Arc, Mutex};
 use sysinfo::{CpuRefreshKind, RefreshKind, System};
 use tauri::State;
 
-use crate::claude_code::discovery::find_claude_binary;
-use crate::codex::discovery::find_codex_binary;
+use crate::binary::{binary_status, BinaryStatus};
+use crate::claude_code::discovery::{find_claude_binary, is_claude_logged_in};
+use crate::codex::discovery::{find_codex_binary, is_codex_logged_in};
 use crate::workspace::state::ActiveWorkspace;
 
 /// Machine-level info that doesn't change for the lifetime of the app
@@ -19,8 +20,6 @@ pub struct SystemInfo {
     pub gpu_vram_gb: Option<u32>,
     pub hostname: String,
     pub username: String,
-    pub cc_connected: bool,
-    pub codex_connected: bool,
 }
 
 /// Workspace/runtime metrics that change over time and are polled.
@@ -31,6 +30,8 @@ pub struct SystemMetrics {
     pub git_deletions: u32,
     pub cpu_usage_pct: f32,
     pub gpu_usage_pct: Option<f32>,
+    pub claude_binary: BinaryStatus,
+    pub codex_binary: BinaryStatus,
 }
 
 #[derive(Default)]
@@ -121,8 +122,6 @@ fn collect_system_info() -> SystemInfo {
         gpu_vram_gb,
         hostname,
         username,
-        cc_connected: find_claude_binary().is_ok(),
-        codex_connected: find_codex_binary().is_ok(),
     }
 }
 
@@ -164,12 +163,17 @@ fn collect_system_metrics(
     // Only re-query nvidia-smi for live usage if a GPU was detected at all.
     let gpu_usage_pct = if has_gpu { query_nvidia_smi().1 } else { None };
 
+    let claude_binary = binary_status("claude", find_claude_binary(), is_claude_logged_in);
+    let codex_binary = binary_status("codex", find_codex_binary(), is_codex_logged_in);
+
     SystemMetrics {
         git_branch,
         git_insertions,
         git_deletions,
         cpu_usage_pct,
         gpu_usage_pct,
+        claude_binary,
+        codex_binary,
     }
 }
 

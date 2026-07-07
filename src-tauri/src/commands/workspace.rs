@@ -4,9 +4,10 @@ use serde::Serialize;
 use serde_json::json;
 use tauri::{AppHandle, State};
 
-use crate::claude_code::discovery::{find_claude_binary, DiscoveryError};
+use crate::binary::{binary_status, BinaryStatus};
+use crate::claude_code::discovery::{find_claude_binary, is_claude_logged_in};
 use crate::claude_code::session::SessionManager;
-use crate::codex::discovery::find_codex_binary;
+use crate::codex::discovery::{find_codex_binary, is_codex_logged_in};
 use crate::db::schema;
 use crate::events::{self, EventSource};
 use crate::mcp::{McpHandle, McpState};
@@ -16,53 +17,19 @@ use crate::workspace::lock::{LockError, WorkspaceLock};
 use crate::workspace::state::{ActiveWorkspace, WorkspaceHandle, WorkspaceState};
 
 #[derive(Debug, Serialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum BinaryStatus {
-    Found {
-        path: PathBuf,
-        version: Option<String>,
-    },
-    Missing,
-}
-
-#[derive(Debug, Serialize)]
 pub struct SetupStatus {
-    pub binary: BinaryStatus,
+    pub claude_binary: BinaryStatus,
     pub codex_binary: BinaryStatus,
 }
 
 #[tauri::command]
 pub fn setup_status() -> SetupStatus {
     tracing::debug!("setup_status");
-    let binary = binary_status("claude", find_claude_binary());
-    let codex_binary = binary_status("codex", find_codex_binary());
+    let claude_binary = binary_status("claude", find_claude_binary(), is_claude_logged_in);
+    let codex_binary = binary_status("codex", find_codex_binary(), is_codex_logged_in);
     SetupStatus {
-        binary,
+        claude_binary,
         codex_binary,
-    }
-}
-
-fn binary_status(
-    name: &str,
-    result: Result<crate::binary::DiscoveredBinary, DiscoveryError>,
-) -> BinaryStatus {
-    match result {
-        Ok(b) => {
-            tracing::debug!(binary = name, path = ?b.path, version = ?b.version, "binary found");
-            BinaryStatus::Found {
-                path: b.path,
-                version: b.version,
-            }
-        }
-        Err(DiscoveryError::NotFound) => {
-            tracing::debug!(binary = name, "binary not found");
-            BinaryStatus::Missing
-        }
-        Err(DiscoveryError::NotExecutable(_)) => BinaryStatus::Missing,
-        Err(DiscoveryError::Io(e)) => {
-            tracing::warn!(binary = name, error = %e, "binary discovery io error");
-            BinaryStatus::Missing
-        }
     }
 }
 
