@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import type {
   AskAnswer,
+  BinaryStatus,
   ChatOptions,
   ExperimentLogLinePayload,
   ExperimentRow,
@@ -18,12 +19,10 @@ import type {
   WorkspaceEvent,
 } from "./types";
 
-export type BinaryStatus =
-  | { kind: "found"; path: string; version: string | null }
-  | { kind: "missing" };
+export type { BinaryStatus };
 
 export interface SetupStatus {
-  binary: BinaryStatus;
+  claude_binary: BinaryStatus;
   codex_binary: BinaryStatus;
 }
 

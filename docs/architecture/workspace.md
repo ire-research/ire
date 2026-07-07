@@ -20,13 +20,13 @@ Covers the workspace lifecycle (open, init, close) and the concurrency model tha
 │                                                      │
 │  [Open folder…]       [New workspace…]               │
 │                                                      │
-│  ● claude-code · found  (or: not found)              │
-│  ● codex · found        (or: not found)              │
-│    retry button if a binary is missing               │
+│  ● claude-code · ready (or: logged out / not found)  │
+│  ● codex · ready       (or: logged out / not found)  │
+│    retry button if a binary isn't ready              │
 └──────────────────────────────────────────────────────┘
 ```
 
-On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel. `read_user_config` removes recent workspace paths that no longer exist, persists the cleaned config, and hydrates `recentWorkspaces` in the Zustand store before the setup screen mounts so the list is immediately populated. If either binary is missing, a `retry` link re-invokes `refreshSetup`; there is no step-by-step wizard. Workspace open/create is enabled when at least one of Claude Code or Codex is found. The binaries detected at workspace open/init become the workspace session's `availableProviders`.
+On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel. `read_user_config` removes recent workspace paths that no longer exist, persists the cleaned config, and hydrates `recentWorkspaces` in the Zustand store before the setup screen mounts so the list is immediately populated. `setup_status` reports each binary's `BinaryStatus` as `ready`, `logged_out`, or `missing` — `ready` requires both that the binary was discovered on disk (`find_claude_binary`/`find_codex_binary`) and that a bounded (5s) login-status check succeeds (`claude auth status --json`'s `loggedIn` field, or `codex login status`'s exit code); any failure to confirm login is treated as not ready. If neither binary is `ready`, a `retry` link re-invokes `refreshSetup`; there is no step-by-step wizard. Workspace open/create is enabled when at least one of Claude Code or Codex is `ready`. The `ready` binaries at workspace open/init become the workspace session's initial `availableProviders`; afterward `Layout.tsx` keeps `availableProviders` in sync with the polled `get_system_metrics` result (every 5s), so a login/logout of either CLI while the app is open updates the model picker without a restart.
 
 ### Open existing
 

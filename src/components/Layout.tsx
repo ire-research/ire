@@ -8,6 +8,7 @@ import { useChat } from "../state/chat";
 import { useWorkspaceData, selectRunningCount } from "../state/workspaceData";
 import { useChatOptions } from "../state/chatOptions";
 import { toastError } from "../state/toasts";
+import { useSystemMetrics } from "../hooks/useSystemStatus";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFolder, faChevronDown, faSidebarLeft, faSidebarRight, faGear, faCircleQuestion, faCircleInfo, iconClass } from "../icons";
 import { ChatPane } from "./chat/ChatPane";
@@ -26,10 +27,12 @@ export function Layout() {
   const model = useChatOptions((s) => s.model);
   const provider = useChatOptions((s) => s.provider);
   const effort = useChatOptions((s) => s.effort);
+  const setAvailableProviders = useChatOptions((s) => s.setAvailableProviders);
   const tabs = useChat((s) => s.tabs);
   const activeTabId = useChat((s) => s.activeTabId);
   const leftPanelRef = useRef<PanelImperativeHandle>(null);
   const rightPanelRef = useRef<PanelImperativeHandle>(null);
+  const metrics = useSystemMetrics();
 
   const [wsDropdownOpen, setWsDropdownOpen] = useState(false);
   const wsDropdownRef = useRef<HTMLDivElement>(null);
@@ -43,6 +46,15 @@ export function Layout() {
   useEffect(() => {
     getVersion().then(setAppVersion).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!metrics) return;
+    const providers: ("claude" | "codex")[] = [
+      ...(metrics.claude_binary.kind === "ready" ? (["claude"] as const) : []),
+      ...(metrics.codex_binary.kind === "ready" ? (["codex"] as const) : []),
+    ];
+    setAvailableProviders(providers);
+  }, [metrics, setAvailableProviders]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -308,7 +320,7 @@ export function Layout() {
         </Panel>
       </Group>
       {/* Bottom status bar */}
-      <StatusBar />
+      <StatusBar metrics={metrics} />
     </div>
   );
 }

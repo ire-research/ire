@@ -64,7 +64,7 @@ export default function App() {
       // Not running inside a Tauri window (e.g. plain browser dev).
       setPhase({
         kind: "setup",
-        status: { binary: { kind: "missing" }, codex_binary: { kind: "missing" } },
+        status: { claude_binary: { kind: "missing" }, codex_binary: { kind: "missing" } },
       });
     }
   }, [setPhase, hydrateFromUserConfig]);

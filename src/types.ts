@@ -250,9 +250,12 @@ export interface SystemInfo {
   gpu_vram_gb: number | null;
   hostname: string;
   username: string;
-  cc_connected: boolean;
-  codex_connected: boolean;
 }
+
+export type BinaryStatus =
+  | { kind: "ready"; path: string; version: string | null }
+  | { kind: "logged_out"; path: string; version: string | null }
+  | { kind: "missing" };
 
 export interface SystemMetrics {
   git_branch: string;
@@ -260,4 +263,6 @@ export interface SystemMetrics {
   git_deletions: number;
   cpu_usage_pct: number;
   gpu_usage_pct: number | null;
+  claude_binary: BinaryStatus;
+  codex_binary: BinaryStatus;
 }

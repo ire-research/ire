@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ipc, pickDirectory, type SetupStatus } from "../../ipc";
+import { ipc, pickDirectory, type BinaryStatus, type SetupStatus } from "../../ipc";
 import { useWorkspace } from "../../state/workspace";
 import { loadPersisted } from "../../state/persistedStore";
 import {
@@ -53,19 +53,13 @@ export function SetupScreen({ status, onRefresh }: Props) {
     }
   };
 
-  const binaryFound = status.binary.kind === "found";
-  const codexFound = status.codex_binary.kind === "found";
+  const binaryReady = status.claude_binary.kind === "ready";
+  const codexReady = status.codex_binary.kind === "ready";
   const availableProviders: Provider[] = [
-    ...(binaryFound ? (["claude"] as const) : []),
-    ...(codexFound ? (["codex"] as const) : []),
+    ...(binaryReady ? (["claude"] as const) : []),
+    ...(codexReady ? (["codex"] as const) : []),
   ];
-  const canOpenWorkspace = binaryFound || codexFound;
-  const providerBanner =
-    binaryFound && !codexFound
-      ? "claude code only"
-      : codexFound && !binaryFound
-        ? "codex only"
-        : null;
+  const canOpenWorkspace = binaryReady || codexReady;
 
   const openWorkspace = async (path: string) => {
     setError(null);
@@ -204,13 +198,8 @@ export function SetupScreen({ status, onRefresh }: Props) {
 
         {/* Status rows */}
         <div className="flex flex-col gap-2">
-          <BinaryRow label="claude-code" found={binaryFound} busy={busy} onRefresh={onRefresh} />
-          <BinaryRow label="codex" found={codexFound} busy={busy} onRefresh={onRefresh} />
-          {providerBanner && (
-            <div className="font-mono text-[11px] text-on-surface-variant/70">
-              {providerBanner}
-            </div>
-          )}
+          <BinaryRow label="claude-code" status={status.claude_binary} busy={busy} onRefresh={onRefresh} />
+          <BinaryRow label="codex" status={status.codex_binary} busy={busy} onRefresh={onRefresh} />
           {!canOpenWorkspace && (
             <div className="font-mono text-[11px] text-error">
               install claude-code or codex to continue
@@ -231,24 +220,27 @@ export function SetupScreen({ status, onRefresh }: Props) {
 
 function BinaryRow({
   label,
-  found,
+  status,
   busy,
   onRefresh,
 }: {
   label: string;
-  found: boolean;
+  status: BinaryStatus;
   busy: boolean;
   onRefresh: () => Promise<void>;
 }) {
+  const ready = status.kind === "ready";
+  const statusText =
+    status.kind === "logged_out" ? "not logged in" : "not found";
   return (
     <div className="flex items-center gap-2">
-      <span className={`w-1.5 h-1.5 rounded-full ${found ? "bg-ok" : "bg-error"}`} />
+      <span className={`w-1.5 h-1.5 rounded-full ${ready ? "bg-ok" : "bg-error"}`} />
       <span className="font-mono text-[11px] text-on-surface-variant">
-        {found ? (
-          <>{label} · found</>
+        {ready ? (
+          <>{label} · ready</>
         ) : (
           <div className="flex items-center gap-2">
-            <span>{label} · not found</span>
+            <span>{label} · {statusText}</span>
             <button
               onClick={onRefresh}
               disabled={busy}

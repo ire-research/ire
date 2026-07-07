@@ -27,10 +27,11 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { model, provider, effort, availableProviders, setModel, setEffort } = useChatOptions();
-  const modelLabel = MODELS.find((m) => m.id === model)?.label ?? model;
+  const noProvidersAvailable = availableProviders.length === 0;
+  const modelLabel = noProvidersAvailable ? "n/a" : MODELS.find((m) => m.id === model)?.label ?? model;
   const effortLevels = effortLevelsForModel(provider, model);
   const effortLabel = effortLevels.find((l) => l.value === effort)?.label ?? effort;
-  const showEffortPicker = effortLevels.length > 0;
+  const showEffortPicker = !noProvidersAvailable && effortLevels.length > 0;
   const claudeModels = availableProviders.includes("claude")
     ? MODELS.filter((m) => m.provider === "claude")
     : [];
@@ -92,6 +93,7 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
   };
 
   const toggleModelOpen = () => {
+    if (noProvidersAvailable) return;
     setModelOpen((open) => !open);
     setEffortOpen(false);
   };
@@ -149,12 +151,17 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
           {/* Model picker */}
           <div className="relative" ref={modelRef}>
             <button
-              className="flex items-center gap-1 px-2 py-1 text-on-surface-variant hover:bg-surface-container-high rounded hover:text-on-surface transition-colors text-[11px] border border-outline-variant/50"
+              className={`flex items-center gap-1 px-2 py-1 rounded transition-colors text-[11px] border border-outline-variant/50 ${
+                noProvidersAvailable
+                  ? "text-on-surface-variant/50 cursor-not-allowed"
+                  : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
+              }`}
               onClick={toggleModelOpen}
+              disabled={noProvidersAvailable}
             >
               <span className="text-[10px] text-on-surface-variant/60 mr-0.5">model</span>
               {modelLabel}
-              <FontAwesomeIcon icon={faChevronDown} className={iconClass.sm} />
+              {!noProvidersAvailable && <FontAwesomeIcon icon={faChevronDown} className={iconClass.sm} />}
             </button>
             <div className={`${modelOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 min-w-[230px] overflow-hidden z-50`}>
               {claudeModels.length > 0 && (

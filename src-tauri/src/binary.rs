@@ -1,8 +1,28 @@
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output};
+use std::sync::mpsc;
+use std::time::Duration;
 
 use serde::Serialize;
 use thiserror::Error;
+
+/// Runs `bin` with `args`, giving up (and leaving the child to finish in the
+/// background) if it doesn't complete within `timeout`. Used for login-status
+/// checks, which must never hang `setup_status`.
+pub fn run_with_timeout(bin: &Path, args: &[&str], timeout: Duration) -> Option<Output> {
+    let child = Command::new(bin)
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .stdin(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(child.wait_with_output());
+    });
+    rx.recv_timeout(timeout).ok()?.ok()
+}
 
 #[derive(Debug, Error)]
 pub enum DiscoveryError {
@@ -18,6 +38,55 @@ pub enum DiscoveryError {
 pub struct DiscoveredBinary {
     pub path: PathBuf,
     pub version: Option<String>,
+}
+
+/// Tri-state readiness for an agent binary: installed and authenticated,
+/// installed but not logged in, or not found at all.
+#[derive(Debug, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum BinaryStatus {
+    Ready {
+        path: PathBuf,
+        version: Option<String>,
+    },
+    LoggedOut {
+        path: PathBuf,
+        version: Option<String>,
+    },
+    Missing,
+}
+
+pub fn binary_status(
+    name: &str,
+    result: Result<DiscoveredBinary, DiscoveryError>,
+    is_logged_in: impl FnOnce(&Path) -> bool,
+) -> BinaryStatus {
+    match result {
+        Ok(b) => {
+            if is_logged_in(&b.path) {
+                tracing::debug!(binary = name, path = ?b.path, version = ?b.version, "binary ready");
+                BinaryStatus::Ready {
+                    path: b.path,
+                    version: b.version,
+                }
+            } else {
+                tracing::debug!(binary = name, path = ?b.path, "binary found but not logged in");
+                BinaryStatus::LoggedOut {
+                    path: b.path,
+                    version: b.version,
+                }
+            }
+        }
+        Err(DiscoveryError::NotFound) => {
+            tracing::debug!(binary = name, "binary not found");
+            BinaryStatus::Missing
+        }
+        Err(DiscoveryError::NotExecutable(_)) => BinaryStatus::Missing,
+        Err(DiscoveryError::Io(e)) => {
+            tracing::warn!(binary = name, error = %e, "binary discovery io error");
+            BinaryStatus::Missing
+        }
+    }
 }
 
 pub fn find_binary(
