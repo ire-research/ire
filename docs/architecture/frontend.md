@@ -144,7 +144,7 @@ Auto-update is likewise not a Tauri command: `useAutoUpdater` (`src/hooks/useAut
 
 | Command | Args | Returns |
 |---|---|---|
-| `setup_status` | — | `{ binary: BinaryStatus, codex_binary: BinaryStatus }` |
+| `setup_status` | — | `{ claude_binary: BinaryStatus, codex_binary: BinaryStatus }` |
 | `open_workspace` | `{ path }` | `WorkspaceState` (`{ path, name }`) |
 | `init_workspace` | `{ path }` | `WorkspaceState` |
 | `close_workspace` | — | `{}` |
