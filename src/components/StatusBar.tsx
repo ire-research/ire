@@ -1,7 +1,9 @@
+import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faMicrochip, faGamepad, faDatabase, iconClass } from "../icons";
-import { useSystemInfo, useSystemMetrics } from "../hooks/useSystemStatus";
+import { faMicrochip, faGamepad, faDatabase, faChevronDown, iconClass } from "../icons";
+import { useSystemInfo } from "../hooks/useSystemStatus";
 import { useWorkspace } from "../state/workspace";
+import type { BinaryStatus, SystemMetrics } from "../types";
 
 function getUsageColor(usage: number): string {
   if (usage < 70) return "text-ok";
@@ -9,19 +11,60 @@ function getUsageColor(usage: number): string {
   return "text-error";
 }
 
-export function StatusBar() {
+function AgentRow({ label, status }: { label: string; status: BinaryStatus }) {
+  const dotClass =
+    status.kind === "ready"
+      ? "bg-ok"
+      : status.kind === "logged_out"
+        ? "bg-error"
+        : "bg-surface-container-high border border-outline";
+  const statusText =
+    status.kind === "ready" ? "ready" : status.kind === "logged_out" ? "logged out" : "not installed";
+  const statusClass =
+    status.kind === "ready" ? "text-ok" : status.kind === "logged_out" ? "text-error" : "text-on-surface-variant/50";
+
+  return (
+    <div className="flex items-center gap-2 px-2.5 py-1.5 border-t border-outline-variant/60 first:border-t-0">
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} />
+      <span className={`flex-1 ${status.kind === "missing" ? "text-on-surface-variant/50" : "text-on-surface"}`}>
+        {label}
+      </span>
+      <span className={statusClass}>{statusText}</span>
+    </div>
+  );
+}
+
+interface StatusBarProps {
+  metrics: SystemMetrics | null;
+}
+
+export function StatusBar({ metrics }: StatusBarProps) {
   const info = useSystemInfo();
-  const metrics = useSystemMetrics();
   const phase = useWorkspace((s) => s.phase);
   const workspacePath = phase.kind === "ready" ? phase.workspace.path : "";
+  const [agentsOpen, setAgentsOpen] = useState(false);
+  const agentsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!agentsOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (agentsRef.current && !agentsRef.current.contains(e.target as Node)) {
+        setAgentsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [agentsOpen]);
 
   if (!info || !metrics) {
     return <footer className="h-6 bg-surface-container-lowest border-t border-outline-variant shrink-0" />;
   }
 
+  const anyAgentReady = metrics.claude_binary.kind === "ready" || metrics.codex_binary.kind === "ready";
+
   return (
-    <footer className="h-6 flex items-center px-3 bg-surface-container-lowest border-t border-outline-variant text-on-surface-variant font-mono text-[10px] shrink-0 overflow-hidden select-none cursor-default">
-      <div className="flex items-center gap-0 w-full overflow-x-auto no-scrollbar">
+    <footer className="h-6 flex items-center px-3 bg-surface-container-lowest border-t border-outline-variant text-on-surface-variant font-mono text-[10px] shrink-0 overflow-visible select-none cursor-default">
+      <div className="flex items-center gap-0 flex-1 min-w-0 overflow-x-auto no-scrollbar">
         {/* Git item */}
         <div className="flex items-center gap-1.5 px-2 border-r border-outline-variant shrink-0 h-6">
           <span className="text-on-surface-variant/70">{workspacePath}</span>
@@ -69,15 +112,30 @@ export function StatusBar() {
             {info.username}@{info.hostname}
           </span>
         </div>
+      </div>
 
-        {/* Agent status */}
-        <div className="flex items-center gap-1.5 px-2 shrink-0 h-6 ml-auto">
-          <span className={info.cc_connected ? "" : "text-error"}>claude-code</span>
-          <span className={`w-1.5 h-1.5 rounded-full ${info.cc_connected ? "bg-ok" : "bg-error"}`} />
-          <span className="text-outline-variant">·</span>
-          <span className={info.codex_connected ? "" : "text-on-surface-variant/40"}>codex</span>
-          <span className={`w-1.5 h-1.5 rounded-full ${info.codex_connected ? "bg-ok" : "bg-surface-container-high"}`} />
-        </div>
+      {/* Agents status */}
+      <div className="relative shrink-0" ref={agentsRef}>
+        <button
+          className={`flex items-center gap-1.5 px-2 h-6 transition-colors hover:bg-surface-container-high hover:text-on-surface ${agentsOpen ? "bg-surface-container-high text-on-surface" : ""}`}
+          onClick={() => setAgentsOpen((open) => !open)}
+        >
+          <span className={`w-1.5 h-1.5 rounded-full ${anyAgentReady ? "bg-ok" : "bg-error"}`} />
+          <span>agents</span>
+          <FontAwesomeIcon
+            icon={faChevronDown}
+            className={`${iconClass.xs} transition-transform ${agentsOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+        {agentsOpen && (
+          <div className="absolute bottom-full right-0 mb-1 min-w-[190px] bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 overflow-hidden z-50 text-[11px]">
+            <div className="px-2.5 pt-2 pb-1.5 text-[10px] font-medium uppercase tracking-normal text-on-surface-variant/60">
+              Agents
+            </div>
+            <AgentRow label="claude-code" status={metrics.claude_binary} />
+            <AgentRow label="codex" status={metrics.codex_binary} />
+          </div>
+        )}
       </div>
     </footer>
   );
