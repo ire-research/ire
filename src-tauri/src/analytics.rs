@@ -1,3 +1,4 @@
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use serde_json::json;
@@ -9,10 +10,20 @@ const LAUNCH_RETRY_DELAY: Duration = Duration::from_secs(5 * 60);
 const LAUNCH_REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 const CLOSE_REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
 
-fn capture_body(event: &str, distinct_id: &str, extra_properties: serde_json::Value) -> String {
+/// PostHog has no server-side notion of "session" for the raw capture API used here (that
+/// grouping is normally handled client-side by posthog-js/mobile SDKs, which this app doesn't
+/// use). We stand in for it with one UUID per process lifetime, shared by every event this
+/// run emits.
+fn session_id() -> &'static str {
+    static SESSION_ID: OnceLock<String> = OnceLock::new();
+    SESSION_ID.get_or_init(|| uuid::Uuid::new_v4().to_string())
+}
+
+fn capture_body(event: &str, user_id: &str, extra_properties: serde_json::Value) -> String {
     let mut properties = json!({
         "$app_version": env!("CARGO_PKG_VERSION"),
         "$os": std::env::consts::OS,
+        "$session_id": session_id(),
     });
     if let (Some(props), Some(extra)) = (properties.as_object_mut(), extra_properties.as_object()) {
         props.extend(extra.clone());
@@ -20,8 +31,9 @@ fn capture_body(event: &str, distinct_id: &str, extra_properties: serde_json::Va
     json!({
         "api_key": POSTHOG_API_KEY,
         "event": event,
-        "distinct_id": distinct_id,
+        "distinct_id": user_id,
         "properties": properties,
+        "timestamp": chrono::Utc::now().to_rfc3339(),
     })
     .to_string()
 }
@@ -32,7 +44,7 @@ fn capture_body(event: &str, distinct_id: &str, extra_properties: serde_json::Va
 /// Runs on a plain OS thread rather than a Tokio task: `reqwest::blocking` builds its own
 /// internal runtime and must not be driven from inside an existing one (Tauri's async
 /// runtime), which can otherwise stall the app. A detached thread also can't block shutdown.
-pub fn track_app_launched(distinct_id: String) {
+pub fn track_app_launched(user_id: String) {
     std::thread::spawn(move || {
         let client = match reqwest::blocking::Client::builder()
             .timeout(LAUNCH_REQUEST_TIMEOUT)
@@ -45,7 +57,7 @@ pub fn track_app_launched(distinct_id: String) {
             }
         };
 
-        let body = capture_body("app_launched", &distinct_id, json!({}));
+        let body = capture_body("app_launched", &user_id, json!({}));
 
         for attempt in 1..=MAX_LAUNCH_ATTEMPTS {
             let result = client
@@ -72,7 +84,7 @@ pub fn track_app_launched(distinct_id: String) {
 /// event loop (not inside Tokio), so a direct blocking call is safe here. Deliberately a
 /// single attempt with a short timeout: this runs during shutdown, so it must not noticeably
 /// delay quitting, and there's no later point to retry from.
-pub fn track_app_closed(distinct_id: String, session_duration: Duration) {
+pub fn track_app_closed(user_id: String, session_duration: Duration) {
     let client = match reqwest::blocking::Client::builder()
         .timeout(CLOSE_REQUEST_TIMEOUT)
         .build()
@@ -86,7 +98,7 @@ pub fn track_app_closed(distinct_id: String, session_duration: Duration) {
 
     let body = capture_body(
         "app_closed",
-        &distinct_id,
+        &user_id,
         json!({ "session_duration_seconds": session_duration.as_secs() }),
     );
 

@@ -139,11 +139,13 @@ The git-tracked parts of `.ire/` (`_SYSTEM.md`, `ire.json`, `long-term.md`, `sho
   "recent_workspaces": [
     "/home/user/projects/my_project",
     "/home/user/projects/other_project"
-  ]
+  ],
+  "analytics_id": "uuid",
+  "analytics_enabled": true
 }
 ```
 
-This file is managed exclusively by IRE. It is read once at app startup and written on theme change and whenever a workspace is opened. `recent_workspaces` is kept ordered newest-first, capped at 10 entries, and pruned on read so missing directories are not shown.
+This file is managed exclusively by IRE. It is read once at app startup and written on theme change and whenever a workspace is opened. `recent_workspaces` is kept ordered newest-first, capped at 10 entries, and pruned on read so missing directories are not shown. `analytics_id` is a random UUID generated and persisted on first use (lazy, not written at startup); `analytics_enabled` is `null` until the user answers the first-run consent prompt, then `true`/`false`.
 
 ---
 
@@ -211,9 +213,17 @@ ire/
 │   └── src/
 │       ├── main.rs
 │       ├── lib.rs                      # tauri::Builder, .manage, command registration
+│       ├── analytics.rs                # PostHog capture (app_launched/app_closed), session id, timestamp
 │       ├── binary.rs                   # shared CLI binary discovery types/helpers
 │       ├── user_config.rs              # UserConfig struct, read/write, push_recent
 │       ├── events.rs                   # workspace-event emit helpers + EventSource
+│       ├── tool_cards.rs               # ToolProvider/ToolKind + tool-call → UI card mapping
+│       ├── prompts/
+│       │   └── mod.rs                  # prompt registry, embeds assets/prompts/*.md at build time
+│       ├── experiments/
+│       │   ├── mod.rs                  # sync_to_ire: mirror DB experiment row into ire.json
+│       │   ├── runner.rs               # start_experiment: spawn detached subprocess, stream logs
+│       │   └── wake.rs                 # resume CC/Codex session when an experiment completes
 │       ├── commands/
 │       │   ├── workspace.rs            # setup_status, open/init/close_workspace, emit_initial_state
 │       │   ├── ire.rs                  # read/save resource files, notes, focus, ideas (ire.json setters)
@@ -235,7 +245,7 @@ ire/
 │       │   ├── local.rs
 │       │   ├── pdf.rs
 │       │   └── html.rs
-│       ├── cc/
+│       ├── claude-code/                # `mod claude_code`, path-attributed (dir name has a hyphen)
 │       │   ├── discovery.rs
 │       │   ├── spawn.rs
 │       │   ├── stream.rs               # NDJSON parser → StreamEvent
@@ -246,7 +256,8 @@ ire/
 │       │   └── stream.rs               # Codex JSONL parser → StreamEvent
 │       ├── mcp/
 │       │   ├── config.rs               # write ~/.ire/workspaces/<id>/mcp.json
-│       │   └── rpc.rs                  # Unix socket / TCP RPC handler
+│       │   ├── rpc.rs                  # Unix socket / TCP RPC handler
+│       │   └── stdio_server.rs         # `ire --mcp-stdio` entry point; advertises catalog, relays to rpc over IRE_BACKEND_SOCKET
 │       └── db/
 │           ├── schema.rs               # CREATE TABLE IF NOT EXISTS (experiments, chat_sessions)
 │           └── models.rs               # Experiment + chat-session row access

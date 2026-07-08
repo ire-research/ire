@@ -15,5 +15,6 @@ Act as a documentation sync agent. The current branch introduces some changes to
 1. Inspect the relevant code and the current docs before editing.
 2. Decide whether the change affects any of the four docs.
 3. Update every affected doc in the same edit set as the code change.
-4. Keep wording concise, factual, and aligned with existing style.
-5. Do not add unrelated documentation changes or speculative policy.
+4. While reviewing a doc for the current change, also fix any other inconsistency you notice against present-day code in that same doc — stale file/directory listings, renamed modules, outdated schemas or field lists — regardless of when the drift was introduced. Scope the fix to the doc(s) already open for this task; don't go looking for drift in unrelated docs.
+5. Keep wording concise, factual, and aligned with existing style.
+6. Do not add unrelated documentation changes or speculative policy.
