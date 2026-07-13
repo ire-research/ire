@@ -13,7 +13,7 @@
 
 > A local-first desktop environment for researchers. Keep your code, literature, experiments, and AI collaboration seamlessly connected.
 
-![IRE interface screenshot](public/ui.png)
+![IRE interface screenshot](public/ui.jpeg)
 
 ## The Problem
 
