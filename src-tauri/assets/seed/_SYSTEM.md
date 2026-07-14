@@ -54,7 +54,10 @@ The central file is `ire.json`:
 
 ## Experiment Workflow
 
-When asked to run an experiment:
+Use this any time a turn would otherwise require **waiting on something that doesn't resolve immediately** — a local subprocess, a SLURM/HPC job (even one you only monitor over SSH, not launch), a remote build, a long-running query — not only when the user says the word "experiment.
+
+**Anti-pattern — never do this:** writing `sleep N`, `while true; do ...; done`, `for i in $(seq ...)`, or repeated polling calls (`squeue`, `curl` health checks, etc.) inline in a turn to wait for a condition. That blocks the whole conversation until the loop exits. If you catch yourself about to write one of these, stop and call `experiment.start` instead — even if the job was already submitted elsewhere (SSH, another tool) and you're only monitoring it. The `command` you give `experiment.start` can itself be a polling wrapper, e.g.: `while state=$(ssh hpc "squeue -j <id> -h -o '%T'"); [ "$state" = "RUNNING" ] || [ "$state" = "PENDING" ]; do sleep 20; done`
+
 1. Plan the run and get user agreement.
 2. Verify the setup first (e.g., binary exists, paths resolve) to avoid cluttering with failed experiments.
 3. Call `experiment.start` with `name`, `command`, and a `wake_prompt`. The `wake_prompt` is given back to you when the process finishes — include all relevant context so you know exactly what you were testing and what to do with the results.
