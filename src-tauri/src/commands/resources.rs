@@ -46,10 +46,14 @@ fn sha256_hex(s: &str) -> String {
     sha256_hex_bytes(s.as_bytes())
 }
 
+/// Truncated to 8 bytes (16 hex chars) — this id only needs to be unique
+/// within one workspace's transient `.ire/cache/`, not cryptographically
+/// collision-resistant, and it gets echoed into resource-summary prompts as
+/// a file path, so the full 32-byte digest just burns context tokens.
 fn sha256_hex_bytes(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     let hash = Sha256::digest(bytes);
-    hash.iter().map(|b| format!("{b:02x}")).collect()
+    hash.iter().take(8).map(|b| format!("{b:02x}")).collect()
 }
 
 #[derive(Debug, Deserialize, Clone)]
