@@ -111,3 +111,36 @@ pub fn track_app_closed(user_id: String, session_duration: Duration) {
         tracing::warn!(%err, "analytics close ping failed");
     }
 }
+
+/// Sends a user-submitted feedback message to PostHog, synchronously, on the calling thread
+/// (the command handler runs this inside `spawn_blocking`). Unlike the launch/close pings,
+/// this is an explicit user action expecting a result, so it returns `Err` on failure instead
+/// of swallowing it — the caller surfaces that to the user rather than retrying silently.
+///
+/// Deliberately not gated behind `user_config::analytics_enabled()`: that toggle covers
+/// passive background telemetry, while this only fires when the user has typed a message and
+/// pressed Send.
+pub fn track_feedback(user_id: String, message: String, email: Option<String>) -> Result<(), String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(LAUNCH_REQUEST_TIMEOUT)
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut extra = json!({ "message": message });
+    if let (Some(props), Some(email)) = (extra.as_object_mut(), email) {
+        props.insert("email".to_string(), json!(email));
+    }
+    let body = capture_body("feedback_submitted", &user_id, extra);
+
+    let resp = client
+        .post(format!("{POSTHOG_HOST}/capture/"))
+        .header("Content-Type", "application/json")
+        .body(body)
+        .send()
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        return Err(format!("PostHog rejected feedback: {}", resp.status()));
+    }
+    Ok(())
+}

@@ -92,6 +92,8 @@ export const ipc = {
     invoke("chat_reset_session", { tabId }),
   submitAskAnswer: (tabId: string, answers: AskAnswer[]): Promise<void> =>
     invoke("submit_ask_answer", { tabId, answers }),
+  submitFeedback: (message: string, email?: string): Promise<void> =>
+    invoke("submit_feedback", { message, email }),
   submitResource: (url: string, options: ChatOptions): Promise<string> =>
     invoke("submit_resource", { url, options }),
   submitLocalResource: (path: string, options: ChatOptions): Promise<string> =>
