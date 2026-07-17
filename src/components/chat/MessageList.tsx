@@ -93,7 +93,7 @@ function AssistantBubble({ msg, onAskSubmit }: { msg: AssistantMessage; onAskSub
         }
 
         return (
-          <div key={block.id} className="text-on-surface text-[14px] leading-relaxed">
+          <div key={block.id} className="text-on-surface text-[14px] leading-relaxed w-full min-w-0">
             <MessageMarkdown content={block.text} />
           </div>
         );
