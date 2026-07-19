@@ -102,6 +102,9 @@ my_research_project/
 │   ├── resources/                   # git-tracked
 │   │   ├── _index.md                # Auto-generated resource catalog (path → one-line summary)
 │   │   └── <slug>.md                # One file per ingested paper/article (title + sources in frontmatter)
+│   ├── claims/                      # git-tracked
+│   │   ├── _index.md                # Auto-generated claim catalog (id → status → statement)
+│   │   └── <id>.md                  # One file per claim (falsifiable proposition, status, evidence)
 │   └── cache/                       # ingestion temp + experiments/<uuid>/{stdout,stderr}.log (gitignored)
 └── ... user source code ...
 ```
@@ -123,7 +126,7 @@ Runtime/local artifacts do **not** live in the workspace; they are keyed per wor
 .ire/cache/
 ```
 
-The git-tracked parts of `.ire/` (`_SYSTEM.md`, `ire.json`, `long-term.md`, `short-term/`, `resources/`) are intentionally **not** gitignored — they are the durable, shareable knowledge artefact. Per-workspace UI/session state (panel sizes, tabs, chat options) is persisted by `tauri-plugin-store` in the app-data dir, keyed by workspace path — there is no `workspace.json`.
+The git-tracked parts of `.ire/` (`_SYSTEM.md`, `ire.json`, `long-term.md`, `short-term/`, `resources/`, `claims/`) are intentionally **not** gitignored — they are the durable, shareable knowledge artefact. Per-workspace UI/session state (panel sizes, tabs, chat options) is persisted by `tauri-plugin-store` in the app-data dir, keyed by workspace path — there is no `workspace.json`.
 
 ### User config (global, cross-project)
 
@@ -236,8 +239,8 @@ ire/
 │       │   ├── init.rs                 # scaffold + git init; home_data_dir(path) → ~/.ire/workspaces/<id>/
 │       │   └── state.rs                # WorkspaceState (path + data_dir) + ActiveWorkspace managed state
 │       ├── ire/                        # store rooted at .ire/
-│       │   ├── store.rs                # ire.json read/edit/upsert + resource write/delete; atomic writes + events
-│       │   ├── index.rs                # resources/_index.md regenerator
+│       │   ├── store.rs                # ire.json read/edit/upsert + resource/claim write; atomic writes + events
+│       │   ├── index.rs                # resources/_index.md and claims/_index.md regenerators
 │       │   └── frontmatter.rs
 │       ├── resources/
 │       │   ├── fetch.rs

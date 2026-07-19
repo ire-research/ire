@@ -30,6 +30,7 @@ The MCP server is a **thin RPC bridge** to the running app over a Unix domain so
 | `ire.read({})` | Read `ire.json`. Returns `{ content, version }` (raw JSON + content-hash token). Must precede `ire.edit`. |
 | `ire.edit({ old, new, version })` | Exact string-replacement edit of `ire.json` (like the built-in `Edit`). Fails on a stale/missing `version`, or if `old` is absent or non-unique; the result must stay valid against the schema. Emits the `notes`/`focus`/`ideas` `workspace-event` variants. Does not commit. |
 | `resource.add({ markdown, title?, sources? })` | Simulated ingestion (no fetch): writes the agent-supplied markdown to a draft and opens an Approve/Discard preview tab. On Approve it lands at `resources/<slug>.md` with `sources` injected into frontmatter. |
+| `claim.write({ id, markdown })` | Write or revise a claim: atomically writes the full agent-supplied markdown to `claims/<slugified-id>.md` and regenerates `claims/_index.md`. No draft/approve step, no CAS — writing an existing id overwrites that file (a revision). Does not commit. |
 | `memory.write_long_term({ section, content })` | Append to `.ire/long-term.md` under section. Does not commit. |
 | `memory.write_short_term({ content })` | Append to today's `.ire/short-term/YYYY-MM-DD.md`. Does not commit. |
 | `experiment.start({ name, command, working_dir?, wake_prompt })` | Spawn detached subprocess, return `{ uuid }`. |
@@ -37,7 +38,7 @@ The MCP server is a **thin RPC bridge** to the running app over a Unix domain so
 | `experiment.tail_logs({ uuid, kb? })` | Tail of stdout/stderr from `.ire/cache/experiments/<uuid>/`. |
 | `ask_user_question({ questions })` | Block until the user answers via the IRE UI; returns `{ answers: [{ header, answer }] }`. Replaces CC's built-in `AskUserQuestion`, which is passed `--disallowedTools` (see [chat-agents.md](chat-agents.md#agent-subprocess-layer)). |
 
-Resources are otherwise read with the built-in `Read` tool against `.ire/resources/` (and its `_index.md`); there is no `wiki.*` or resource-read MCP tool, and `experiment.list` is dropped (read experiments from `ire.json` via `ire.read`).
+Resources and claims are otherwise read with the built-in `Read` tool against `.ire/resources/` / `.ire/claims/` (and their `_index.md` files); there is no `wiki.*`, resource-read, or claim-read MCP tool, and `experiment.list` is dropped (read experiments from `ire.json` via `ire.read`).
 
 All tools return JSON. Errors are surfaced to CC as MCP error responses, which CC interprets as tool failures and reports in chat.
 

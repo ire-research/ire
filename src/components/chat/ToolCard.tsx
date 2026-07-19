@@ -13,6 +13,7 @@ const IRE_KINDS = new Set<ToolKind>([
   "ire_read",
   "ire_edit",
   "resource_add",
+  "claim_write",
   "memory_write",
   "experiment_start",
   "experiment_status",

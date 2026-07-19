@@ -229,9 +229,9 @@ enum StreamEvent {
 }
 ```
 
-`ToolCall` is the provider-neutral tool-card contract defined in `tool_cards.rs`: `{ tool_id, provider, kind, raw_name, title, input, output, status, meta }`. `kind` is one of `command`, `file_read`, `file_write`, `file_edit`, `file_search`, `web_fetch`, `ire_read`, `ire_edit`, `resource_add`, `memory_write`, `experiment_start`, `experiment_status`, `experiment_tail_logs`, or `other`.
+`ToolCall` is the provider-neutral tool-card contract defined in `tool_cards.rs`: `{ tool_id, provider, kind, raw_name, title, input, output, status, meta }`. `kind` is one of `command`, `file_read`, `file_write`, `file_edit`, `file_search`, `web_fetch`, `ire_read`, `ire_edit`, `resource_add`, `claim_write`, `memory_write`, `experiment_start`, `experiment_status`, `experiment_tail_logs`, or `other`.
 
-Claude and Codex both normalize native tool records into `ToolCall` before emitting `ToolStart`. Claude maps built-ins such as `Bash`, `Read`, `Write`, `Edit`/`MultiEdit`, `Grep`/`Glob`/`LS`, and `WebFetch`; MCP names such as `ire__ire.read` normalize through the `ire.read`/`ire.edit`, `resource.add`, `memory.*`, and `experiment.*` mapping.
+Claude and Codex both normalize native tool records into `ToolCall` before emitting `ToolStart`. Claude maps built-ins such as `Bash`, `Read`, `Write`, `Edit`/`MultiEdit`, `Grep`/`Glob`/`LS`, and `WebFetch`; MCP names such as `ire__ire.read` normalize through the `ire.read`/`ire.edit`, `resource.add`, `claim.write`, `memory.*`, and `experiment.*` mapping.
 
 `AskUserQuestion` is emitted when CC calls IRE's `mcp__ire__ask_user_question` tool (the built-in `AskUserQuestion` tool is passed via `--disallowedTools`, see below). The parser intercepts that `tool_use` block, parses its `questions[]` payload, and tracks the tool id so the matching `tool_result` is suppressed. The frontend renders an `AskQuestionCard` and, on submit, calls `submit_ask_answer(tab_id, answers)` to deliver the answers back to the blocked MCP call in the same subprocess turn.
 

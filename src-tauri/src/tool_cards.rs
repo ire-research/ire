@@ -20,6 +20,7 @@ pub enum ToolKind {
     IreRead,
     IreEdit,
     ResourceAdd,
+    ClaimWrite,
     MemoryWrite,
     ExperimentStart,
     ExperimentStatus,
@@ -130,6 +131,7 @@ pub fn tool_kind(normalized_name: &str) -> ToolKind {
         "ire.read" => ToolKind::IreRead,
         "ire.edit" => ToolKind::IreEdit,
         "resource.add" => ToolKind::ResourceAdd,
+        "claim.write" => ToolKind::ClaimWrite,
         "memory.write.long.term"
         | "memory.write_long_term"
         | "memory.write.short.term"
@@ -152,6 +154,7 @@ pub fn tool_title(kind: &ToolKind) -> &'static str {
         ToolKind::IreRead => "Read ire.json",
         ToolKind::IreEdit => "Edit ire.json",
         ToolKind::ResourceAdd => "Add resource",
+        ToolKind::ClaimWrite => "Write claim",
         ToolKind::MemoryWrite => "Write memory",
         ToolKind::ExperimentStart => "Start experiment",
         ToolKind::ExperimentStatus => "Experiment status",
