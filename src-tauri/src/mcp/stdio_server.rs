@@ -169,12 +169,12 @@ fn tool_catalog() -> Vec<Tool> {
         ),
         tool(
             "claim.write",
-            "Write or revise a claim in the claim ledger (claims/<id>.md). A claim is a falsifiable proposition — not a task, not a raw measurement. Pass the full markdown file (frontmatter + body) each time; writing to an existing id overwrites that file, so an update must be a full revision, not a diff. Check claims/_index.md first to avoid duplicating an existing claim.",
+            "Write or revise a claim in the claim ledger (claims/<id>.md). A claim is a falsifiable proposition — not a task, not a raw measurement. Pass the full markdown file (frontmatter + body) each time; writing to an existing id overwrites that file, so an update must be a full revision, not a diff. Check claims/_index.md first to avoid duplicating an existing claim. The result includes `dangling_references` if this claim's depends_on/contradicts/supersedes name ids with no matching claim file — resolve those (write the missing claim, or drop the reference) before ending your turn.",
             json!({
                 "type": "object",
                 "properties": {
                     "id": { "type": "string", "description": "Stable claim id (kebab-cased automatically). Reuse the same id to revise an existing claim." },
-                    "markdown": { "type": "string", "description": "Full markdown file: frontmatter (type: Claim, id, status, scope, asserted_by, revision) plus the statement and Falsification criterion / Evidence / Relations sections in the body" }
+                    "markdown": { "type": "string", "description": "Full markdown file: frontmatter (type: Claim, id, status, scope, asserted_by, revision, depends_on, contradicts, supersedes — the last three are lists of other claim ids, [] if none) plus the statement and Falsification criterion / Evidence sections in the body" }
                 },
                 "required": ["id", "markdown"]
             }),

@@ -220,8 +220,15 @@ fn claim_write(params: &serde_json::Value, wiki: &IreStore) -> Result<serde_json
     }
 
     let rel_path = format!("claims/{slug}.md");
-    wiki.write_claim(&rel_path, markdown)?;
-    Ok(serde_json::json!({ "written": rel_path }))
+    let dangling = wiki.write_claim(&rel_path, markdown)?;
+    let mut result = serde_json::json!({ "written": rel_path });
+    if let Some(missing) = dangling.get(&slug) {
+        result["dangling_references"] = serde_json::json!(missing);
+        result["hint"] = serde_json::json!(
+            "These referenced claim ids don't exist yet — write them with claim.write, or remove the reference if it wasn't meant to point at a claim."
+        );
+    }
+    Ok(result)
 }
 
 /// Kebab-case a claim id: lowercase alphanumerics, everything else collapses

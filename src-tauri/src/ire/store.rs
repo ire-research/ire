@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -227,15 +227,19 @@ impl IreStore {
 
     // ── claims ────────────────────────────────────────────────────────────────
 
-    /// Atomically write a `claims/<id>.md` file and regenerate `claims/_index.md`.
-    pub fn write_claim(&self, rel_path: &str, content: &str) -> Result<()> {
+    /// Atomically write a `claims/<id>.md` file, regenerate `claims/_index.md`,
+    /// and report dangling relation references (claim ids named in
+    /// `depends_on`/`contradicts`/`supersedes` that have no matching file),
+    /// keyed by the claim id that references them.
+    pub fn write_claim(&self, rel_path: &str, content: &str) -> Result<BTreeMap<String, Vec<String>>> {
         atomic_write(&self.ire_dir.join(rel_path), content)?;
         self.rebuild_claims_index()
     }
 
-    pub fn rebuild_claims_index(&self) -> Result<()> {
-        let content = index::build_claims(&self.claims_dir)?;
-        atomic_write(&self.claims_dir.join("_index.md"), &content)
+    pub fn rebuild_claims_index(&self) -> Result<BTreeMap<String, Vec<String>>> {
+        let (content, dangling) = index::build_claims(&self.claims_dir)?;
+        atomic_write(&self.claims_dir.join("_index.md"), &content)?;
+        Ok(dangling)
     }
 }
 
@@ -310,7 +314,7 @@ fn resource_meta(content: &str, rel_path: &str) -> (String, Vec<String>) {
     let title = fm
         .as_ref()
         .and_then(|m| m.get("title"))
-        .map(|t| unquote(t))
+        .map(|t| frontmatter::unquote(t))
         .filter(|t| !t.is_empty())
         .or_else(|| {
             body.lines()
@@ -327,28 +331,9 @@ fn resource_meta(content: &str, rel_path: &str) -> (String, Vec<String>) {
     let sources = fm
         .as_ref()
         .and_then(|m| m.get("sources"))
-        .map(|s| parse_sources(s))
+        .map(|s| frontmatter::parse_list(s))
         .unwrap_or_default();
     (title, sources)
-}
-
-/// Frontmatter list values are stored JSON-encoded by `frontmatter::parse`;
-/// fall back to a single scalar source.
-fn parse_sources(value: &str) -> Vec<String> {
-    if let Ok(v) = serde_json::from_str::<Vec<String>>(value.trim()) {
-        return v;
-    }
-    let t = unquote(value);
-    if t.is_empty() {
-        vec![]
-    } else {
-        vec![t]
-    }
-}
-
-/// Strip surrounding double quotes from a scalar frontmatter value.
-fn unquote(value: &str) -> String {
-    value.trim().trim_matches('"').trim().to_string()
 }
 
 pub(crate) fn atomic_write(path: &Path, content: &str) -> Result<()> {

@@ -51,7 +51,7 @@ The central file is `ire.json`:
 
 4. **Resources.** Markdown files under `.ire/resources/`. The auto-injected `resources/_index.md` lists them; open individual files with the built-in `Read` tool. Do not ingest new sources unless explicitly asked; when you do, use `resource.add` (opens an Approve/Discard preview for the user). The user can also ingest resources from the UI.
 
-5. **Claims.** A claim is a falsifiable proposition you currently hold — not a task ("run the ablation" has no truth value), not a decision, not a raw measurement. Only write one for a belief that could be confirmed or overturned by evidence. Check `claims/_index.md` (auto-injected) before writing to avoid duplicates. Write and revise claims with `claim.write` (`id`, `markdown`), using this shape:
+5. **Claims.** When reading research notes, papers, or discussing results, extract and maintain claims as you go — this is a standing part of how you operate, not something that requires being asked. A claim is a falsifiable proposition you currently hold — not a task ("run the ablation" has no truth value), not a decision, not a raw measurement. Only write one for a belief that could be confirmed or overturned by evidence; decompose rather than merge (if one experiment or piece of evidence wouldn't be enough to move a belief's status without touching an unrelated variable, split it into separate claims). Check `claims/_index.md` (auto-injected) before writing to avoid duplicates. Write and revise claims with `claim.write` (`id`, `markdown`), using this shape:
    ```
    ---
    type: Claim
@@ -60,6 +60,10 @@ The central file is `ire.json`:
    scope: <conditions this is asserted under — dataset, regime, model family>
    asserted_by: owned | imported
    revision: <integer, starts at 1>
+   depends_on:
+     - <other claim id>
+   contradicts: []
+   supersedes: []
    ---
 
    <the statement, phrased so it's falsifiable>
@@ -71,11 +75,9 @@ The central file is `ire.json`:
    ## Evidence
 
    - <experimental result / citation / derivation> — <supports/contradicts/qualifies> — <provenance: git SHA, config, seed, or citation>
-
-   ## Relations
-
-   - depends-on: [<other claim id>]
    ```
+   `depends_on`/`contradicts`/`supersedes` are frontmatter lists (leave `[]` if none) and must point at existing claim ids — `claim.write` checks this on every write and flags any that don't resolve, both in its result and inline in `claims/_index.md` (a `⚠ dangling reference` line under the claim). When you see one, either write the missing claim or drop the reference before ending your turn — don't leave it dangling.
+
    Revising a claim (new evidence, status change) means bumping `revision` and writing the same `id` again — `claim.write` overwrites the file, so send the full updated content, not a diff.
 
 6. **Use `ask_user_question` for all choices and confirmations — never ask in plain chat text.** Whenever you need the user to pick between options, confirm a direction, or answer a question, call `ask_user_question`. The built-in `AskUserQuestion` is disabled; this is its replacement. Do not restate the question as chat text — the IRE UI renders it as an interactive wizard. The call blocks until the user responds; continue from the tool result in the same turn.

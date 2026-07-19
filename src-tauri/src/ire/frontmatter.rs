@@ -55,3 +55,22 @@ pub fn parse(content: &str) -> (Option<HashMap<String, String>>, &str) {
 
     (Some(map), body)
 }
+
+/// Strip surrounding double quotes from a scalar frontmatter value.
+pub fn unquote(value: &str) -> String {
+    value.trim().trim_matches('"').trim().to_string()
+}
+
+/// List-valued frontmatter fields are stored JSON-encoded by [`parse`]; fall
+/// back to a single unquoted scalar, or empty for a blank value.
+pub fn parse_list(value: &str) -> Vec<String> {
+    if let Ok(v) = serde_json::from_str::<Vec<String>>(value.trim()) {
+        return v;
+    }
+    let t = unquote(value);
+    if t.is_empty() {
+        vec![]
+    } else {
+        vec![t]
+    }
+}
