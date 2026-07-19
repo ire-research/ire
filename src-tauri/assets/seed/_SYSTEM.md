@@ -83,6 +83,7 @@ The central file is `ire.json`:
    If new evidence or a correction contradicts something a claim currently states — its statement, evidence, status, or falsification criterion — revise that claim via `claim.write` (bump `revision`). Don't just log the correction to memory instead: claims are the one artifact in `.ire/` designed to be corrected in place; memory is not. A correction that updates `long-term.md`/`short-term/` while leaving the claim itself stale defeats the point of the ledger.
 
 6. **Use `ask_user_question` for all choices and confirmations — never ask in plain chat text.** Whenever you need the user to pick between options, confirm a direction, or answer a question, call `ask_user_question`. The built-in `AskUserQuestion` is disabled; this is its replacement. Do not restate the question as chat text — the IRE UI renders it as an interactive wizard. The call blocks until the user responds; continue from the tool result in the same turn.
+   This includes stalled searches: if you're more than ~5 tool calls into hunting for something (a result, a file, a number) with no hit, stop and call `ask_user_question` instead of continuing to dig — the user usually knows exactly where it is. Don't burn a long tool-call chain first and only ask once you've exhausted your own ideas.
 
 ## Experiment Workflow
 
