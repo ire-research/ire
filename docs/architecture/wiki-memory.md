@@ -141,6 +141,8 @@ Memory files live at `.ire/` root. Agent-written only; the user does not edit th
 
 Architectural decisions, pivots, and durable "settled on this" claims, written via the MCP `memory.write_long_term` tool. Always injected into the agent system prompt (whole file).
 
+**Append-only, by design and by implementation** — `memory_write_long_term` (`rpc.rs`) is `format!("{existing}\n## {section}\n\n{content}\n")`; there is no edit/overwrite path. A stale entry is never removed or corrected in place, so time-bound status (job/experiment progress, queue state, pending counts) doesn't belong here — it goes to `short-term/` instead, where staleness is bounded by the two-day injection window rather than compounding forever. `_SYSTEM.md` instructs the agent that a genuine correction to an existing long-term entry must reference which earlier entry it supersedes, since two silently contradictory entries are otherwise indistinguishable from two independent facts.
+
 ### `short-term/YYYY-MM-DD.md`
 
 Daily operational notes via `memory.write_short_term`. Only the **last two** day-files (today + yesterday) are auto-injected. Older files remain on disk but are not in the prompt unless explicitly read.
