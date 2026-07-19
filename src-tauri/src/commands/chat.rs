@@ -357,9 +357,9 @@ pub fn submit_ask_answer(
 }
 
 /// Compose the always-injected system prompt: `_SYSTEM.md`, the focus, the
-/// resources index, long-term memory, and the two most recent short-term notes.
-/// Notes / ideas / experiments and individual resources are read on demand by
-/// the agent via tools.
+/// resources index, the claims index, long-term memory, and the two most
+/// recent short-term notes. Notes / ideas / experiments and individual
+/// resources / claims are read on demand by the agent via tools.
 pub fn build_system_prompt(workspace_root: &Path) -> String {
     let ire_root = workspace_root.join(".ire");
     let store = crate::ire::IreStore::new(workspace_root.to_path_buf());
@@ -384,6 +384,12 @@ pub fn build_system_prompt(workspace_root: &Path) -> String {
     if let Ok(content) = fs::read_to_string(store.resources_dir.join("_index.md")) {
         if !content.trim().is_empty() {
             parts.push(format!("### resources/_index.md\n\n{content}"));
+        }
+    }
+
+    if let Ok(content) = fs::read_to_string(store.claims_dir.join("_index.md")) {
+        if !content.trim().is_empty() {
+            parts.push(format!("### claims/_index.md\n\n{content}"));
         }
     }
 

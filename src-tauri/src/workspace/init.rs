@@ -55,17 +55,20 @@ pub fn initialize(path: &Path) -> Result<()> {
     let ire = path.join(".ire");
     let short_term = ire.join("short-term");
     let resources = ire.join("resources");
+    let claims = ire.join("claims");
     let cache = ire.join("cache");
 
-    for d in [&ire, &short_term, &resources, &cache] {
+    for d in [&ire, &short_term, &resources, &claims, &cache] {
         fs::create_dir_all(d).with_context(|| format!("create {}", d.display()))?;
     }
 
     write_if_absent(&ire.join("_SYSTEM.md"), SYSTEM_MD)?;
     write_if_absent(&ire.join("ire.json"), IRE_JSON)?;
     write_if_absent(&ire.join("long-term.md"), LONG_TERM_MD)?;
-    // resources/_index.md is regenerated whenever a resource is added; seed empty.
+    // resources/_index.md and claims/_index.md are regenerated whenever a
+    // resource/claim is written; seed empty.
     write_if_absent(&resources.join("_index.md"), "")?;
+    write_if_absent(&claims.join("_index.md"), "")?;
 
     ensure_gitignore(path)?;
     Ok(())
@@ -181,6 +184,8 @@ mod tests {
             ".ire/short-term",
             ".ire/resources",
             ".ire/resources/_index.md",
+            ".ire/claims",
+            ".ire/claims/_index.md",
             ".ire/cache",
             ".gitignore",
         ] {

@@ -59,19 +59,22 @@ pub struct IreContent {
 }
 
 /// The state record rooted at `.ire/`. Owns `ire.json` (notes/focus/ideas/
-/// experiments) and the file-based `resources/` tree.
+/// experiments) and the file-based `resources/` and `claims/` trees.
 pub struct IreStore {
     pub ire_dir: PathBuf,
     pub resources_dir: PathBuf,
+    pub claims_dir: PathBuf,
 }
 
 impl IreStore {
     pub fn new(workspace_root: PathBuf) -> Self {
         let ire_dir = workspace_root.join(".ire");
         let resources_dir = ire_dir.join("resources");
+        let claims_dir = ire_dir.join("claims");
         Self {
             ire_dir,
             resources_dir,
+            claims_dir,
         }
     }
 
@@ -220,6 +223,19 @@ impl IreStore {
             out.push(serde_json::json!({ "path": rel, "title": title, "sources": sources }));
         }
         out
+    }
+
+    // ── claims ────────────────────────────────────────────────────────────────
+
+    /// Atomically write a `claims/<id>.md` file and regenerate `claims/_index.md`.
+    pub fn write_claim(&self, rel_path: &str, content: &str) -> Result<()> {
+        atomic_write(&self.ire_dir.join(rel_path), content)?;
+        self.rebuild_claims_index()
+    }
+
+    pub fn rebuild_claims_index(&self) -> Result<()> {
+        let content = index::build_claims(&self.claims_dir)?;
+        atomic_write(&self.claims_dir.join("_index.md"), &content)
     }
 }
 

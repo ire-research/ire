@@ -134,6 +134,7 @@ fn dispatch(
         "memory.write_long_term" => memory_write_long_term(params, &wiki),
         "memory.write_short_term" => memory_write_short_term(params, &wiki),
         "resource.add" => resource_add(params, workspace_root, app),
+        "claim.write" => claim_write(params, &wiki),
         "ask_user_question" => ask_user_question(params, session_manager),
         "experiment.start" => experiment_start(params, workspace_root, session_manager, app),
         "experiment.status" => experiment_status(params, workspace_root),
@@ -203,6 +204,42 @@ fn memory_write_short_term(
     let merged = format!("{existing}\n{content}\n");
     atomic_write(&path, &merged)?;
     Ok(serde_json::json!({ "written": rel }))
+}
+
+// ── claims ──────────────────────────────────────────────────────────────────
+
+fn claim_write(params: &serde_json::Value, wiki: &IreStore) -> Result<serde_json::Value> {
+    let id = params["id"].as_str().ok_or(anyhow!("missing id"))?;
+    let markdown = params["markdown"]
+        .as_str()
+        .ok_or(anyhow!("missing markdown"))?;
+
+    let slug = sanitize_claim_id(id);
+    if slug.is_empty() {
+        return Err(anyhow!("id must contain at least one alphanumeric character"));
+    }
+
+    let rel_path = format!("claims/{slug}.md");
+    wiki.write_claim(&rel_path, markdown)?;
+    Ok(serde_json::json!({ "written": rel_path }))
+}
+
+/// Kebab-case a claim id: lowercase alphanumerics, everything else collapses
+/// to `-`, no leading/trailing/duplicate dashes.
+fn sanitize_claim_id(id: &str) -> String {
+    id.chars()
+        .map(|c| {
+            if c.is_alphanumeric() {
+                c.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>()
+        .split('-')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("-")
 }
 
 // ── resources ─────────────────────────────────────────────────────────────────
