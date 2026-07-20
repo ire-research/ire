@@ -3,6 +3,7 @@
   <a href="https://ire-research.com"><img src="https://img.shields.io/badge/Website-ire--research.com-000000" alt="Website" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT" /></a>
   <a href="https://github.com/ire-research/ire/releases/latest"><img src="https://img.shields.io/badge/MacOS_|_Linux-supported-blue" alt="MacOS | Linux supported" /></a>
+  <a href="https://discord.gg/H7R5m7Ups"><img src="https://img.shields.io/badge/Discord-Join_us-5865F2?logo=discord&logoColor=white" alt="Discord" /></a>
 </p>
 
 <p align="center">
@@ -48,6 +49,10 @@ cd ire
 npm install
 npm run tauri dev
 ```
+
+## Community
+
+Join our [Discord server](https://discord.gg/H7R5m7Ups) to ask questions, share feedback, and connect with other researchers.
 
 ## Contributing
 
