@@ -1,5 +1,6 @@
 pub mod chat;
 pub mod experiments;
+pub mod feedback;
 pub mod history;
 pub mod resources;
 pub mod system;

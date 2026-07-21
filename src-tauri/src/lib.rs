@@ -22,6 +22,7 @@ use commands::chat::{
 use commands::experiments::{
     experiment_cancel, experiment_delete, experiment_list, experiment_logs, experiment_rename,
 };
+use commands::feedback::submit_feedback;
 use commands::history::{
     chat_history_delete, chat_history_get, chat_history_list, chat_history_save,
 };
@@ -111,6 +112,7 @@ pub fn run() {
             chat_history_list,
             chat_history_get,
             chat_history_delete,
+            submit_feedback,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")

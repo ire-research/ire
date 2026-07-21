@@ -10,9 +10,10 @@ import { useChatOptions } from "../state/chatOptions";
 import { toastError } from "../state/toasts";
 import { useSystemMetrics } from "../hooks/useSystemStatus";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faFolder, faChevronDown, faSidebarLeft, faSidebarRight, faGear, faCircleQuestion, faCircleInfo, iconClass } from "../icons";
+import { faFolder, faChevronDown, faSidebarLeft, faSidebarRight, faGear, faCircleQuestion, faMessage, iconClass } from "../icons";
 import { ChatPane } from "./chat/ChatPane";
 import { SettingsModal } from "./SettingsModal";
+import { FeedbackModal } from "./FeedbackModal";
 import { LeftRail } from "./left/LeftRail";
 import { RightRail } from "./right/RightRail";
 import { StatusBar } from "./StatusBar";
@@ -41,6 +42,7 @@ export function Layout() {
   const settingsRef = useRef<HTMLDivElement>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const helpRef = useRef<HTMLDivElement>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [appVersion, setAppVersion] = useState("");
 
   useEffect(() => {
@@ -255,15 +257,16 @@ export function Layout() {
             </button>
             {helpOpen && (
               <div className="absolute top-full right-0 mt-1.5 w-[200px] bg-surface-container-high border border-outline-variant rounded-lg shadow-lg z-50 overflow-hidden">
-                <a
+                <button
                   className="flex items-center gap-2 w-full px-3 py-2 text-xs font-medium text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors"
-                  href="https://github.com/ire-research/ire/issues"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  onClick={() => {
+                    setHelpOpen(false);
+                    setFeedbackOpen(true);
+                  }}
                 >
-                  <FontAwesomeIcon icon={faCircleInfo} className={`${iconClass.md} shrink-0`} />
-                  Report a bug
-                </a>
+                  <FontAwesomeIcon icon={faMessage} className={`${iconClass.md} shrink-0`} />
+                  Send feedback
+                </button>
                 <div className="flex items-center gap-2 px-3 py-2 border-t border-outline-variant">
                   <span className="text-xs font-normal text-on-surface-variant">IRE</span>
                   <span className="text-[10px] font-medium text-on-surface-variant bg-surface-container-highest border border-outline-variant rounded px-[5px] py-[1px]">v{appVersion || "?"}</span>
@@ -271,6 +274,7 @@ export function Layout() {
               </div>
             )}
           </div>
+          {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
           <button
             className="h-7 border border-outline-variant rounded px-3 text-xs font-medium text-on-surface-variant hover:text-on-surface transition-colors"
             onClick={handleClose}
