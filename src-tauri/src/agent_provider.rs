@@ -176,6 +176,11 @@ static REGISTRY: &[Registered] = &[
         agent: &CodexProvider,
         catalog: Some(&CodexProvider),
     },
+    Registered {
+        name: "opencode",
+        agent: &OpenCodeProvider,
+        catalog: Some(&OpenCodeProvider),
+    },
 ];
 
 /// Looks up the adapter for a wire-format provider name (`"claude"` /
@@ -383,6 +388,120 @@ impl ModelCatalog for CodexProvider {
     }
 }
 
+/// OpenCode is a local gateway to many providers (Anthropic, OpenAI, Google,
+/// Ollama, custom OpenAI-compatible endpoints, ...) that the user configures
+/// once via `opencode auth login` in their own terminal — IRE never sees or
+/// stores those credentials. Its "models" are `<providerID>/<modelID>`
+/// strings sourced from whatever the user has connected, which is exactly
+/// the dynamic-catalog case `ModelCatalog` was designed for.
+pub struct OpenCodeProvider;
+
+impl AgentProvider for OpenCodeProvider {
+    fn id(&self) -> ToolProvider {
+        ToolProvider::Opencode
+    }
+
+    fn name(&self) -> &'static str {
+        "opencode"
+    }
+
+    fn discover(&self) -> Result<DiscoveredBinary, DiscoveryError> {
+        crate::opencode::discovery::find_opencode_binary()
+    }
+
+    fn is_logged_in(&self, bin: &Path) -> bool {
+        crate::opencode::discovery::is_opencode_logged_in(bin)
+    }
+
+    fn build_command(&self, bin: &Path, req: &TurnRequest<'_>) -> Command {
+        crate::opencode::spawn::build_opencode_command(&crate::opencode::spawn::OpenCodeSpawnArgs {
+            bin,
+            workspace: req.workspace,
+            message: req.message,
+            model: req.model,
+            effort: req.effort,
+            resume_id: req.resume_id,
+            mcp_config: req.mcp_config,
+            system_prompt: req.system_prompt,
+        })
+    }
+
+    fn dispatch(&self, json: &Value, state: &mut StreamState, emit: &mut dyn FnMut(StreamEvent)) {
+        crate::opencode::stream::dispatch(json, state, &mut |event| emit(event));
+    }
+}
+
+impl ModelCatalog for OpenCodeProvider {
+    /// Parses `opencode models --verbose`, which is *not* a single JSON
+    /// document — it repeats a bare `<providerID>/<modelID>` header line
+    /// followed by that model's pretty-printed JSON object (confirmed by
+    /// running the real CLI). The header line is used verbatim as
+    /// `ModelInfo.id` (it's exactly what `--model` expects); `label` comes
+    /// from the JSON body's `name` field; `effort_levels` are the keys of
+    /// its `variants` object (each model advertises its own valid
+    /// `--variant` values there — e.g. one model has `low`/`medium`/`high`,
+    /// another only `high`/`max` — so this needs no separate IRE-side
+    /// effort vocabulary or mapping table).
+    fn discover_models(&self) -> Result<Vec<ModelInfo>, AgentError> {
+        let bin = crate::opencode::discovery::find_opencode_binary().map_err(|e| AgentError {
+            message: e.to_string(),
+        })?;
+        let out = Command::new(&bin.path)
+            .args(["models", "--verbose"])
+            .output()
+            .map_err(|e| AgentError {
+                message: format!("failed to run opencode models: {e}"),
+            })?;
+        if !out.status.success() {
+            return Err(AgentError {
+                message: String::from_utf8_lossy(&out.stderr).trim().to_string(),
+            });
+        }
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        Ok(parse_opencode_models(&stdout))
+    }
+}
+
+fn parse_opencode_models(stdout: &str) -> Vec<ModelInfo> {
+    let is_header = |line: &str| {
+        let line = line.trim_end();
+        !line.is_empty()
+            && !line.starts_with(char::is_whitespace)
+            && !line.contains(['{', '}', '"'])
+            && line.matches('/').count() == 1
+    };
+
+    let lines: Vec<&str> = stdout.lines().collect();
+    let mut models = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        if !is_header(lines[i]) {
+            i += 1;
+            continue;
+        }
+        let id = lines[i].trim().to_string();
+        let mut j = i + 1;
+        while j < lines.len() && !is_header(lines[j]) {
+            j += 1;
+        }
+        let body = lines[i + 1..j].join("\n");
+        if let Ok(parsed) = serde_json::from_str::<Value>(&body) {
+            let label = parsed["name"].as_str().unwrap_or(&id).to_string();
+            let effort_levels = parsed["variants"]
+                .as_object()
+                .map(|m| m.keys().cloned().collect())
+                .unwrap_or_default();
+            models.push(ModelInfo {
+                id,
+                label,
+                effort_levels,
+            });
+        }
+        i = j;
+    }
+    models
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -443,13 +562,14 @@ mod tests {
     #[test]
     fn all_returns_every_registered_provider_paired_with_its_catalog() {
         let all: Vec<_> = all().collect();
-        assert_eq!(all.len(), 2);
+        assert_eq!(all.len(), 3);
         assert!(all
             .iter()
             .all(|(_, catalog)| catalog.is_some()));
         let names: Vec<&str> = all.iter().map(|(agent, _)| agent.name()).collect();
         assert!(names.contains(&"claude"));
         assert!(names.contains(&"codex"));
+        assert!(names.contains(&"opencode"));
     }
 
     #[test]
@@ -515,7 +635,89 @@ mod tests {
     fn provider_lookup_resolves_wire_names() {
         assert_eq!(provider("claude").unwrap().id(), ToolProvider::Claude);
         assert_eq!(provider("codex").unwrap().id(), ToolProvider::Codex);
+        assert_eq!(provider("opencode").unwrap().id(), ToolProvider::Opencode);
         assert!(provider("gemini").is_none());
+    }
+
+    #[test]
+    fn opencode_build_command_delegates_to_opencode_spawn() {
+        let req = TurnRequest {
+            workspace: Path::new("/tmp/workspace"),
+            message: "hello",
+            model: "anthropic/claude-opus-4-8",
+            effort: Some("high"),
+            resume_id: Some("ses_123"),
+            mcp_config: None,
+            system_prompt: None,
+        };
+        let cmd = OpenCodeProvider.build_command(Path::new("opencode"), &req);
+        let args = command_args(&cmd);
+        assert!(args.windows(2).any(|w| w == ["--model", "anthropic/claude-opus-4-8"]));
+        assert!(args.windows(2).any(|w| w == ["--session", "ses_123"]));
+        assert!(args.windows(2).any(|w| w == ["--variant", "high"]));
+    }
+
+    #[test]
+    fn opencode_dispatch_delegates_to_opencode_stream() {
+        let json = serde_json::json!({
+            "type": "text",
+            "sessionID": "ses_1",
+            "part": {"text": "hi"}
+        });
+        let mut state = StreamState::default();
+        let mut events = Vec::new();
+        OpenCodeProvider.dispatch(&json, &mut state, &mut |e| events.push(e));
+        assert_eq!(
+            events,
+            vec![
+                StreamEvent::Init { session_id: "ses_1".to_string() },
+                StreamEvent::TextDelta { text: "hi".to_string() },
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_opencode_models_reads_header_plus_json_block_pairs() {
+        // Real shape captured from `opencode models --verbose`.
+        let sample = r#"opencode/big-pickle
+{
+  "id": "big-pickle",
+  "providerID": "opencode",
+  "name": "Big Pickle",
+  "api": {
+    "url": "https://opencode.ai/zen/v1"
+  },
+  "variants": {}
+}
+anthropic/claude-opus-4-8
+{
+  "id": "claude-opus-4-8",
+  "providerID": "anthropic",
+  "name": "Claude Opus 4.8",
+  "variants": {
+    "low": { "reasoningEffort": "low" },
+    "high": { "reasoningEffort": "high" }
+  }
+}
+"#;
+        let models = parse_opencode_models(sample);
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].id, "opencode/big-pickle");
+        assert_eq!(models[0].label, "Big Pickle");
+        assert_eq!(models[0].effort_levels, Vec::<String>::new());
+        assert_eq!(models[1].id, "anthropic/claude-opus-4-8");
+        assert_eq!(models[1].label, "Claude Opus 4.8");
+        let mut levels = models[1].effort_levels.clone();
+        levels.sort();
+        assert_eq!(levels, vec!["high".to_string(), "low".to_string()]);
+    }
+
+    #[test]
+    fn parse_opencode_models_skips_unparseable_blocks() {
+        let sample = "opencode/broken\nnot json at all\nopencode/big-pickle\n{\"id\":\"big-pickle\",\"providerID\":\"opencode\",\"name\":\"Big Pickle\",\"variants\":{}}\n";
+        let models = parse_opencode_models(sample);
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "opencode/big-pickle");
     }
 
     #[test]

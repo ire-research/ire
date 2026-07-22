@@ -9,6 +9,7 @@ mod db;
 mod events;
 mod experiments;
 mod mcp;
+mod opencode;
 mod prompts;
 mod resources;
 mod session;
@@ -34,7 +35,8 @@ use commands::resources::{
     submit_local_resource, submit_resource, submit_resources, InflightResources,
 };
 use commands::system::{
-    get_system_info, get_system_metrics, list_agent_models, CpuMonitor, SystemInfoCache,
+    get_system_info, get_system_metrics, list_agent_models, CpuMonitor, ProviderReadinessCache,
+    SystemInfoCache,
 };
 use commands::ire::{
     read_resource, save_focus_field, save_ideas, save_notes, save_resource,
@@ -82,6 +84,7 @@ pub fn run() {
         .manage(InflightResources::default())
         .manage(SystemInfoCache::default())
         .manage(CpuMonitor::default())
+        .manage(ProviderReadinessCache::default())
         .invoke_handler(tauri::generate_handler![
             setup_status,
             open_workspace,

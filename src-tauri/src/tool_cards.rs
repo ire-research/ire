@@ -6,6 +6,7 @@ use serde_json::{Map, Value};
 pub enum ToolProvider {
     Claude,
     Codex,
+    Opencode,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
