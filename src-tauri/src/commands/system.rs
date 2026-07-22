@@ -5,10 +5,55 @@ use std::sync::{Arc, Mutex};
 use sysinfo::{CpuRefreshKind, RefreshKind, System};
 use tauri::State;
 
-use crate::binary::{binary_status, BinaryStatus};
-use crate::claude_code::discovery::{find_claude_binary, is_claude_logged_in};
-use crate::codex::discovery::{find_codex_binary, is_codex_logged_in};
+use crate::agent_provider::{AgentProvider, ClaudeCodeProvider, CodexProvider};
+use crate::binary::BinaryStatus;
+use crate::tool_cards::ToolProvider;
 use crate::workspace::state::ActiveWorkspace;
+
+/// One selectable model plus the effort levels valid for it, as reported by
+/// an `AgentProvider`.
+#[derive(Debug, Serialize)]
+pub struct AgentModelInfo {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub effort_levels: &'static [&'static str],
+}
+
+/// Capability metadata for one provider: which models it offers, which is
+/// the default, and which is used for lightweight background work (chat
+/// titles).
+#[derive(Debug, Serialize)]
+pub struct ProviderCapabilities {
+    pub provider: ToolProvider,
+    pub default_model: &'static str,
+    pub lightweight_model: &'static str,
+    pub models: Vec<AgentModelInfo>,
+}
+
+fn capabilities(agent: &dyn AgentProvider) -> ProviderCapabilities {
+    ProviderCapabilities {
+        provider: agent.id(),
+        default_model: agent.default_model(),
+        lightweight_model: agent.lightweight_model(),
+        models: agent
+            .models()
+            .iter()
+            .map(|m| AgentModelInfo {
+                id: m.id,
+                label: m.label,
+                effort_levels: agent.effort_levels_for(m.id),
+            })
+            .collect(),
+    }
+}
+
+#[tauri::command]
+pub fn list_agent_models() -> Vec<ProviderCapabilities> {
+    vec![
+        capabilities(&ClaudeCodeProvider),
+        capabilities(&CodexProvider),
+    ]
+}
 
 /// Machine-level info that doesn't change for the lifetime of the app
 /// process. Computed once on first request and cached.
@@ -163,8 +208,8 @@ fn collect_system_metrics(
     // Only re-query nvidia-smi for live usage if a GPU was detected at all.
     let gpu_usage_pct = if has_gpu { query_nvidia_smi().1 } else { None };
 
-    let claude_binary = binary_status("claude", find_claude_binary(), is_claude_logged_in);
-    let codex_binary = binary_status("codex", find_codex_binary(), is_codex_logged_in);
+    let claude_binary = ClaudeCodeProvider.readiness();
+    let codex_binary = CodexProvider.readiness();
 
     SystemMetrics {
         git_branch,

@@ -58,6 +58,13 @@ impl SessionManager {
         self.0.lock().unwrap().get(tab_id)?.running_pid
     }
 
+    /// The wire-format provider name (`"claude"` / `"codex"`) the current
+    /// turn on `tab_id` is running, if known. Used by `chat_cancel` to route
+    /// through the right `AgentProvider::cancel`.
+    pub fn get_provider(&self, tab_id: &str) -> Option<String> {
+        self.0.lock().unwrap().get(tab_id)?.provider.clone()
+    }
+
     pub fn set_pid(&self, tab_id: &str, pid: u32) {
         let mut map = self.0.lock().unwrap();
         map.entry(tab_id.to_string()).or_default().running_pid = Some(pid);

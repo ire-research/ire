@@ -4,10 +4,9 @@ use serde::Serialize;
 use serde_json::json;
 use tauri::{AppHandle, State};
 
-use crate::binary::{binary_status, BinaryStatus};
-use crate::claude_code::discovery::{find_claude_binary, is_claude_logged_in};
+use crate::agent_provider::{AgentProvider, ClaudeCodeProvider, CodexProvider};
+use crate::binary::BinaryStatus;
 use crate::claude_code::session::SessionManager;
-use crate::codex::discovery::{find_codex_binary, is_codex_logged_in};
 use crate::db::schema;
 use crate::events::{self, EventSource};
 use crate::mcp::{McpHandle, McpState};
@@ -25,8 +24,8 @@ pub struct SetupStatus {
 #[tauri::command]
 pub fn setup_status() -> SetupStatus {
     tracing::debug!("setup_status");
-    let claude_binary = binary_status("claude", find_claude_binary(), is_claude_logged_in);
-    let codex_binary = binary_status("codex", find_codex_binary(), is_codex_logged_in);
+    let claude_binary = ClaudeCodeProvider.readiness();
+    let codex_binary = CodexProvider.readiness();
     SetupStatus {
         claude_binary,
         codex_binary,
