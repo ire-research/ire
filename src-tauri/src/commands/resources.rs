@@ -7,12 +7,7 @@ use std::sync::Mutex;
 use serde::Deserialize;
 use tauri::{AppHandle, Emitter, State};
 
-use crate::claude_code::discovery::find_claude_binary;
-use crate::claude_code::spawn::{build_command, SpawnArgs};
-use crate::claude_code::stream as cc_stream;
-use crate::codex::discovery::find_codex_binary;
-use crate::codex::spawn::{build_codex_command, CodexSpawnArgs};
-use crate::codex::stream as codex_stream;
+use crate::agent_provider::{self, TurnRequest};
 use crate::commands::chat::ChatOptions;
 use crate::prompts;
 use crate::resources::fetch::fetch_and_extract;
@@ -367,15 +362,10 @@ fn start_resource_summary(
     sources: Vec<SummarySource>,
     options: ChatOptions,
 ) -> Result<(), String> {
-    if options.provider != "claude" && options.provider != "codex" {
-        return Err(format!("unsupported provider: {}", options.provider));
-    }
+    let agent = agent_provider::provider(&options.provider)
+        .ok_or_else(|| format!("unsupported provider: {}", options.provider))?;
 
-    let bin = if options.provider == "codex" {
-        find_codex_binary().map_err(|e| e.to_string())?.path
-    } else {
-        find_claude_binary().map_err(|e| e.to_string())?.path
-    };
+    let bin = agent.discover().map_err(|e| e.to_string())?.path;
 
     let tab_id = uuid::Uuid::new_v4().to_string();
     app_handle
@@ -418,31 +408,22 @@ fn start_resource_summary(
                 None
             };
 
-            let mut cmd = if provider == "codex" {
-                build_codex_command(&CodexSpawnArgs {
-                    bin: &bin,
+            let mut cmd = agent.build_command(
+                &bin,
+                &TurnRequest {
                     workspace: &workspace_clone2,
                     message: &prompt,
-                    model: &model,
-                    reasoning_effort: effort.as_deref().unwrap_or("low"),
-                    system_prompt: Some(&system_prompt),
-                    mcp_config: mcp_config.as_deref(),
-                    resume_id: None,
-                })
-            } else {
-                build_command(&SpawnArgs {
-                    bin: &bin,
-                    workspace: &workspace_clone2,
-                    message: &prompt,
-                    resume_id: None,
-                    mcp_config: mcp_config.as_deref(),
-                    system_prompt: Some(&system_prompt),
                     model: &model,
                     effort: effort.as_deref(),
-                })
-            };
+                    resume_id: None,
+                    mcp_config: mcp_config.as_deref(),
+                    system_prompt: Some(&system_prompt),
+                },
+            );
 
-            let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+            let mut child = cmd
+                .spawn()
+                .map_err(|e| agent.normalize_spawn_error(&e).to_string())?;
             let pid = child.id();
             let stream_id = format!("{}:{}", tab_id_clone, uuid::Uuid::new_v4());
             let mut event_id = 0_u64;
@@ -479,11 +460,7 @@ fn start_resource_summary(
                             }),
                         );
                     };
-                    if provider == "codex" {
-                        codex_stream::dispatch(&json, &mut state, &mut emit_event);
-                    } else {
-                        cc_stream::dispatch(&json, &mut state, &mut emit_event);
-                    }
+                    agent.dispatch(&json, &mut state, &mut emit_event);
                 }
             }
 

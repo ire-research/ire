@@ -131,15 +131,43 @@ pub trait AgentProvider: Send + Sync {
     }
 }
 
+/// One entry in the provider registry: the wire-format name paired with its
+/// `AgentProvider` and (if it has one) its `ModelCatalog`. This is the single
+/// place that knows which providers exist — `provider()` and `all()` both
+/// read from it, so registering a provider here is enough for every caller
+/// (including `commands/system::list_agent_models`) to pick it up; nothing
+/// else needs its own copy of the provider-name list.
+struct Registered {
+    name: &'static str,
+    agent: &'static dyn AgentProvider,
+    catalog: Option<&'static dyn ModelCatalog>,
+}
+
+static REGISTRY: &[Registered] = &[
+    Registered {
+        name: "claude",
+        agent: &ClaudeCodeProvider,
+        catalog: Some(&ClaudeCodeProvider),
+    },
+    Registered {
+        name: "codex",
+        agent: &CodexProvider,
+        catalog: Some(&CodexProvider),
+    },
+];
+
 /// Looks up the adapter for a wire-format provider name (`"claude"` /
 /// `"codex"`), the same strings used in `ChatOptions::provider` and the
 /// `chat_sessions` resume columns.
 pub fn provider(name: &str) -> Option<&'static dyn AgentProvider> {
-    match name {
-        "claude" => Some(&ClaudeCodeProvider),
-        "codex" => Some(&CodexProvider),
-        _ => None,
-    }
+    REGISTRY.iter().find(|r| r.name == name).map(|r| r.agent)
+}
+
+/// Every registered provider, paired with its model catalog if it has one.
+/// Used by `list_agent_models` so the known-provider set has exactly one
+/// owner instead of a separately maintained name list.
+pub fn all() -> impl Iterator<Item = (&'static dyn AgentProvider, Option<&'static dyn ModelCatalog>)> {
+    REGISTRY.iter().map(|r| (r.agent, r.catalog))
 }
 
 /// Optional capability, separate from `AgentProvider`: a provider whose
@@ -158,16 +186,6 @@ pub trait ModelCatalog: Send + Sync {
     fn discover_models(&self) -> Result<Vec<ModelInfo>, AgentError>;
 }
 
-/// Looks up the model catalog for a wire-format provider name, if it has
-/// one. Separate from `provider()` because not every `AgentProvider`
-/// implements `ModelCatalog`.
-pub fn model_catalog(name: &str) -> Option<&'static dyn ModelCatalog> {
-    match name {
-        "claude" => Some(&ClaudeCodeProvider),
-        "codex" => Some(&CodexProvider),
-        _ => None,
-    }
-}
 
 struct StaticModel {
     id: &'static str,
@@ -316,14 +334,17 @@ impl AgentProvider for CodexProvider {
     }
 
     fn normalize_spawn_error(&self, err: &std::io::Error) -> AgentError {
-        // The codex npm package is a `#!/usr/bin/env node` script; a minimal
-        // inherited PATH (e.g. launched from Finder) can't find `node`. See
-        // `codex::spawn::build_codex_command`'s PATH prepend workaround, which
-        // this only catches when it wasn't enough (`bin` had no parent, or
-        // `node` is missing system-wide).
+        // `Command::spawn()` returns `NotFound` when the OS can't exec the
+        // path it was given — i.e. the discovered `bin` itself has gone
+        // missing (uninstalled, moved, an nvm alias switch) between
+        // `discover()` and this call, not a missing `node` runtime: a
+        // `#!/usr/bin/env node` script's shebang is resolved by the kernel
+        // as part of that same exec, so a missing `node` only shows up
+        // later as a nonzero exit status from the running process, never as
+        // an `io::Error` here.
         if err.kind() == std::io::ErrorKind::NotFound {
             AgentError {
-                message: "codex could not find a node runtime in PATH to run its script entry point"
+                message: "codex binary not found — it may have been moved or uninstalled since it was last detected"
                     .to_string(),
             }
         } else {
@@ -398,10 +419,15 @@ mod tests {
     }
 
     #[test]
-    fn model_catalog_lookup_resolves_wire_names() {
-        assert!(model_catalog("claude").is_some());
-        assert!(model_catalog("codex").is_some());
-        assert!(model_catalog("gemini").is_none());
+    fn all_returns_every_registered_provider_paired_with_its_catalog() {
+        let all: Vec<_> = all().collect();
+        assert_eq!(all.len(), 2);
+        assert!(all
+            .iter()
+            .all(|(_, catalog)| catalog.is_some()));
+        let names: Vec<&str> = all.iter().map(|(agent, _)| agent.name()).collect();
+        assert!(names.contains(&"claude"));
+        assert!(names.contains(&"codex"));
     }
 
     #[test]
@@ -471,10 +497,10 @@ mod tests {
     }
 
     #[test]
-    fn codex_normalizes_missing_node_error() {
+    fn codex_normalizes_missing_binary_error() {
         let err = std::io::Error::from(std::io::ErrorKind::NotFound);
         let msg = CodexProvider.normalize_spawn_error(&err).to_string();
-        assert!(msg.contains("node runtime"), "got: {msg}");
+        assert!(msg.contains("codex binary not found"), "got: {msg}");
     }
 
     #[test]

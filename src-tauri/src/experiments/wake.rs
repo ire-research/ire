@@ -4,16 +4,11 @@ use std::path::Path;
 
 use tauri::{AppHandle, Emitter};
 
-use crate::claude_code::discovery::find_claude_binary;
-use crate::claude_code::spawn::{build_command, SpawnArgs};
-use crate::claude_code::stream as cc_stream;
-use crate::codex::discovery::find_codex_binary;
-use crate::codex::spawn::{build_codex_command, CodexSpawnArgs};
-use crate::codex::stream as codex_stream;
-use crate::session::SessionManager;
-use crate::stream_event::{StreamEvent, StreamState};
+use crate::agent_provider::{self, TurnRequest};
 use crate::commands::chat::build_system_prompt;
 use crate::prompts::{self, WakeupArgs};
+use crate::session::SessionManager;
+use crate::stream_event::{StreamEvent, StreamState};
 
 pub struct FireWakeupArgs<'a> {
     pub workspace_root: &'a Path,
@@ -48,6 +43,12 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         tracing::warn!("cannot determine home directory for experiment wake-up");
         return;
     };
+
+    let Some(agent) = agent_provider::provider(provider) else {
+        tracing::error!(provider = %provider, "wake-up: unsupported provider");
+        return;
+    };
+
     let exp_dir = workspace_root
         .join(".ire/cache/experiments")
         .join(uuid);
@@ -73,26 +74,12 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
 
     tracing::info!(uuid = %uuid, tab_id = %tab_id, provider = %provider, "firing experiment wake-up");
 
-    let provider = if provider == "codex" {
-        "codex"
-    } else {
-        "claude"
-    };
-    let bin = match provider {
-        "codex" => match find_codex_binary() {
-            Ok(b) => b.path,
-            Err(e) => {
-                tracing::error!(error = %e, "wake-up: codex binary not found");
-                return;
-            }
-        },
-        _ => match find_claude_binary() {
-            Ok(b) => b.path,
-            Err(e) => {
-                tracing::error!(error = %e, "wake-up: claude binary not found");
-                return;
-            }
-        },
+    let bin = match agent.discover() {
+        Ok(b) => b.path,
+        Err(e) => {
+            tracing::error!(error = %e, provider = %provider, "wake-up: binary not found");
+            return;
+        }
     };
 
     let resume_id = match crate::db::models::get_chat_resume_id(&home_data_dir, session_uuid, provider) {
@@ -102,33 +89,24 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
             None
         }
     };
-    let mut cmd = match provider {
-        "codex" => build_codex_command(&CodexSpawnArgs {
-            bin: &bin,
+
+    let mut cmd = agent.build_command(
+        &bin,
+        &TurnRequest {
             workspace: workspace_root,
             message: &message,
-            model,
-            reasoning_effort: effort.unwrap_or("low"),
-            system_prompt: Some(&system_prompt),
-            mcp_config: mcp_config.as_deref(),
-            resume_id: resume_id.as_deref(),
-        }),
-        _ => build_command(&SpawnArgs {
-            bin: &bin,
-            workspace: workspace_root,
-            message: &message,
-            resume_id: resume_id.as_deref(),
-            mcp_config: mcp_config.as_deref(),
-            system_prompt: Some(&system_prompt),
             model,
             effort,
-        }),
-    };
+            resume_id: resume_id.as_deref(),
+            mcp_config: mcp_config.as_deref(),
+            system_prompt: Some(&system_prompt),
+        },
+    );
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            tracing::error!(error = %e, provider = %provider, "wake-up: failed to spawn agent");
+            tracing::error!(error = %agent.normalize_spawn_error(&e), provider = %provider, "wake-up: failed to spawn agent");
             return;
         }
     };
@@ -147,7 +125,6 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
 
     let mut state = StreamState::default();
     let tab_id_owned = tab_id.to_string();
-    let provider_owned = provider.to_string();
     session_manager.set_agent_options(tab_id, session_uuid, provider, model, effort);
     let stream_id = format!("{tab_id}:{}", uuid::Uuid::new_v4());
     let mut event_id = 0_u64;
@@ -162,7 +139,7 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
                 let _ = crate::db::models::update_chat_resume_id(
                     &home_data_dir,
                     session_uuid,
-                    &provider_owned,
+                    provider,
                     session_id,
                 );
             }
@@ -177,11 +154,7 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
                 }),
             );
         };
-        if provider_owned == "codex" {
-            codex_stream::dispatch(&json, &mut state, &mut emit_event);
-        } else {
-            cc_stream::dispatch(&json, &mut state, &mut emit_event);
-        }
+        agent.dispatch(&json, &mut state, &mut emit_event);
     }
 
     let _ = child.wait();

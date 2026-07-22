@@ -273,12 +273,9 @@ fn clean_title(raw: &str) -> String {
 pub fn chat_cancel(session: State<'_, SessionManager>, tab_id: String) -> Result<(), String> {
     tracing::debug!(tab_id = %tab_id, "chat_cancel");
     session.cancel_ask(&tab_id);
-    if let Some(pid) = session.get_pid(&tab_id) {
+    if let Some((pid, provider)) = session.get_pid_and_provider(&tab_id) {
         tracing::info!(tab_id = %tab_id, pid = pid, "cancelling agent subprocess");
-        match session
-            .get_provider(&tab_id)
-            .and_then(|name| agent_provider::provider(&name))
-        {
+        match provider.and_then(|name| agent_provider::provider(&name)) {
             Some(agent) => agent.cancel(pid),
             None => kill_process(pid),
         }

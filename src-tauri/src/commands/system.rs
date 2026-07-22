@@ -39,16 +39,10 @@ fn capabilities(agent: &dyn AgentProvider, catalog: Option<&dyn ModelCatalog>) -
     }
 }
 
-const PROVIDER_NAMES: &[&str] = &["claude", "codex"];
-
 #[tauri::command]
 pub fn list_agent_models() -> Vec<ProviderCapabilities> {
-    PROVIDER_NAMES
-        .iter()
-        .filter_map(|name| {
-            let agent = crate::agent_provider::provider(name)?;
-            Some(capabilities(agent, crate::agent_provider::model_catalog(name)))
-        })
+    crate::agent_provider::all()
+        .map(|(agent, catalog)| capabilities(agent, catalog))
         .collect()
 }
 

@@ -1,8 +1,12 @@
 # Adding a new `AgentProvider`
 
 Walkthrough for wiring in a third agent CLI (Claude Code and Codex are the
-two existing ones) alongside the current pair, without touching call sites
-in `commands/chat.rs`, `commands/system.rs`, or `commands/workspace.rs`. See
+two existing ones) alongside the current pair, without touching any of the
+call sites that already resolve providers through `agent_provider` —
+`commands/chat.rs`'s `chat_send`/`generate_chat_title`/`chat_cancel`,
+`commands/resources.rs`'s `start_resource_summary`, `experiments/wake.rs`'s
+`fire_wakeup`, `commands/system.rs`'s readiness checks and
+`list_agent_models`, and `commands/workspace.rs`'s `setup_status`. See
 [docs/architecture/chat-agents.md — the `AgentProvider` trait](../architecture/chat-agents.md#the-agentprovider-trait-agent_providerrs)
 for what the trait looks like and how it's already wired in; this file is
 the steps to extend it.
@@ -49,7 +53,11 @@ impl AgentProvider for NewCliProvider {
     }
     // normalize_spawn_error / cancel: only override if the CLI has a failure
     // mode the default (pass the io::Error through / SIGTERM the pid) can't
-    // describe usefully — see CodexProvider's missing-node-in-PATH override.
+    // describe usefully — see CodexProvider's override for what a spawn-time
+    // `NotFound` actually means (the discovered binary path itself is now
+    // unreachable, not e.g. a missing runtime the binary depends on: that
+    // kind of failure happens after spawn succeeds and surfaces as a
+    // nonzero exit status, not an `io::Error` here).
 }
 ```
 
@@ -84,38 +92,41 @@ impl ModelCatalog for NewCliProvider {
 
 If the CLI has no fixed catalog and no way to enumerate one at all (e.g. it
 just accepts whatever model string the user types, sourced from wherever
-its own config lives), skip this impl entirely. `model_catalog(name)`
-returning `None` for it is a legitimate, handled state — `list_agent_models`
+its own config lives), skip this impl entirely and register it with
+`catalog: None` (step 4). That's a legitimate, handled state — `list_agent_models`
 already treats "no catalog" and "catalog resolution failed" the same way
 (empty `models`, `default_model: None`), not as an error.
 
-## 4. Register it in the lookups
+## 4. Register it in the registry
+
+`agent_provider::REGISTRY` is the single place that knows which providers
+exist — `provider(name)` and `all()` both read from it. Add one entry:
 
 ```rust
-pub fn provider(name: &str) -> Option<&'static dyn AgentProvider> {
-    match name {
-        "claude" => Some(&ClaudeCodeProvider),
-        "codex" => Some(&CodexProvider),
-        "new_cli" => Some(&NewCliProvider),
-        _ => None,
-    }
-}
-
-pub fn model_catalog(name: &str) -> Option<&'static dyn ModelCatalog> {
-    match name {
-        "claude" => Some(&ClaudeCodeProvider),
-        "codex" => Some(&CodexProvider),
-        "new_cli" => Some(&NewCliProvider),  // omit this arm if step 3 was skipped
-        _ => None,
-    }
-}
+static REGISTRY: &[Registered] = &[
+    Registered {
+        name: "claude",
+        agent: &ClaudeCodeProvider,
+        catalog: Some(&ClaudeCodeProvider),
+    },
+    Registered {
+        name: "codex",
+        agent: &CodexProvider,
+        catalog: Some(&CodexProvider),
+    },
+    Registered {
+        name: "new_cli",
+        agent: &NewCliProvider,
+        catalog: Some(&NewCliProvider),  // catalog: None if step 3 was skipped
+    },
+];
 ```
 
-Also add `"new_cli"` to `PROVIDER_NAMES` in `commands/system.rs` so
-`list_agent_models` picks it up. Together with the two match arms above,
-this is what makes `chat_send`, `generate_chat_title`, `chat_cancel`,
-`setup_status`, and `get_system_metrics` pick the new provider up — none of
-those call sites need editing.
+That one array entry is what makes `chat_send`, `generate_chat_title`,
+`chat_cancel`, `start_resource_summary`, `fire_wakeup`, `setup_status`,
+`get_system_metrics`, and `list_agent_models` all pick the new provider
+up — none of those call sites need editing, and there's no second list
+(match arms, a name array, anything else) to keep in sync by hand.
 
 ## 5. Wire up the frontend
 
