@@ -7,6 +7,7 @@ import {
   useChatOptions,
   type Provider,
 } from "../../state/chatOptions";
+import { PROVIDER_LABELS } from "../../types";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faTrash, faChevronRight, faFolderOpen, iconClass } from "../../icons";
 
@@ -53,13 +54,10 @@ export function SetupScreen({ status, onRefresh }: Props) {
     }
   };
 
-  const binaryReady = status.claude_binary.kind === "ready";
-  const codexReady = status.codex_binary.kind === "ready";
-  const availableProviders: Provider[] = [
-    ...(binaryReady ? (["claude"] as const) : []),
-    ...(codexReady ? (["codex"] as const) : []),
-  ];
-  const canOpenWorkspace = binaryReady || codexReady;
+  const availableProviders: Provider[] = status.providers
+    .filter((p) => p.binary.kind === "ready")
+    .map((p) => p.provider);
+  const canOpenWorkspace = availableProviders.length > 0;
 
   const openWorkspace = async (path: string) => {
     setError(null);
@@ -198,8 +196,15 @@ export function SetupScreen({ status, onRefresh }: Props) {
 
         {/* Status rows */}
         <div className="flex flex-col gap-2">
-          <BinaryRow label="claude-code" status={status.claude_binary} busy={busy} onRefresh={onRefresh} />
-          <BinaryRow label="codex" status={status.codex_binary} busy={busy} onRefresh={onRefresh} />
+          {status.providers.map((p) => (
+            <BinaryRow
+              key={p.provider}
+              label={PROVIDER_LABELS[p.provider]}
+              status={p.binary}
+              busy={busy}
+              onRefresh={onRefresh}
+            />
+          ))}
           {!canOpenWorkspace && (
             <div className="font-mono text-[11px] text-error">
               install claude-code or codex to continue

@@ -4,32 +4,39 @@ use serde::Serialize;
 use serde_json::json;
 use tauri::{AppHandle, State};
 
-use crate::agent_provider::{AgentProvider, ClaudeCodeProvider, CodexProvider};
+use crate::agent_provider;
 use crate::binary::BinaryStatus;
 use crate::session::SessionManager;
 use crate::db::schema;
 use crate::events::{self, EventSource};
 use crate::mcp::{McpHandle, McpState};
+use crate::tool_cards::ToolProvider;
 use crate::user_config::{self, UserConfig};
 use crate::workspace::init as ws_init;
 use crate::workspace::lock::{LockError, WorkspaceLock};
 use crate::workspace::state::{ActiveWorkspace, WorkspaceHandle, WorkspaceState};
 
 #[derive(Debug, Serialize)]
+pub struct ProviderReadiness {
+    pub provider: ToolProvider,
+    pub binary: BinaryStatus,
+}
+
+#[derive(Debug, Serialize)]
 pub struct SetupStatus {
-    pub claude_binary: BinaryStatus,
-    pub codex_binary: BinaryStatus,
+    pub providers: Vec<ProviderReadiness>,
 }
 
 #[tauri::command]
 pub fn setup_status() -> SetupStatus {
     tracing::debug!("setup_status");
-    let claude_binary = ClaudeCodeProvider.readiness();
-    let codex_binary = CodexProvider.readiness();
-    SetupStatus {
-        claude_binary,
-        codex_binary,
-    }
+    let providers = agent_provider::all()
+        .map(|(agent, _catalog)| ProviderReadiness {
+            provider: agent.id(),
+            binary: agent.readiness(),
+        })
+        .collect();
+    SetupStatus { providers }
 }
 
 #[tauri::command]

@@ -51,10 +51,9 @@ export function Layout() {
 
   useEffect(() => {
     if (!metrics) return;
-    const providers: ("claude" | "codex")[] = [
-      ...(metrics.claude_binary.kind === "ready" ? (["claude"] as const) : []),
-      ...(metrics.codex_binary.kind === "ready" ? (["codex"] as const) : []),
-    ];
+    const providers = metrics.providers
+      .filter((p) => p.binary.kind === "ready")
+      .map((p) => p.provider);
     setAvailableProviders(providers);
   }, [metrics, setAvailableProviders]);
 
