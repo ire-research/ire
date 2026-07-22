@@ -35,11 +35,19 @@ CREATE TABLE IF NOT EXISTS chat_sessions (
     ended_at          TEXT NOT NULL,
     message_count     INTEGER NOT NULL,
     first_user_msg    TEXT,
-    messages_json     TEXT NOT NULL,
-    claude_session_id TEXT,
-    codex_thread_id   TEXT
+    messages_json     TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_ended ON chat_sessions(ended_at DESC);
+
+-- One resume id per (session, provider): a session can be resumed under
+-- whichever provider it was last driven by, without a fixed column per
+-- known provider name.
+CREATE TABLE IF NOT EXISTS chat_resume_ids (
+    session_uuid TEXT NOT NULL,
+    provider     TEXT NOT NULL,
+    resume_id    TEXT NOT NULL,
+    PRIMARY KEY (session_uuid, provider)
+);
 ";
 
 /// Create the local DB tables if they don't already exist.
