@@ -5,10 +5,53 @@ use std::sync::{Arc, Mutex};
 use sysinfo::{CpuRefreshKind, RefreshKind, System};
 use tauri::State;
 
-use crate::binary::{binary_status, BinaryStatus};
-use crate::claude_code::discovery::{find_claude_binary, is_claude_logged_in};
-use crate::codex::discovery::{find_codex_binary, is_codex_logged_in};
+use crate::agent_provider::{
+    AgentProvider, ClaudeCodeProvider, CodexProvider, ModelCatalog, ModelCatalogStatus,
+};
+use crate::binary::BinaryStatus;
+use crate::tool_cards::ToolProvider;
 use crate::workspace::state::ActiveWorkspace;
+
+/// Capability metadata for one provider: its model catalog status (see
+/// `ModelCatalogStatus` — distinguishes "nothing configured" from "catalog
+/// discovery failed") and the default model (its catalog's first entry, if
+/// the catalog resolved with at least one model). This is independent of
+/// the provider being unavailable (see `AgentProvider::readiness`).
+#[derive(Debug, Serialize)]
+pub struct ProviderCapabilities {
+    pub provider: ToolProvider,
+    pub default_model: Option<String>,
+    pub catalog: ModelCatalogStatus,
+}
+
+fn capabilities(agent: &dyn AgentProvider, catalog: Option<&dyn ModelCatalog>) -> ProviderCapabilities {
+    let status = match catalog.map(ModelCatalog::discover_models) {
+        Some(Ok(models)) => ModelCatalogStatus::Available { models },
+        Some(Err(e)) => {
+            tracing::warn!(provider = agent.name(), error = %e, "model discovery failed");
+            ModelCatalogStatus::Error {
+                message: e.to_string(),
+            }
+        }
+        None => ModelCatalogStatus::Available { models: Vec::new() },
+    };
+    let default_model = match &status {
+        ModelCatalogStatus::Available { models } => models.first().map(|m| m.id.clone()),
+        ModelCatalogStatus::Error { .. } => None,
+    };
+    ProviderCapabilities {
+        provider: agent.id(),
+        default_model,
+        catalog: status,
+    }
+}
+
+#[tauri::command]
+pub fn list_agent_models() -> Vec<ProviderCapabilities> {
+    crate::agent_provider::all()
+        .map(|(agent, catalog)| capabilities(agent, catalog))
+        .collect()
+}
 
 /// Machine-level info that doesn't change for the lifetime of the app
 /// process. Computed once on first request and cached.
@@ -163,8 +206,8 @@ fn collect_system_metrics(
     // Only re-query nvidia-smi for live usage if a GPU was detected at all.
     let gpu_usage_pct = if has_gpu { query_nvidia_smi().1 } else { None };
 
-    let claude_binary = binary_status("claude", find_claude_binary(), is_claude_logged_in);
-    let codex_binary = binary_status("codex", find_codex_binary(), is_codex_logged_in);
+    let claude_binary = ClaudeCodeProvider.readiness();
+    let codex_binary = CodexProvider.readiness();
 
     SystemMetrics {
         git_branch,
@@ -231,4 +274,86 @@ fn query_nvidia_smi() -> (Option<String>, Option<f32>, Option<u32>) {
     let vram_mb = parts[2].parse::<u32>().ok();
     let vram_gb = vram_mb.map(|m| m / 1024);
     (model, usage, vram_gb)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::agent_provider::{AgentError, ModelInfo, TurnRequest};
+    use crate::binary::{DiscoveredBinary, DiscoveryError};
+    use crate::stream_event::{StreamEvent, StreamState};
+
+    struct StubProvider;
+
+    impl AgentProvider for StubProvider {
+        fn id(&self) -> ToolProvider {
+            ToolProvider::Claude
+        }
+        fn name(&self) -> &'static str {
+            "stub"
+        }
+        fn discover(&self) -> Result<DiscoveredBinary, DiscoveryError> {
+            Err(DiscoveryError::NotFound)
+        }
+        fn is_logged_in(&self, _bin: &Path) -> bool {
+            false
+        }
+        fn build_command(&self, _bin: &Path, _req: &TurnRequest<'_>) -> Command {
+            Command::new("true")
+        }
+        fn dispatch(
+            &self,
+            _json: &serde_json::Value,
+            _state: &mut StreamState,
+            _emit: &mut dyn FnMut(StreamEvent),
+        ) {
+        }
+    }
+
+    struct FailingCatalog;
+
+    impl ModelCatalog for FailingCatalog {
+        fn discover_models(&self) -> Result<Vec<ModelInfo>, AgentError> {
+            Err(AgentError {
+                message: "endpoint unreachable".to_string(),
+            })
+        }
+    }
+
+    struct EmptyCatalog;
+
+    impl ModelCatalog for EmptyCatalog {
+        fn discover_models(&self) -> Result<Vec<ModelInfo>, AgentError> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[test]
+    fn catalog_error_is_surfaced_not_dropped() {
+        let caps = capabilities(&StubProvider, Some(&FailingCatalog));
+        match caps.catalog {
+            ModelCatalogStatus::Error { message } => assert_eq!(message, "endpoint unreachable"),
+            ModelCatalogStatus::Available { .. } => panic!("expected Error status"),
+        }
+        assert!(caps.default_model.is_none());
+    }
+
+    #[test]
+    fn empty_catalog_is_available_not_error() {
+        let caps = capabilities(&StubProvider, Some(&EmptyCatalog));
+        match caps.catalog {
+            ModelCatalogStatus::Available { models } => assert!(models.is_empty()),
+            ModelCatalogStatus::Error { .. } => panic!("expected Available status"),
+        }
+        assert!(caps.default_model.is_none());
+    }
+
+    #[test]
+    fn no_catalog_impl_is_available_empty_not_error() {
+        let caps = capabilities(&StubProvider, None);
+        match caps.catalog {
+            ModelCatalogStatus::Available { models } => assert!(models.is_empty()),
+            ModelCatalogStatus::Error { .. } => panic!("expected Available status"),
+        }
+    }
 }

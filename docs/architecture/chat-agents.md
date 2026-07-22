@@ -180,7 +180,55 @@ IRE supports multiple independent chat tabs in the central pane.
 
 ## Agent Subprocess Layer
 
-Claude Code implements the patterns from [docs/blueprints/claude-code-wrapper.md](blueprints/claude-code-wrapper.md). Codex uses the same frontend event contract through a parallel backend module.
+Claude Code implements the patterns from [docs/blueprints/claude-code-wrapper.md](blueprints/claude-code-wrapper.md). Codex uses the same frontend event contract through a parallel backend module. `agent_provider::AgentProvider` is the trait that unifies both behind one interface, so call sites look an adapter up once (`agent_provider::provider("claude" | "codex")`) instead of branching on the provider string at every use. It doesn't change what either CLI is invoked with — `ClaudeCodeProvider`/`CodexProvider` are thin wrappers over the discovery/spawn/stream modules described below.
+
+### The `AgentProvider` trait (`agent_provider.rs`)
+
+```rust
+pub trait AgentProvider: Send + Sync {
+    fn id(&self) -> ToolProvider;                        // ToolProvider::Claude / ::Codex
+    fn name(&self) -> &'static str;                       // "claude" / "codex"
+    fn discover(&self) -> Result<DiscoveredBinary, DiscoveryError>;
+    fn is_logged_in(&self, bin: &Path) -> bool;
+    fn readiness(&self) -> BinaryStatus;                  // default: binary_status(name(), discover(), is_logged_in)
+    fn build_command(&self, bin: &Path, req: &TurnRequest<'_>) -> Command;
+    fn title_request<'a>(&self, workspace: &'a Path, prompt: &'a str, model: &'a str) -> TurnRequest<'a>;
+    fn dispatch(&self, json: &Value, state: &mut StreamState, emit: &mut dyn FnMut(StreamEvent));
+    fn cancel(&self, pid: u32);                           // default: kill_process(pid)
+    fn normalize_spawn_error(&self, err: &std::io::Error) -> AgentError;
+}
+```
+
+`TurnRequest { workspace, message, model, effort, resume_id, mcp_config, system_prompt }` is the provider-neutral shape of one turn. `build_command` is where `mcp_config`/`system_prompt` get injected into each CLI's own surface — a raw `--mcp-config <path>` / `--append-system-prompt <text>` flag pair for Claude, translated `-c mcp_servers.*` / `-c developer_instructions=...` flags for Codex (see Spawn below); `resume_id` selects resume vs. fresh-session invocation the same way. `title_request` takes `model` as a caller-supplied argument rather than deriving it — see below for why.
+
+`ClaudeCodeProvider` and `CodexProvider` are zero-sized structs implementing the trait by delegating to `cc::discovery`/`cc::spawn`/`cc::stream` and `codex::discovery`/`codex::spawn`/`codex::stream` respectively — none of that logic is duplicated.
+
+**One static registry is the single source of truth for which providers exist.** A private `agent_provider::REGISTRY: &[Registered]` pairs each wire-format name (`"claude"`/`"codex"`) with its `&'static dyn AgentProvider` and, if it has one, its `&'static dyn ModelCatalog`. Two public functions read it — `provider(name: &str) -> Option<&'static dyn AgentProvider>` (used everywhere a call site needs to resolve one named provider) and `all() -> impl Iterator<Item = (&'static dyn AgentProvider, Option<&'static dyn ModelCatalog>)>` (used by `list_agent_models`, see below, to enumerate every registered provider without needing its own copy of the name list). Adding a provider is one array entry in `REGISTRY`; nothing else needs updating to make it show up everywhere `provider()`/`all()` are consulted.
+
+Call sites that used to branch on `provider == "codex"` now resolve the adapter once and call through it: `chat_send`/`generate_chat_title`/`resources::start_resource_summary`/`experiments::wake::fire_wakeup` (build command, spawn with `normalize_spawn_error` on failure, dispatch the stream), `chat_cancel` (reads the tab's pid and provider name in one lock acquisition via `SessionManager::get_pid_and_provider` — a single combined accessor, not two separate lookups, so the pair can't be read from two different points in time — and calls `.cancel(pid)`, falling back to the raw `kill_process` if the tab has no recorded provider), and the readiness checks in `setup_status` (`commands/workspace.rs`) and `get_system_metrics` (`commands/system.rs`), both now `XProvider.readiness()`. `fire_wakeup` in particular used to silently normalize any unrecognized provider string to `"claude"`; it now resolves through `agent_provider::provider(...)` and returns (logging an error) on an unknown name instead of guessing.
+
+**Model catalog is a separate, optional capability — not on `AgentProvider`.** An earlier version of this trait had `models()`/`default_model()`/`lightweight_model()`/`effort_levels_for()` returning `&'static` data, which assumes every provider ships a fixed, compile-time-known model list. That's true for Claude and Codex but not universal — a provider fronting Ollama or a custom endpoint has a dynamic, user-configured catalog it may need a round-trip to resolve, or may fail to resolve at all. That capability now lives on its own trait:
+
+```rust
+pub trait ModelCatalog: Send + Sync {
+    fn discover_models(&self) -> Result<Vec<ModelInfo>, AgentError>;  // ModelInfo { id, label, effort_levels }, all owned Strings
+}
+```
+
+`ModelInfo` is owned (not `&'static`) for the same reason. `ClaudeCodeProvider`/`CodexProvider` implement `ModelCatalog` trivially (their catalog is static, wrapped in `Ok(...)`), but a provider that can't enumerate models still implements all of `AgentProvider` — catalog-less is a valid state, not an error (a `Registered` entry's `catalog` field is simply `None`).
+
+`commands/system::list_agent_models` is the IPC command exposing this: it calls `agent_provider::all()` and builds one `ProviderCapabilities { provider, default_model, catalog }` per pair, where `catalog: ModelCatalogStatus` is:
+
+```rust
+pub enum ModelCatalogStatus {
+    Available { models: Vec<ModelInfo> },
+    Error { message: String },
+}
+```
+
+A provider with no `ModelCatalog` at all, and one whose `discover_models()` resolved successfully to an empty list, both report `Available { models: [] }` — "nothing to offer right now" (e.g. a local Ollama install with no models pulled), which isn't an error. A `discover_models()` failure reports `Error { message }` instead of being folded into the same empty list — this distinction matters for a provider whose catalog is a real, fallible round-trip (an unreachable Ollama endpoint should show an actionable error, not look identical to "you haven't configured anything yet"). `default_model` is `None` whenever `catalog` is `Error` or an empty `Available`. This does **not** consume the frontend's own static `MODELS`/`*_EFFORT_LEVELS` tables in `src/state/chatOptions.ts` yet — the two must be kept in sync by hand until the frontend reads this command instead.
+
+To wire in a third CLI alongside Claude Code and Codex, see [docs/blueprints/adding-a-provider.md](../blueprints/adding-a-provider.md).
 
 ### Binary discovery (`binary`, `cc::discovery`, `codex::discovery`)
 
@@ -213,6 +261,8 @@ Codex spawn uses `codex exec`, `--json`, `-m <model>`, `--dangerously-bypass-app
 ### JSONL parsers (`cc::stream`, `codex::stream`)
 
 Reads stdout line-by-line on a `spawn_blocking` thread; deserialises each line into `serde_json::Value`; dispatches provider-specific JSONL into typed `StreamEvent`s emitted to the frontend on the `chat-stream` channel. Each emitted payload includes `stream_id = "{tab_id}:{stream_uuid}"` and a per-process monotonic `event_id`.
+
+`StreamEvent`, `StreamState`, and `AskQuestion`/`AskQuestionOption` are defined once in the top-level `stream_event` module (not in `cc::stream`) since both parsers — and `AgentProvider::dispatch` — share them; `cc::stream`/`codex::stream` each own only their `dispatch()` function and provider-specific parsing helpers.
 
 ```rust
 #[serde(tag = "kind")]

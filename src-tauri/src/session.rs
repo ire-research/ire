@@ -24,7 +24,7 @@ pub struct ActiveSession {
     pub effort: Option<String>,
 }
 
-/// Holds per-tab CC session state. Clone is cheap (Arc clone).
+/// Holds per-tab agent session state (any `AgentProvider`). Clone is cheap (Arc clone).
 #[derive(Clone)]
 pub struct SessionManager(Arc<Mutex<HashMap<String, PerTabSession>>>);
 
@@ -56,6 +56,20 @@ impl SessionManager {
 
     pub fn get_pid(&self, tab_id: &str) -> Option<u32> {
         self.0.lock().unwrap().get(tab_id)?.running_pid
+    }
+
+    /// Atomically reads the running pid and its recorded provider name for
+    /// `tab_id` under one lock acquisition, so `chat_cancel` never observes
+    /// a pid and a provider read from two different points in time (which
+    /// two separate `get_pid`/`get_provider` calls could, if another task
+    /// mutates the session in between). Returns `None` if no turn is
+    /// currently running; the inner `Option<String>` is `None` if a turn is
+    /// running but its provider wasn't recorded (or was cleared by `reset`).
+    pub fn get_pid_and_provider(&self, tab_id: &str) -> Option<(u32, Option<String>)> {
+        let map = self.0.lock().unwrap();
+        let session = map.get(tab_id)?;
+        let pid = session.running_pid?;
+        Some((pid, session.provider.clone()))
     }
 
     pub fn set_pid(&self, tab_id: &str, pid: u32) {

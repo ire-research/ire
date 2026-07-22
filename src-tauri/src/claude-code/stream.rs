@@ -1,70 +1,7 @@
-use serde::Serialize;
 use serde_json::Value;
 
-use crate::tool_cards::{build_tool_call, text_output, ToolCall, ToolIo, ToolProvider, ToolStatus};
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct AskQuestionOption {
-    pub label: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub description: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct AskQuestion {
-    pub header: String,
-    pub question: String,
-    pub multi_select: bool,
-    pub options: Vec<AskQuestionOption>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(tag = "kind")]
-pub enum StreamEvent {
-    Init {
-        session_id: String,
-    },
-    TextDelta {
-        text: String,
-    },
-    ThinkingDelta {
-        text: String,
-    },
-    ToolStart {
-        tool: ToolCall,
-    },
-    ToolDone {
-        tool_id: String,
-        output: Option<ToolIo>,
-        status: ToolStatus,
-        meta: Value,
-    },
-    AskUserQuestion {
-        tool_id: String,
-        questions: Vec<AskQuestion>,
-    },
-    Result {
-        text: Option<String>,
-        session_id: String,
-    },
-    Error {
-        message: String,
-    },
-    Done,
-}
-
-#[derive(Default)]
-pub struct StreamState {
-    pub session_id: String,
-    pub emitted_text: bool,
-    pub emitted_done: bool,
-    pub emitted_codex_agent_item_ids: Vec<String>,
-    claude_message_id: Option<String>,
-    emitted_text_chars_by_block: Vec<usize>,
-    emitted_thinking_chars_by_block: Vec<usize>,
-    emitted_tool_ids: Vec<String>,
-    ask_tool_ids: Vec<String>,
-}
+use crate::stream_event::{AskQuestion, AskQuestionOption, StreamEvent, StreamState};
+use crate::tool_cards::{build_tool_call, text_output, ToolProvider, ToolStatus};
 
 pub fn dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, emit: &mut F) {
     match json["type"].as_str().unwrap_or("") {

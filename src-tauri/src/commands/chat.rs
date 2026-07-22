@@ -4,19 +4,15 @@ use std::path::Path;
 
 use tauri::{Emitter, State};
 
-use crate::claude_code::discovery::find_claude_binary;
-use crate::codex::discovery::find_codex_binary;
-use crate::codex::spawn::{build_codex_command, CodexSpawnArgs};
+use crate::agent_provider::{self, TurnRequest};
+use crate::session::SessionManager;
+use crate::stream_event::{StreamEvent, StreamState};
+use crate::workspace::state::ActiveWorkspace;
 
 fn trunc(s: &str) -> &str {
     let end = s.char_indices().nth(80).map(|(i, _)| i).unwrap_or(s.len());
     &s[..end]
 }
-use crate::claude_code::session::SessionManager;
-use crate::claude_code::spawn::{build_command, SpawnArgs};
-use crate::claude_code::stream::{self as cc_stream, StreamEvent, StreamState};
-use crate::codex::stream as codex_stream;
-use crate::workspace::state::ActiveWorkspace;
 
 #[derive(Clone, serde::Deserialize)]
 pub struct ChatOptions {
@@ -55,15 +51,10 @@ pub async fn chat_send(
     };
 
     let provider = options.provider.clone();
-    if provider != "claude" && provider != "codex" {
-        return Err(format!("unsupported provider: {provider}"));
-    }
+    let agent = agent_provider::provider(&provider)
+        .ok_or_else(|| format!("unsupported provider: {provider}"))?;
 
-    let bin = if provider == "codex" {
-        find_codex_binary().map_err(|e| e.to_string())?.path
-    } else {
-        find_claude_binary().map_err(|e| e.to_string())?.path
-    };
+    let bin = agent.discover().map_err(|e| e.to_string())?.path;
     let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
     let resume_id = match crate::db::models::get_chat_resume_id(&home_data_dir, &session_uuid, &provider) {
         Ok(v) => v,
@@ -111,31 +102,22 @@ pub async fn chat_send(
             options.effort.as_deref(),
         );
 
-        let mut cmd = if provider == "codex" {
-            build_codex_command(&CodexSpawnArgs {
-                bin: &bin,
+        let mut cmd = agent.build_command(
+            &bin,
+            &TurnRequest {
                 workspace: &workspace_path,
                 message: &message,
-                model: &options.model,
-                reasoning_effort: options.effort.as_deref().unwrap_or("low"),
-                system_prompt: Some(&system_prompt),
-                mcp_config: mcp_config.as_deref(),
-                resume_id: resume_id.as_deref(),
-            })
-        } else {
-            build_command(&SpawnArgs {
-                bin: &bin,
-                workspace: &workspace_path,
-                message: &message,
-                resume_id: resume_id.as_deref(),
-                mcp_config: mcp_config.as_deref(),
-                system_prompt: Some(&system_prompt),
                 model: &options.model,
                 effort: options.effort.as_deref(),
-            })
-        };
+                resume_id: resume_id.as_deref(),
+                mcp_config: mcp_config.as_deref(),
+                system_prompt: Some(&system_prompt),
+            },
+        );
 
-        let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| agent.normalize_spawn_error(&e).to_string())?;
         let pid = child.id();
         let stream_id = format!("{tab_id}:{}", uuid::Uuid::new_v4());
         let mut event_id = 0_u64;
@@ -176,11 +158,7 @@ pub async fn chat_send(
                         }),
                     );
                 };
-                if provider == "codex" {
-                    codex_stream::dispatch(&json, &mut state, &mut emit_event);
-                } else {
-                    cc_stream::dispatch(&json, &mut state, &mut emit_event);
-                }
+                agent.dispatch(&json, &mut state, &mut emit_event);
             }
         }
 
@@ -235,44 +213,22 @@ pub async fn generate_chat_title(
             .clone()
     };
 
-    if provider != "claude" && provider != "codex" {
-        return Err(format!("unsupported provider: {provider}"));
-    }
+    let agent = agent_provider::provider(&provider)
+        .ok_or_else(|| format!("unsupported provider: {provider}"))?;
 
-    let bin = if provider == "codex" {
-        find_codex_binary().map_err(|e| e.to_string())?.path
-    } else {
-        find_claude_binary().map_err(|e| e.to_string())?.path
-    };
+    let bin = agent.discover().map_err(|e| e.to_string())?.path;
 
     let prompt = crate::prompts::chat_title(&message);
 
     let title = tokio::task::spawn_blocking(move || {
-        let mut cmd = if provider == "codex" {
-            build_codex_command(&CodexSpawnArgs {
-                bin: &bin,
-                workspace: &workspace_path,
-                message: &prompt,
-                model: &model,
-                reasoning_effort: "low",
-                system_prompt: None,
-                mcp_config: None,
-                resume_id: None,
-            })
-        } else {
-            build_command(&SpawnArgs {
-                bin: &bin,
-                workspace: &workspace_path,
-                message: &prompt,
-                resume_id: None,
-                mcp_config: None,
-                system_prompt: None,
-                model: &model,
-                effort: None,
-            })
-        };
+        // `title_request` gives the no-resume/no-MCP/no-system-prompt shape;
+        // the frontend picks which lightweight model to use.
+        let req = agent.title_request(&workspace_path, &prompt, &model);
+        let mut cmd = agent.build_command(&bin, &req);
 
-        let mut child = cmd.spawn().map_err(|e| e.to_string())?;
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| agent.normalize_spawn_error(&e).to_string())?;
         let stdout = child.stdout.take().ok_or("no stdout")?;
         let mut state = StreamState::default();
         let mut collected = String::new();
@@ -286,11 +242,7 @@ pub async fn generate_chat_title(
                     } => collected.push_str(&text),
                     _ => {}
                 };
-                if provider == "codex" {
-                    codex_stream::dispatch(&json, &mut state, &mut collect);
-                } else {
-                    cc_stream::dispatch(&json, &mut state, &mut collect);
-                }
+                agent.dispatch(&json, &mut state, &mut collect);
             }
         }
         let _ = child.wait();
@@ -321,9 +273,12 @@ fn clean_title(raw: &str) -> String {
 pub fn chat_cancel(session: State<'_, SessionManager>, tab_id: String) -> Result<(), String> {
     tracing::debug!(tab_id = %tab_id, "chat_cancel");
     session.cancel_ask(&tab_id);
-    if let Some(pid) = session.get_pid(&tab_id) {
-        tracing::info!(tab_id = %tab_id, pid = pid, "cancelling claude subprocess");
-        kill_process(pid);
+    if let Some((pid, provider)) = session.get_pid_and_provider(&tab_id) {
+        tracing::info!(tab_id = %tab_id, pid = pid, "cancelling agent subprocess");
+        match provider.and_then(|name| agent_provider::provider(&name)) {
+            Some(agent) => agent.cancel(pid),
+            None => kill_process(pid),
+        }
     }
     Ok(())
 }

@@ -6,7 +6,7 @@ use anyhow::{anyhow, Result};
 use chrono::Local;
 use tauri::{AppHandle, Manager};
 
-use crate::claude_code::session::SessionManager;
+use crate::session::SessionManager;
 use crate::commands::resources::{add_resource_from_markdown, InflightResources};
 use crate::db::models as db;
 use crate::ire::store::atomic_write;

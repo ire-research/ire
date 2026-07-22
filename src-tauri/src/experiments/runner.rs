@@ -7,7 +7,7 @@ use anyhow::{anyhow, Context, Result};
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
-use crate::claude_code::session::{ActiveSession, SessionManager};
+use crate::session::{ActiveSession, SessionManager};
 use crate::db::models as db;
 use crate::events;
 

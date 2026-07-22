@@ -1,3 +1,4 @@
+mod agent_provider;
 mod analytics;
 mod binary;
 #[path = "claude-code/mod.rs"]
@@ -10,12 +11,14 @@ mod experiments;
 mod mcp;
 mod prompts;
 mod resources;
+mod session;
+mod stream_event;
 mod tool_cards;
 mod user_config;
 mod ire;
 mod workspace;
 
-use claude_code::session::SessionManager;
+use session::SessionManager;
 use commands::chat::{
     chat_cancel, chat_reset_session, chat_send, generate_chat_title, submit_ask_answer,
 };
@@ -30,7 +33,9 @@ use commands::resources::{
     confirm_resource, discard_resource, read_resource_draft, save_resource_draft,
     submit_local_resource, submit_resource, submit_resources, InflightResources,
 };
-use commands::system::{get_system_info, get_system_metrics, CpuMonitor, SystemInfoCache};
+use commands::system::{
+    get_system_info, get_system_metrics, list_agent_models, CpuMonitor, SystemInfoCache,
+};
 use commands::ire::{
     read_resource, save_focus_field, save_ideas, save_notes, save_resource,
 };
@@ -91,6 +96,7 @@ pub fn run() {
             save_ideas,
             get_system_info,
             get_system_metrics,
+            list_agent_models,
             chat_send,
             chat_cancel,
             chat_reset_session,
