@@ -5,8 +5,8 @@ use std::path::Path;
 use tauri::{Emitter, State};
 
 use crate::agent_provider::{self, TurnRequest};
-use crate::claude_code::session::SessionManager;
-use crate::claude_code::stream::{StreamEvent, StreamState};
+use crate::session::SessionManager;
+use crate::stream_event::{StreamEvent, StreamState};
 use crate::workspace::state::ActiveWorkspace;
 
 fn trunc(s: &str) -> &str {

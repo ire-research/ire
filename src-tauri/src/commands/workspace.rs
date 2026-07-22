@@ -6,7 +6,7 @@ use tauri::{AppHandle, State};
 
 use crate::agent_provider::{AgentProvider, ClaudeCodeProvider, CodexProvider};
 use crate::binary::BinaryStatus;
-use crate::claude_code::session::SessionManager;
+use crate::session::SessionManager;
 use crate::db::schema;
 use crate::events::{self, EventSource};
 use crate::mcp::{McpHandle, McpState};

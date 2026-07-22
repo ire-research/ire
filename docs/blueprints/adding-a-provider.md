@@ -14,7 +14,7 @@ ones:
 
 - **`discovery.rs`** — `find_<name>_binary() -> Result<DiscoveredBinary, DiscoveryError>` via `binary::find_binary(name, candidate_paths())`, plus `is_<name>_logged_in(bin: &Path) -> bool` via `binary::run_with_timeout`.
 - **`spawn.rs`** — a `<Name>SpawnArgs<'a>` struct and `build_<name>_command(&<Name>SpawnArgs) -> Command`. This is where the CLI's actual flags live: how it takes a message, model, effort, resume id, MCP config, and system prompt. Look at `codex::spawn::inject_mcp_servers` for the pattern to follow if the new CLI needs config translated rather than passed as a raw file path.
-- **`stream.rs`** — `dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, emit: &mut F)`, reusing `StreamEvent`/`StreamState` from `claude_code::stream` (don't define a new event enum) and `tool_cards::build_tool_call` to normalize tool calls into `ToolCall`.
+- **`stream.rs`** — `dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, emit: &mut F)`, reusing `StreamEvent`/`StreamState` from the top-level `stream_event` module (don't define a new event enum) and `tool_cards::build_tool_call` to normalize tool calls into `ToolCall`.
 
 Write the same kind of arg-shape and dispatch unit tests the existing
 modules have (`claude-code/spawn.rs`, `codex/stream.rs`) — these are what

@@ -24,7 +24,7 @@ pub struct ActiveSession {
     pub effort: Option<String>,
 }
 
-/// Holds per-tab CC session state. Clone is cheap (Arc clone).
+/// Holds per-tab agent session state (any `AgentProvider`). Clone is cheap (Arc clone).
 #[derive(Clone)]
 pub struct SessionManager(Arc<Mutex<HashMap<String, PerTabSession>>>);
 

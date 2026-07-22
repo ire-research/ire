@@ -13,7 +13,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::binary::{binary_status, BinaryStatus, DiscoveredBinary, DiscoveryError};
-use crate::claude_code::stream::{StreamEvent, StreamState};
+use crate::stream_event::{StreamEvent, StreamState};
 use crate::tool_cards::ToolProvider;
 
 /// Everything needed to spawn one agent turn, independent of provider.
@@ -106,8 +106,8 @@ pub trait AgentProvider: Send + Sync {
     // --- stream-event normalization ------------------------------------------
 
     /// Parses one JSONL line into zero or more `StreamEvent`s via `emit`.
-    /// Shares `StreamState`/`StreamEvent` across providers (defined in
-    /// `claude_code::stream`) so the frontend handles one event shape.
+    /// Every provider shares the same `StreamState`/`StreamEvent` (defined in
+    /// `stream_event`) so the frontend handles one event shape.
     fn dispatch(&self, json: &Value, state: &mut StreamState, emit: &mut dyn FnMut(StreamEvent));
 
     // --- cancellation --------------------------------------------------------

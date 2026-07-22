@@ -5,12 +5,13 @@ use std::path::Path;
 use tauri::{AppHandle, Emitter};
 
 use crate::claude_code::discovery::find_claude_binary;
-use crate::claude_code::session::SessionManager;
 use crate::claude_code::spawn::{build_command, SpawnArgs};
-use crate::claude_code::stream::{self as cc_stream, StreamEvent, StreamState};
+use crate::claude_code::stream as cc_stream;
 use crate::codex::discovery::find_codex_binary;
 use crate::codex::spawn::{build_codex_command, CodexSpawnArgs};
 use crate::codex::stream as codex_stream;
+use crate::session::SessionManager;
+use crate::stream_event::{StreamEvent, StreamState};
 use crate::commands::chat::build_system_prompt;
 use crate::prompts::{self, WakeupArgs};
 

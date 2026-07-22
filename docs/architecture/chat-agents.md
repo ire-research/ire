@@ -250,6 +250,8 @@ Codex spawn uses `codex exec`, `--json`, `-m <model>`, `--dangerously-bypass-app
 
 Reads stdout line-by-line on a `spawn_blocking` thread; deserialises each line into `serde_json::Value`; dispatches provider-specific JSONL into typed `StreamEvent`s emitted to the frontend on the `chat-stream` channel. Each emitted payload includes `stream_id = "{tab_id}:{stream_uuid}"` and a per-process monotonic `event_id`.
 
+`StreamEvent`, `StreamState`, and `AskQuestion`/`AskQuestionOption` are defined once in the top-level `stream_event` module (not in `cc::stream`) since both parsers — and `AgentProvider::dispatch` — share them; `cc::stream`/`codex::stream` each own only their `dispatch()` function and provider-specific parsing helpers.
+
 ```rust
 #[serde(tag = "kind")]
 enum StreamEvent {

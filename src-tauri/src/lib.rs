@@ -11,12 +11,14 @@ mod experiments;
 mod mcp;
 mod prompts;
 mod resources;
+mod session;
+mod stream_event;
 mod tool_cards;
 mod user_config;
 mod ire;
 mod workspace;
 
-use claude_code::session::SessionManager;
+use session::SessionManager;
 use commands::chat::{
     chat_cancel, chat_reset_session, chat_send, generate_chat_title, submit_ask_answer,
 };
