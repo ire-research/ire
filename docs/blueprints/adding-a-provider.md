@@ -16,7 +16,7 @@ the steps to extend it.
 Mirror `claude-code/` or `codex/` — three files, same shapes as the existing
 ones:
 
-- **`discovery.rs`** — `find_<name>_binary() -> Result<DiscoveredBinary, DiscoveryError>` via `binary::find_binary(name, candidate_paths())`, plus `is_<name>_logged_in(bin: &Path) -> bool` via `binary::run_with_timeout`.
+- **`discovery.rs`** — `find_<name>_binary() -> Result<DiscoveredBinary, DiscoveryError>` via `binary::find_binary(name, candidate_paths())`, plus `is_<name>_logged_in(bin: &Path) -> bool` via `binary::run_with_timeout`. A credential-free provider (a local/Ollama-backed backend, a custom endpoint with no OAuth step) has no real login check to write here — override `readiness()` directly instead of relying on the default `is_logged_in()`-driven fold, so it can report itself ready once its binary/backend is reachable, independent of any login concept.
 - **`spawn.rs`** — a `<Name>SpawnArgs<'a>` struct and `build_<name>_command(&<Name>SpawnArgs) -> Command`. This is where the CLI's actual flags live: how it takes a message, model, effort, resume id, MCP config, and system prompt. Look at `codex::spawn::inject_mcp_servers` for the pattern to follow if the new CLI needs config translated rather than passed as a raw file path.
 - **`stream.rs`** — `dispatch<F: FnMut(StreamEvent)>(json: &Value, state: &mut StreamState, emit: &mut F)`, reusing `StreamEvent`/`StreamState` from the top-level `stream_event` module (don't define a new event enum) and `tool_cards::build_tool_call` to normalize tool calls into `ToolCall`.
 

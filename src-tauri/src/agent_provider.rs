@@ -56,6 +56,23 @@ impl std::fmt::Display for AgentError {
     }
 }
 
+/// The result of resolving one provider's model catalog — kept distinct
+/// from an empty list so callers (the frontend model picker) can tell "no
+/// usable models configured" apart from "catalog discovery failed" and show
+/// the right thing for each: `Available { models: [] }` means the provider
+/// resolved cleanly but has nothing to offer yet (e.g. no models pulled
+/// into a local Ollama install), while `Error` carries an actionable reason
+/// (e.g. the backend was unreachable). A provider with no `ModelCatalog`
+/// implementation at all is reported as `Available { models: [] }` too —
+/// from the caller's perspective there's simply nothing to enumerate,
+/// which isn't an error either.
+#[derive(Debug, Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+pub enum ModelCatalogStatus {
+    Available { models: Vec<ModelInfo> },
+    Error { message: String },
+}
+
 /// A provider-scoped adapter over one agent CLI (Claude Code, Codex, ...).
 /// Object-safe so callers can hold `&'static dyn AgentProvider` / look one up
 /// by wire name instead of branching on `provider == "codex"`.
@@ -74,7 +91,12 @@ pub trait AgentProvider: Send + Sync {
     fn is_logged_in(&self, bin: &Path) -> bool;
 
     /// Folds discovery + login check into the tri-state `BinaryStatus` used
-    /// by `setup_status` / `get_system_metrics`.
+    /// by `setup_status` / `get_system_metrics`. This default assumes
+    /// "usable" means "logged in" — a credential-free provider (a
+    /// local/Ollama-backed backend, a custom endpoint with no OAuth step)
+    /// should override `readiness()` directly instead, so it can report
+    /// itself ready once its binary/backend is reachable without a login
+    /// concept at all.
     fn readiness(&self) -> BinaryStatus {
         binary_status(self.name(), self.discover(), |bin| self.is_logged_in(bin))
     }

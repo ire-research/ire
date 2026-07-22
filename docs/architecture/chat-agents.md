@@ -215,7 +215,18 @@ pub trait ModelCatalog: Send + Sync {
 }
 ```
 
-`ModelInfo` is owned (not `&'static`) for the same reason. `ClaudeCodeProvider`/`CodexProvider` implement `ModelCatalog` trivially (their catalog is static, wrapped in `Ok(...)`), but a provider that can't enumerate models still implements all of `AgentProvider` — catalog-less is a valid state, not an error (a `Registered` entry's `catalog` field is simply `None`). `commands/system::list_agent_models` is the IPC command exposing this: it calls `agent_provider::all()` and builds one `ProviderCapabilities` per pair, treating a missing catalog or a `discover_models` error the same way (empty `models: []`, `default_model: None`), and does **not** consume the frontend's own static `MODELS`/`*_EFFORT_LEVELS` tables in `src/state/chatOptions.ts` yet — the two must be kept in sync by hand until the frontend reads this command instead.
+`ModelInfo` is owned (not `&'static`) for the same reason. `ClaudeCodeProvider`/`CodexProvider` implement `ModelCatalog` trivially (their catalog is static, wrapped in `Ok(...)`), but a provider that can't enumerate models still implements all of `AgentProvider` — catalog-less is a valid state, not an error (a `Registered` entry's `catalog` field is simply `None`).
+
+`commands/system::list_agent_models` is the IPC command exposing this: it calls `agent_provider::all()` and builds one `ProviderCapabilities { provider, default_model, catalog }` per pair, where `catalog: ModelCatalogStatus` is:
+
+```rust
+pub enum ModelCatalogStatus {
+    Available { models: Vec<ModelInfo> },
+    Error { message: String },
+}
+```
+
+A provider with no `ModelCatalog` at all, and one whose `discover_models()` resolved successfully to an empty list, both report `Available { models: [] }` — "nothing to offer right now" (e.g. a local Ollama install with no models pulled), which isn't an error. A `discover_models()` failure reports `Error { message }` instead of being folded into the same empty list — this distinction matters for a provider whose catalog is a real, fallible round-trip (an unreachable Ollama endpoint should show an actionable error, not look identical to "you haven't configured anything yet"). `default_model` is `None` whenever `catalog` is `Error` or an empty `Available`. This does **not** consume the frontend's own static `MODELS`/`*_EFFORT_LEVELS` tables in `src/state/chatOptions.ts` yet — the two must be kept in sync by hand until the frontend reads this command instead.
 
 To wire in a third CLI alongside Claude Code and Codex, see [docs/blueprints/adding-a-provider.md](../blueprints/adding-a-provider.md).
 
