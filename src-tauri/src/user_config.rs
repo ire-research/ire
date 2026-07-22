@@ -14,6 +14,10 @@ pub struct UserConfig {
     /// `None` until the user answers the first-run consent prompt.
     #[serde(default)]
     pub analytics_enabled: Option<bool>,
+    /// Model ids (`"<providerID>/<modelID>"`) the user pinned in the OpenCode
+    /// Providers panel. Global across workspaces, like the rest of `UserConfig`.
+    #[serde(default)]
+    pub pinned_opencode_models: Vec<String>,
 }
 
 fn config_path() -> Option<PathBuf> {
@@ -98,6 +102,7 @@ mod tests {
             ],
             analytics_id: None,
             analytics_enabled: None,
+            pinned_opencode_models: Vec::new(),
         };
 
         assert!(remove_missing_recent_workspaces(&mut config));

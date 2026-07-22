@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faAnglesRight, faChevronRight, iconClass } from "../icons";
 import { ipc } from "../ipc";
 
-export function SettingsModal() {
+interface Props {
+  onOpenOpenCodeProviders: () => void;
+}
+
+export function SettingsModal({ onOpenOpenCodeProviders }: Props) {
   const [analyticsEnabled, setAnalyticsEnabled] = useState(false);
 
   useEffect(() => {
@@ -37,6 +43,18 @@ export function SettingsModal() {
           />
         </button>
       </div>
+
+      <button
+        onClick={onOpenOpenCodeProviders}
+        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-left border-t border-outline-variant hover:bg-surface-container-highest transition-colors"
+      >
+        <FontAwesomeIcon icon={faAnglesRight} className={`${iconClass.md} text-on-surface-variant shrink-0`} />
+        <div className="flex-1 min-w-0">
+          <p className="text-[12px] font-medium text-on-surface">OpenCode Providers</p>
+          <p className="text-[11px] text-on-surface-variant mt-0.5">Use models from providers configured in OpenCode</p>
+        </div>
+        <FontAwesomeIcon icon={faChevronRight} className={`${iconClass.sm} text-on-surface-variant/60 shrink-0`} />
+      </button>
     </div>
   );
 }

@@ -6,8 +6,11 @@ import {
   type Provider,
   useChatOptions,
 } from "../../state/chatOptions";
+import { useOpenCodeModal } from "../../state/opencodeModal";
+import { ipc, type UserConfig } from "../../ipc";
+import type { ModelInfo } from "../../types";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faChevronDown, faArrowUp, faClaude, faOpenai, iconClass } from "../../icons";
+import { faChevronDown, faArrowUp, faAnglesRight, faClaude, faOpenai, iconClass } from "../../icons";
 
 interface ComposerProps {
   onSend?: (text: string) => void;
@@ -27,8 +30,14 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { model, provider, effort, availableProviders, setModel, setEffort } = useChatOptions();
+  const openOpenCodeProviders = useOpenCodeModal((s) => s.openModal);
+  const [pinnedOpenCodeModels, setPinnedOpenCodeModels] = useState<ModelInfo[]>([]);
   const noProvidersAvailable = availableProviders.length === 0;
-  const modelLabel = noProvidersAvailable ? "n/a" : MODELS.find((m) => m.id === model)?.label ?? model;
+  const opencodeAvailable = availableProviders.includes("opencode");
+  const modelLabel = noProvidersAvailable
+    ? "n/a"
+    : MODELS.find((m) => m.id === model)?.label
+      ?? (provider === "opencode" ? pinnedOpenCodeModels.find((m) => m.id === model)?.label ?? model : model);
   const effortLevels = effortLevelsForModel(provider, model);
   const effortLabel = effortLevels.find((l) => l.value === effort)?.label ?? effort;
   const showEffortPicker = !noProvidersAvailable && effortLevels.length > 0;
@@ -38,6 +47,27 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
   const codexModels = availableProviders.includes("codex")
     ? MODELS.filter((m) => m.provider === "codex")
     : [];
+
+  // OpenCode's catalog is dynamic and its pins are a user preference, unlike
+  // the static MODELS-filter pattern above — only pinned models show here
+  // (the full catalog is browsable via OpenCodeProvidersModal).
+  useEffect(() => {
+    if (!opencodeAvailable) {
+      setPinnedOpenCodeModels([]);
+      return;
+    }
+    let cancelled = false;
+    Promise.all([ipc.listAgentModels(), ipc.readUserConfig().catch((): UserConfig => ({}))]).then(
+      ([capabilities, config]) => {
+        if (cancelled) return;
+        const catalog = capabilities.find((c) => c.provider === "opencode");
+        const models = catalog?.catalog.status === "available" ? catalog.catalog.models : [];
+        const pinned = new Set(config.pinned_opencode_models ?? []);
+        setPinnedOpenCodeModels(models.filter((m) => pinned.has(m.id)));
+      },
+    ).catch(() => {});
+    return () => { cancelled = true; };
+  }, [opencodeAvailable]);
 
   useEffect(() => {
     if (!showEffortPicker) setEffortOpen(false);
@@ -169,6 +199,40 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
               )}
               {codexModels.length > 0 && (
                 <ProviderSection label="Codex" provider="codex" models={codexModels} />
+              )}
+              {opencodeAvailable && (
+                <div className="py-2 first:pt-2 last:pb-2 border-t border-outline-variant/50 first:border-t-0">
+                  <div className="px-3 pb-1.5 text-[10px] font-medium uppercase tracking-normal text-on-surface-variant/60">
+                    OpenCode
+                  </div>
+                  {pinnedOpenCodeModels.map((m) => (
+                    <button
+                      key={m.id}
+                      className={`w-full grid grid-cols-[18px_1fr_14px] items-center gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-surface-container-highest transition-colors ${
+                        m.id === model ? "font-medium text-on-surface" : "text-on-surface-variant"
+                      }`}
+                      onClick={() => {
+                        setModel(m.id, "opencode");
+                        setModelOpen(false);
+                      }}
+                    >
+                      <span className="text-center text-[10px] text-primary">★</span>
+                      <span>{m.label}</span>
+                      <span className="text-[11px] text-primary">{m.id === model ? "✓" : ""}</span>
+                    </button>
+                  ))}
+                  <button
+                    className="w-full grid grid-cols-[18px_1fr_14px] items-center gap-2 px-3 py-1.5 text-left text-[12px] text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors border-t border-outline-variant/40 mt-1"
+                    onClick={() => {
+                      setModelOpen(false);
+                      openOpenCodeProviders();
+                    }}
+                  >
+                    <span />
+                    <span>Browse OpenCode models…</span>
+                    <FontAwesomeIcon icon={faAnglesRight} className={`${iconClass.sm} justify-self-end`} />
+                  </button>
+                </div>
               )}
             </div>
           </div>

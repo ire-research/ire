@@ -12,6 +12,7 @@ import { faFolderOpen } from "@fortawesome/free-regular-svg-icons/faFolderOpen";
 import { faLightbulb } from "@fortawesome/free-regular-svg-icons/faLightbulb";
 import { faMessage } from "@fortawesome/free-regular-svg-icons/faMessage";
 import { faPenToSquare } from "@fortawesome/free-regular-svg-icons/faPenToSquare";
+import { faAnglesRight } from "@fortawesome/free-solid-svg-icons/faAnglesRight";
 import { faArrowUp } from "@fortawesome/free-solid-svg-icons/faArrowUp";
 import { faCheck } from "@fortawesome/free-solid-svg-icons/faCheck";
 import { faChevronDown } from "@fortawesome/free-solid-svg-icons/faChevronDown";
@@ -70,6 +71,7 @@ export const faSidebarRight: IconDefinition = {
 };
 
 export {
+  faAnglesRight,
   faArrowUp,
   faCheck,
   faChevronDown,

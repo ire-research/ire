@@ -15,6 +15,8 @@ import { faFolder, faChevronDown, faSidebarLeft, faSidebarRight, faGear, faCircl
 import { ChatPane } from "./chat/ChatPane";
 import { SettingsModal } from "./SettingsModal";
 import { FeedbackModal } from "./FeedbackModal";
+import { OpenCodeProvidersModal } from "./OpenCodeProvidersModal";
+import { useOpenCodeModal } from "../state/opencodeModal";
 import { LeftRail } from "./left/LeftRail";
 import { RightRail } from "./right/RightRail";
 import { StatusBar } from "./StatusBar";
@@ -47,6 +49,9 @@ export function Layout() {
   const feedbackPrefill = useFeedbackModal((s) => s.prefill);
   const openFeedback = useFeedbackModal((s) => s.openWith);
   const closeFeedback = useFeedbackModal((s) => s.close);
+  const opencodeProvidersOpen = useOpenCodeModal((s) => s.open);
+  const openOpenCodeProviders = useOpenCodeModal((s) => s.openModal);
+  const closeOpenCodeProviders = useOpenCodeModal((s) => s.closeModal);
   const [appVersion, setAppVersion] = useState("");
 
   useEffect(() => {
@@ -246,7 +251,14 @@ export function Layout() {
             >
               <FontAwesomeIcon icon={faGear} className={iconClass.lg} />
             </button>
-            {settingsOpen && <SettingsModal />}
+            {settingsOpen && (
+              <SettingsModal
+                onOpenOpenCodeProviders={() => {
+                  setSettingsOpen(false);
+                  openOpenCodeProviders();
+                }}
+              />
+            )}
           </div>
           <div className="relative" ref={helpRef}>
             <button
@@ -278,6 +290,9 @@ export function Layout() {
             )}
           </div>
           {feedbackOpen && <FeedbackModal initialMessage={feedbackPrefill} onClose={closeFeedback} />}
+          {opencodeProvidersOpen && (
+            <OpenCodeProvidersModal onClose={closeOpenCodeProviders} />
+          )}
           <button
             className="h-7 border border-outline-variant rounded px-3 text-xs font-medium text-on-surface-variant hover:text-on-surface transition-colors"
             onClick={handleClose}
