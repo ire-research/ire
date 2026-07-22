@@ -222,10 +222,8 @@ pub async fn generate_chat_title(
 
     let title = tokio::task::spawn_blocking(move || {
         // `title_request` gives the no-resume/no-MCP/no-system-prompt shape;
-        // the frontend picks which lightweight model to use, so it overrides
-        // the request's default here.
-        let mut req = agent.title_request(&workspace_path, &prompt);
-        req.model = &model;
+        // the frontend picks which lightweight model to use.
+        let req = agent.title_request(&workspace_path, &prompt, &model);
         let mut cmd = agent.build_command(&bin, &req);
 
         let mut child = cmd

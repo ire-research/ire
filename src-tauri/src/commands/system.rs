@@ -5,54 +5,51 @@ use std::sync::{Arc, Mutex};
 use sysinfo::{CpuRefreshKind, RefreshKind, System};
 use tauri::State;
 
-use crate::agent_provider::{AgentProvider, ClaudeCodeProvider, CodexProvider};
+use crate::agent_provider::{AgentProvider, ClaudeCodeProvider, CodexProvider, ModelCatalog, ModelInfo};
 use crate::binary::BinaryStatus;
 use crate::tool_cards::ToolProvider;
 use crate::workspace::state::ActiveWorkspace;
 
-/// One selectable model plus the effort levels valid for it, as reported by
-/// an `AgentProvider`.
-#[derive(Debug, Serialize)]
-pub struct AgentModelInfo {
-    pub id: &'static str,
-    pub label: &'static str,
-    pub effort_levels: &'static [&'static str],
-}
-
-/// Capability metadata for one provider: which models it offers, which is
-/// the default, and which is used for lightweight background work (chat
-/// titles).
+/// Capability metadata for one provider: which models it offers (if its
+/// catalog could be resolved) and which is the default (its first entry).
+/// `models` is empty when catalog discovery failed or the provider doesn't
+/// implement `ModelCatalog` at all — this is not the same as the provider
+/// being unavailable (see `AgentProvider::readiness`).
 #[derive(Debug, Serialize)]
 pub struct ProviderCapabilities {
     pub provider: ToolProvider,
-    pub default_model: &'static str,
-    pub lightweight_model: &'static str,
-    pub models: Vec<AgentModelInfo>,
+    pub default_model: Option<String>,
+    pub models: Vec<ModelInfo>,
 }
 
-fn capabilities(agent: &dyn AgentProvider) -> ProviderCapabilities {
+fn capabilities(agent: &dyn AgentProvider, catalog: Option<&dyn ModelCatalog>) -> ProviderCapabilities {
+    let models = match catalog.map(ModelCatalog::discover_models) {
+        Some(Ok(models)) => models,
+        Some(Err(e)) => {
+            tracing::warn!(provider = agent.name(), error = %e, "model discovery failed");
+            Vec::new()
+        }
+        None => Vec::new(),
+    };
+    let default_model = models.first().map(|m| m.id.clone());
     ProviderCapabilities {
         provider: agent.id(),
-        default_model: agent.default_model(),
-        lightweight_model: agent.lightweight_model(),
-        models: agent
-            .models()
-            .iter()
-            .map(|m| AgentModelInfo {
-                id: m.id,
-                label: m.label,
-                effort_levels: agent.effort_levels_for(m.id),
-            })
-            .collect(),
+        default_model,
+        models,
     }
 }
 
+const PROVIDER_NAMES: &[&str] = &["claude", "codex"];
+
 #[tauri::command]
 pub fn list_agent_models() -> Vec<ProviderCapabilities> {
-    vec![
-        capabilities(&ClaudeCodeProvider),
-        capabilities(&CodexProvider),
-    ]
+    PROVIDER_NAMES
+        .iter()
+        .filter_map(|name| {
+            let agent = crate::agent_provider::provider(name)?;
+            Some(capabilities(agent, crate::agent_provider::model_catalog(name)))
+        })
+        .collect()
 }
 
 /// Machine-level info that doesn't change for the lifetime of the app

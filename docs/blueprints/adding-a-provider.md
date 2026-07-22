@@ -37,8 +37,6 @@ impl AgentProvider for NewCliProvider {
     fn is_logged_in(&self, bin: &Path) -> bool {
         crate::new_cli::discovery::is_new_cli_logged_in(bin)
     }
-    fn models(&self) -> &'static [ModelInfo] { NEW_CLI_MODELS }
-    fn lightweight_model(&self) -> &'static str { "..." }
     fn build_command(&self, bin: &Path, req: &TurnRequest<'_>) -> Command {
         crate::new_cli::spawn::build_new_cli_command(&crate::new_cli::spawn::NewCliSpawnArgs {
             bin, workspace: req.workspace, message: req.message, model: req.model,
@@ -55,16 +53,43 @@ impl AgentProvider for NewCliProvider {
 }
 ```
 
-`ModelInfo { id, label, effort_levels }` entries should match whatever the
-frontend's model picker will offer for this provider (see step 4).
-
 `dispatch`'s `emit: &mut dyn FnMut(StreamEvent)` parameter, not a generic
 `impl FnMut`, is required for the trait to stay object-safe (`&dyn
 AgentProvider`) — wrap the call as `&mut |event| emit(event)`, don't try to
 pass `emit` straight through to a `dispatch<F: FnMut(StreamEvent)>` function,
 which won't type-check against an unsized `F`.
 
-## 3. Register it in the lookup
+Note `AgentProvider` has no model-catalog methods — see step 3.
+
+## 3. Implement `ModelCatalog`, if the CLI has one to expose
+
+This is optional and separate from `AgentProvider`. Implement it if models
+can be enumerated at all, even fallibly:
+
+```rust
+impl ModelCatalog for NewCliProvider {
+    fn discover_models(&self) -> Result<Vec<ModelInfo>, AgentError> {
+        // Static list, like Claude/Codex: wrap it in Ok(...).
+        // Dynamic backend (e.g. querying an Ollama endpoint, reading a
+        // config file the user points at a custom endpoint): do the
+        // round-trip here and return Err(AgentError { message }) on failure
+        // — a catalog that can't resolve right now is not the same as the
+        // provider being unavailable, so don't fold this into `readiness`.
+        Ok(vec![
+            ModelInfo { id: "...".into(), label: "...".into(), effort_levels: vec![] },
+        ])
+    }
+}
+```
+
+If the CLI has no fixed catalog and no way to enumerate one at all (e.g. it
+just accepts whatever model string the user types, sourced from wherever
+its own config lives), skip this impl entirely. `model_catalog(name)`
+returning `None` for it is a legitimate, handled state — `list_agent_models`
+already treats "no catalog" and "catalog resolution failed" the same way
+(empty `models`, `default_model: None`), not as an error.
+
+## 4. Register it in the lookups
 
 ```rust
 pub fn provider(name: &str) -> Option<&'static dyn AgentProvider> {
@@ -75,30 +100,38 @@ pub fn provider(name: &str) -> Option<&'static dyn AgentProvider> {
         _ => None,
     }
 }
+
+pub fn model_catalog(name: &str) -> Option<&'static dyn ModelCatalog> {
+    match name {
+        "claude" => Some(&ClaudeCodeProvider),
+        "codex" => Some(&CodexProvider),
+        "new_cli" => Some(&NewCliProvider),  // omit this arm if step 3 was skipped
+        _ => None,
+    }
+}
 ```
 
-This one line is what makes `chat_send`, `generate_chat_title`,
-`chat_cancel`, `setup_status`, `get_system_metrics`, and
-`list_agent_models` all pick the new provider up — none of them need
-editing.
+Also add `"new_cli"` to `PROVIDER_NAMES` in `commands/system.rs` so
+`list_agent_models` picks it up. Together with the two match arms above,
+this is what makes `chat_send`, `generate_chat_title`, `chat_cancel`,
+`setup_status`, and `get_system_metrics` pick the new provider up — none of
+those call sites need editing.
 
-## 4. Wire up the frontend
+## 5. Wire up the frontend
 
 - Add entries to `MODELS` in `src/state/chatOptions.ts` (`id`, `label`,
-  `provider`), matching the `ModelInfo` list from step 2.
+  `provider`) — by hand, matching whatever `discover_models()` returns (or a
+  fixed list, if step 3 was skipped). See
+  [chat-agents.md](../architecture/chat-agents.md#the-agentprovider-trait-agent_providerrs):
+  `list_agent_models` is not consumed by the frontend yet, so this is not
+  read from one source today.
 - Add an effort-levels table if the new CLI's rule isn't uniform (see
   `effortLevelsForModel`), and a case to `lightweightModelForProvider`.
 - Add the provider to `useChatOptions`'s `availableProviders` default and
   wherever the model picker enumerates `Provider` (`"claude" | "codex"`
   becomes a three-way union).
 
-The frontend tables and the Rust `ModelInfo` tables are **not** read from
-one source today — `commands/system::list_agent_models` exposes the Rust
-side over IPC but nothing consumes it yet (see
-[chat-agents.md](../architecture/chat-agents.md#the-agentprovider-trait-agent_providerrs)).
-Keep both in sync by hand until that's wired up.
-
-## 5. Test it end-to-end
+## 6. Test it end-to-end
 
 Follow the pattern in `agent_provider.rs`'s own test module: arg-shape
 assertions on `build_command`'s output (`--resume`/`exec resume` equivalent,

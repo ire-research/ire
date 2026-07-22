@@ -32,12 +32,15 @@ pub struct TurnRequest<'a> {
 }
 
 /// One selectable model plus the effort levels valid for it (`[]` means the
-/// model doesn't take an effort flag at all, e.g. Claude's Haiku).
-#[derive(Debug, Clone, Copy, Serialize)]
+/// model doesn't take an effort flag at all, e.g. Claude's Haiku). Owned
+/// rather than `'static`: a provider backed by a dynamic/user-configured
+/// backend (e.g. Ollama or a custom endpoint) discovers this at runtime,
+/// it isn't a fixed compile-time list.
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ModelInfo {
-    pub id: &'static str,
-    pub label: &'static str,
-    pub effort_levels: &'static [&'static str],
+    pub id: String,
+    pub label: String,
+    pub effort_levels: Vec<String>,
 }
 
 /// A spawn-time failure, normalized to one message regardless of which
@@ -76,27 +79,6 @@ pub trait AgentProvider: Send + Sync {
         binary_status(self.name(), self.discover(), |bin| self.is_logged_in(bin))
     }
 
-    // --- available models and capability metadata --------------------------
-
-    /// Selectable models in display order. First entry is the default.
-    fn models(&self) -> &'static [ModelInfo];
-
-    /// Smallest/cheapest model, used for background chat-title generation.
-    fn lightweight_model(&self) -> &'static str;
-
-    fn default_model(&self) -> &'static str {
-        self.models().first().map(|m| m.id).unwrap_or_default()
-    }
-
-    /// Effort levels valid for `model`, or `[]` if it takes no effort flag.
-    fn effort_levels_for(&self, model: &str) -> &'static [&'static str] {
-        self.models()
-            .iter()
-            .find(|m| m.id == model)
-            .map(|m| m.effort_levels)
-            .unwrap_or(&[])
-    }
-
     // --- command/session creation and resume --------------------------------
 
     /// Builds the subprocess command for one turn. `req.resume_id` selects
@@ -104,13 +86,16 @@ pub trait AgentProvider: Send + Sync {
     /// are injected in whatever form the underlying CLI expects.
     fn build_command(&self, bin: &Path, req: &TurnRequest<'_>) -> Command;
 
-    /// Builds a title-generation turn: the lightweight model, no system
-    /// prompt, no MCP config, no session resume.
-    fn title_request<'a>(&self, workspace: &'a Path, prompt: &'a str) -> TurnRequest<'a> {
+    /// Builds a title-generation turn: no system prompt, no MCP config, no
+    /// session resume. `model` is the caller's choice (typically its
+    /// lightest/cheapest one) — the trait doesn't assume a fixed catalog it
+    /// could pick a default from; see `ModelCatalog` for providers that can
+    /// enumerate one.
+    fn title_request<'a>(&self, workspace: &'a Path, prompt: &'a str, model: &'a str) -> TurnRequest<'a> {
         TurnRequest {
             workspace,
             message: prompt,
-            model: self.lightweight_model(),
+            model,
             effort: None,
             resume_id: None,
             mcp_config: None,
@@ -157,26 +142,69 @@ pub fn provider(name: &str) -> Option<&'static dyn AgentProvider> {
     }
 }
 
+/// Optional capability, separate from `AgentProvider`: a provider whose
+/// available models can be enumerated. Claude and Codex both ship a fixed
+/// model list, but that's not universal — a provider fronting Ollama or a
+/// custom endpoint (e.g. a future OpenCode adapter) has a dynamic,
+/// user-configured catalog it may need a network/process round-trip to
+/// resolve, or may not be able to resolve at all. Keeping this off the core
+/// `AgentProvider` trait means a provider that can't enumerate models still
+/// implements the rest of the interface fully.
+pub trait ModelCatalog: Send + Sync {
+    /// Lists currently available models, in display order. Fallible
+    /// independent of `AgentProvider::discover`/`readiness` — a provider's
+    /// binary can be installed and ready while its model catalog still
+    /// fails to resolve (e.g. its backend is unreachable).
+    fn discover_models(&self) -> Result<Vec<ModelInfo>, AgentError>;
+}
+
+/// Looks up the model catalog for a wire-format provider name, if it has
+/// one. Separate from `provider()` because not every `AgentProvider`
+/// implements `ModelCatalog`.
+pub fn model_catalog(name: &str) -> Option<&'static dyn ModelCatalog> {
+    match name {
+        "claude" => Some(&ClaudeCodeProvider),
+        "codex" => Some(&CodexProvider),
+        _ => None,
+    }
+}
+
+struct StaticModel {
+    id: &'static str,
+    label: &'static str,
+    effort_levels: &'static [&'static str],
+}
+
+impl From<&StaticModel> for ModelInfo {
+    fn from(m: &StaticModel) -> Self {
+        ModelInfo {
+            id: m.id.to_string(),
+            label: m.label.to_string(),
+            effort_levels: m.effort_levels.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+}
+
 /// `effort_levels` mirror `src/state/chatOptions.ts` (`CLAUDE_EFFORT_LEVELS`,
 /// `effortLevelsForModel`): Haiku takes no effort flag, Opus gets the full
 /// range, Sonnet/Fable drop `xhigh`.
-const CLAUDE_MODELS: &[ModelInfo] = &[
-    ModelInfo {
+const CLAUDE_MODELS: &[StaticModel] = &[
+    StaticModel {
         id: "claude-sonnet-5",
         label: "Sonnet 5",
         effort_levels: &["low", "medium", "high", "max"],
     },
-    ModelInfo {
+    StaticModel {
         id: "claude-opus-4-8",
         label: "Opus 4.8",
         effort_levels: &["low", "medium", "high", "xhigh", "max"],
     },
-    ModelInfo {
+    StaticModel {
         id: "claude-fable-5",
         label: "Fable 5",
         effort_levels: &["low", "medium", "high", "max"],
     },
-    ModelInfo {
+    StaticModel {
         id: "claude-haiku-4-5-20251001",
         label: "Haiku 4.5",
         effort_levels: &[],
@@ -202,14 +230,6 @@ impl AgentProvider for ClaudeCodeProvider {
         crate::claude_code::discovery::is_claude_logged_in(bin)
     }
 
-    fn models(&self) -> &'static [ModelInfo] {
-        CLAUDE_MODELS
-    }
-
-    fn lightweight_model(&self) -> &'static str {
-        "claude-haiku-4-5-20251001"
-    }
-
     fn build_command(&self, bin: &Path, req: &TurnRequest<'_>) -> Command {
         crate::claude_code::spawn::build_command(&crate::claude_code::spawn::SpawnArgs {
             bin,
@@ -228,25 +248,31 @@ impl AgentProvider for ClaudeCodeProvider {
     }
 }
 
+impl ModelCatalog for ClaudeCodeProvider {
+    fn discover_models(&self) -> Result<Vec<ModelInfo>, AgentError> {
+        Ok(CLAUDE_MODELS.iter().map(ModelInfo::from).collect())
+    }
+}
+
 /// Codex takes the same effort range on every model, including the mini
 /// variant (`src/state/chatOptions.ts` `CODEX_EFFORT_LEVELS`).
-const CODEX_MODELS: &[ModelInfo] = &[
-    ModelInfo {
+const CODEX_MODELS: &[StaticModel] = &[
+    StaticModel {
         id: "gpt-5.5",
         label: "GPT-5.5",
         effort_levels: &["low", "medium", "high", "xhigh"],
     },
-    ModelInfo {
+    StaticModel {
         id: "gpt-5.4",
         label: "GPT-5.4",
         effort_levels: &["low", "medium", "high", "xhigh"],
     },
-    ModelInfo {
+    StaticModel {
         id: "gpt-5.4-mini",
         label: "GPT-5.4-Mini",
         effort_levels: &["low", "medium", "high", "xhigh"],
     },
-    ModelInfo {
+    StaticModel {
         id: "gpt-5.3-codex",
         label: "GPT-5.3-Codex",
         effort_levels: &["low", "medium", "high", "xhigh"],
@@ -270,14 +296,6 @@ impl AgentProvider for CodexProvider {
 
     fn is_logged_in(&self, bin: &Path) -> bool {
         crate::codex::discovery::is_codex_logged_in(bin)
-    }
-
-    fn models(&self) -> &'static [ModelInfo] {
-        CODEX_MODELS
-    }
-
-    fn lightweight_model(&self) -> &'static str {
-        "gpt-5.4-mini"
     }
 
     fn build_command(&self, bin: &Path, req: &TurnRequest<'_>) -> Command {
@@ -316,6 +334,12 @@ impl AgentProvider for CodexProvider {
     }
 }
 
+impl ModelCatalog for CodexProvider {
+    fn discover_models(&self) -> Result<Vec<ModelInfo>, AgentError> {
+        Ok(CODEX_MODELS.iter().map(ModelInfo::from).collect())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -327,45 +351,63 @@ mod tests {
             .collect()
     }
 
+    fn effort_levels_for<'a>(models: &'a [ModelInfo], id: &str) -> &'a [String] {
+        models
+            .iter()
+            .find(|m| m.id == id)
+            .map(|m| m.effort_levels.as_slice())
+            .unwrap_or(&[])
+    }
+
     #[test]
     fn claude_effort_levels_match_frontend_rules() {
-        let p = ClaudeCodeProvider;
+        let models = ClaudeCodeProvider.discover_models().unwrap();
         assert_eq!(
-            p.effort_levels_for("claude-haiku-4-5-20251001"),
-            &[] as &[&str]
+            effort_levels_for(&models, "claude-haiku-4-5-20251001"),
+            &[] as &[String]
         );
         assert_eq!(
-            p.effort_levels_for("claude-opus-4-8"),
-            &["low", "medium", "high", "xhigh", "max"]
+            effort_levels_for(&models, "claude-opus-4-8"),
+            ["low", "medium", "high", "xhigh", "max"]
         );
         assert_eq!(
-            p.effort_levels_for("claude-sonnet-5"),
-            &["low", "medium", "high", "max"]
+            effort_levels_for(&models, "claude-sonnet-5"),
+            ["low", "medium", "high", "max"]
         );
-        assert_eq!(p.effort_levels_for("not-a-model"), &[] as &[&str]);
+        assert_eq!(effort_levels_for(&models, "not-a-model"), &[] as &[String]);
     }
 
     #[test]
     fn codex_effort_levels_are_uniform_across_models() {
-        let p = CodexProvider;
-        for model in ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex"] {
+        let models = CodexProvider.discover_models().unwrap();
+        for id in ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex"] {
             assert_eq!(
-                p.effort_levels_for(model),
-                &["low", "medium", "high", "xhigh"]
+                effort_levels_for(&models, id),
+                ["low", "medium", "high", "xhigh"]
             );
         }
     }
 
     #[test]
-    fn default_model_is_first_entry() {
-        assert_eq!(ClaudeCodeProvider.default_model(), "claude-sonnet-5");
-        assert_eq!(CodexProvider.default_model(), "gpt-5.5");
+    fn discover_models_first_entry_is_the_display_default() {
+        assert_eq!(
+            ClaudeCodeProvider.discover_models().unwrap()[0].id,
+            "claude-sonnet-5"
+        );
+        assert_eq!(CodexProvider.discover_models().unwrap()[0].id, "gpt-5.5");
+    }
+
+    #[test]
+    fn model_catalog_lookup_resolves_wire_names() {
+        assert!(model_catalog("claude").is_some());
+        assert!(model_catalog("codex").is_some());
+        assert!(model_catalog("gemini").is_none());
     }
 
     #[test]
     fn title_request_has_no_resume_mcp_or_system_prompt() {
         let workspace = Path::new("/tmp/workspace");
-        let req = ClaudeCodeProvider.title_request(workspace, "name this chat");
+        let req = ClaudeCodeProvider.title_request(workspace, "name this chat", "claude-haiku-4-5-20251001");
         assert_eq!(req.model, "claude-haiku-4-5-20251001");
         assert!(req.resume_id.is_none());
         assert!(req.mcp_config.is_none());

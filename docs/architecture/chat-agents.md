@@ -191,23 +191,30 @@ pub trait AgentProvider: Send + Sync {
     fn discover(&self) -> Result<DiscoveredBinary, DiscoveryError>;
     fn is_logged_in(&self, bin: &Path) -> bool;
     fn readiness(&self) -> BinaryStatus;                  // default: binary_status(name(), discover(), is_logged_in)
-    fn models(&self) -> &'static [ModelInfo];             // { id, label, effort_levels }
-    fn lightweight_model(&self) -> &'static str;          // model used for chat-title generation
-    fn default_model(&self) -> &'static str;              // default: models()[0].id
-    fn effort_levels_for(&self, model: &str) -> &'static [&'static str];
     fn build_command(&self, bin: &Path, req: &TurnRequest<'_>) -> Command;
-    fn title_request<'a>(&self, workspace: &'a Path, prompt: &'a str) -> TurnRequest<'a>;
+    fn title_request<'a>(&self, workspace: &'a Path, prompt: &'a str, model: &'a str) -> TurnRequest<'a>;
     fn dispatch(&self, json: &Value, state: &mut StreamState, emit: &mut dyn FnMut(StreamEvent));
     fn cancel(&self, pid: u32);                           // default: kill_process(pid)
     fn normalize_spawn_error(&self, err: &std::io::Error) -> AgentError;
 }
 ```
 
-`TurnRequest { workspace, message, model, effort, resume_id, mcp_config, system_prompt }` is the provider-neutral shape of one turn. `build_command` is where `mcp_config`/`system_prompt` get injected into each CLI's own surface — a raw `--mcp-config <path>` / `--append-system-prompt <text>` flag pair for Claude, translated `-c mcp_servers.*` / `-c developer_instructions=...` flags for Codex (see Spawn below); `resume_id` selects resume vs. fresh-session invocation the same way.
+`TurnRequest { workspace, message, model, effort, resume_id, mcp_config, system_prompt }` is the provider-neutral shape of one turn. `build_command` is where `mcp_config`/`system_prompt` get injected into each CLI's own surface — a raw `--mcp-config <path>` / `--append-system-prompt <text>` flag pair for Claude, translated `-c mcp_servers.*` / `-c developer_instructions=...` flags for Codex (see Spawn below); `resume_id` selects resume vs. fresh-session invocation the same way. `title_request` takes `model` as a caller-supplied argument rather than deriving it — see below for why.
 
 `ClaudeCodeProvider` and `CodexProvider` are zero-sized structs implementing the trait by delegating to `cc::discovery`/`cc::spawn`/`cc::stream` and `codex::discovery`/`codex::spawn`/`codex::stream` respectively — none of that logic is duplicated. `agent_provider::provider(name: &str) -> Option<&'static dyn AgentProvider>` resolves the wire-format provider string (`ChatOptions::provider`, the `chat_sessions` resume columns) to one of the two.
 
-Call sites that used to branch on `provider == "codex"` now resolve the adapter once and call through it: `chat_send`/`generate_chat_title` (build command, spawn with `normalize_spawn_error` on failure, dispatch the stream), `chat_cancel` (reads the tab's provider name via `SessionManager::get_provider` and calls `.cancel(pid)`, falling back to the raw `kill_process` if the tab has no recorded provider), and the readiness checks in `setup_status` (`commands/workspace.rs`) and `get_system_metrics` (`commands/system.rs`), both now `XProvider.readiness()`. `commands/system::list_agent_models` is an IPC command exposing `models()` / `default_model()` / `lightweight_model()` / `effort_levels_for()` as capability metadata (not yet consumed by the frontend, which still has its own static `MODELS`/`*_EFFORT_LEVELS` tables in `src/state/chatOptions.ts` — the two must be kept in sync by hand until the frontend reads this command instead).
+Call sites that used to branch on `provider == "codex"` now resolve the adapter once and call through it: `chat_send`/`generate_chat_title` (build command, spawn with `normalize_spawn_error` on failure, dispatch the stream), `chat_cancel` (reads the tab's provider name via `SessionManager::get_provider` and calls `.cancel(pid)`, falling back to the raw `kill_process` if the tab has no recorded provider), and the readiness checks in `setup_status` (`commands/workspace.rs`) and `get_system_metrics` (`commands/system.rs`), both now `XProvider.readiness()`.
+
+**Model catalog is a separate, optional capability — not on `AgentProvider`.** An earlier version of this trait had `models()`/`default_model()`/`lightweight_model()`/`effort_levels_for()` returning `&'static` data, which assumes every provider ships a fixed, compile-time-known model list. That's true for Claude and Codex but not universal — a provider fronting Ollama or a custom endpoint has a dynamic, user-configured catalog it may need a round-trip to resolve, or may fail to resolve at all. That capability now lives on its own trait:
+
+```rust
+pub trait ModelCatalog: Send + Sync {
+    fn discover_models(&self) -> Result<Vec<ModelInfo>, AgentError>;  // ModelInfo { id, label, effort_levels }, all owned Strings
+}
+pub fn model_catalog(name: &str) -> Option<&'static dyn ModelCatalog>;
+```
+
+`ModelInfo` is owned (not `&'static`) for the same reason. `ClaudeCodeProvider`/`CodexProvider` implement `ModelCatalog` trivially (their catalog is static, wrapped in `Ok(...)`), but a provider that can't enumerate models still implements all of `AgentProvider` — catalog-less is a valid state, not an error. `commands/system::list_agent_models` is the IPC command exposing this: it resolves both `provider(name)` and `model_catalog(name)` per known name, treats a missing catalog or a `discover_models` error the same way (empty `models: []`, `default_model: None`), and does **not** consume the frontend's own static `MODELS`/`*_EFFORT_LEVELS` tables in `src/state/chatOptions.ts` yet — the two must be kept in sync by hand until the frontend reads this command instead.
 
 To wire in a third CLI alongside Claude Code and Codex, see [docs/blueprints/adding-a-provider.md](../blueprints/adding-a-provider.md).
 
