@@ -16,7 +16,7 @@ use crate::workspace::init as ws_init;
 use crate::workspace::lock::{LockError, WorkspaceLock};
 use crate::workspace::state::{ActiveWorkspace, WorkspaceHandle, WorkspaceState};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ProviderReadiness {
     pub provider: ToolProvider,
     pub binary: BinaryStatus,
