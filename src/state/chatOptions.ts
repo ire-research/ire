@@ -1,7 +1,7 @@
 import { create } from "zustand";
-import type { EffortLevel } from "../types";
+import type { EffortLevel, Provider } from "../types";
 
-export type Provider = "claude" | "codex";
+export type { Provider };
 
 export interface ModelEntry {
   id: string;

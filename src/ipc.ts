@@ -10,6 +10,7 @@ import type {
   ExperimentStartingPayload,
   ExperimentStatusPayload,
   IdeaItem,
+  ProviderReadiness,
   ResourcePendingPayload,
   SystemInfo,
   SystemMetrics,
@@ -19,11 +20,10 @@ import type {
   WorkspaceEvent,
 } from "./types";
 
-export type { BinaryStatus };
+export type { BinaryStatus, ProviderReadiness };
 
 export interface SetupStatus {
-  claude_binary: BinaryStatus;
-  codex_binary: BinaryStatus;
+  providers: ProviderReadiness[];
 }
 
 export interface WorkspaceState {

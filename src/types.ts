@@ -1,5 +1,12 @@
 export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
-export type Provider = "claude" | "codex";
+export type ToolProvider = "claude" | "codex";
+/** Alias for `ToolProvider` used in chat/agent-selection contexts. */
+export type Provider = ToolProvider;
+
+export const PROVIDER_LABELS: Record<ToolProvider, string> = {
+  claude: "claude-code",
+  codex: "codex",
+};
 
 export interface ChatOptions {
   model: string;
@@ -8,7 +15,6 @@ export interface ChatOptions {
 }
 
 export type ExperimentStatus = "starting" | "running" | "completed" | "failed" | "cancelled";
-export type ToolProvider = "claude" | "codex";
 export type ToolKind =
   | "command"
   | "file_read"
@@ -257,12 +263,16 @@ export type BinaryStatus =
   | { kind: "logged_out"; path: string; version: string | null }
   | { kind: "missing" };
 
+export interface ProviderReadiness {
+  provider: ToolProvider;
+  binary: BinaryStatus;
+}
+
 export interface SystemMetrics {
   git_branch: string;
   git_insertions: number;
   git_deletions: number;
   cpu_usage_pct: number;
   gpu_usage_pct: number | null;
-  claude_binary: BinaryStatus;
-  codex_binary: BinaryStatus;
+  providers: ProviderReadiness[];
 }

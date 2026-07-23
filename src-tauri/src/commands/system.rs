@@ -5,10 +5,8 @@ use std::sync::{Arc, Mutex};
 use sysinfo::{CpuRefreshKind, RefreshKind, System};
 use tauri::State;
 
-use crate::agent_provider::{
-    AgentProvider, ClaudeCodeProvider, CodexProvider, ModelCatalog, ModelCatalogStatus,
-};
-use crate::binary::BinaryStatus;
+use crate::agent_provider::{self, AgentProvider, ModelCatalog, ModelCatalogStatus};
+use crate::commands::workspace::ProviderReadiness;
 use crate::tool_cards::ToolProvider;
 use crate::workspace::state::ActiveWorkspace;
 
@@ -73,8 +71,7 @@ pub struct SystemMetrics {
     pub git_deletions: u32,
     pub cpu_usage_pct: f32,
     pub gpu_usage_pct: Option<f32>,
-    pub claude_binary: BinaryStatus,
-    pub codex_binary: BinaryStatus,
+    pub providers: Vec<ProviderReadiness>,
 }
 
 #[derive(Default)]
@@ -206,8 +203,12 @@ fn collect_system_metrics(
     // Only re-query nvidia-smi for live usage if a GPU was detected at all.
     let gpu_usage_pct = if has_gpu { query_nvidia_smi().1 } else { None };
 
-    let claude_binary = ClaudeCodeProvider.readiness();
-    let codex_binary = CodexProvider.readiness();
+    let providers = agent_provider::all()
+        .map(|(agent, _catalog)| ProviderReadiness {
+            provider: agent.id(),
+            binary: agent.readiness(),
+        })
+        .collect();
 
     SystemMetrics {
         git_branch,
@@ -215,8 +216,7 @@ fn collect_system_metrics(
         git_deletions,
         cpu_usage_pct,
         gpu_usage_pct,
-        claude_binary,
-        codex_binary,
+        providers,
     }
 }
 

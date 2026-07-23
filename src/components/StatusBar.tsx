@@ -3,7 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faMicrochip, faGamepad, faDatabase, faChevronDown, iconClass } from "../icons";
 import { useSystemInfo } from "../hooks/useSystemStatus";
 import { useWorkspace } from "../state/workspace";
-import type { BinaryStatus, SystemMetrics } from "../types";
+import { PROVIDER_LABELS, type BinaryStatus, type SystemMetrics } from "../types";
 
 function getUsageColor(usage: number): string {
   if (usage < 70) return "text-ok";
@@ -60,7 +60,7 @@ export function StatusBar({ metrics }: StatusBarProps) {
     return <footer className="h-6 bg-surface-container-lowest border-t border-outline-variant shrink-0" />;
   }
 
-  const anyAgentReady = metrics.claude_binary.kind === "ready" || metrics.codex_binary.kind === "ready";
+  const anyAgentReady = metrics.providers.some((p) => p.binary.kind === "ready");
 
   return (
     <footer className="h-6 flex items-center px-3 bg-surface-container-lowest border-t border-outline-variant text-on-surface-variant font-mono text-[10px] shrink-0 overflow-visible select-none cursor-default">
@@ -132,8 +132,9 @@ export function StatusBar({ metrics }: StatusBarProps) {
             <div className="px-2.5 pt-2 pb-1.5 text-[10px] font-medium uppercase tracking-normal text-on-surface-variant/60">
               Agents
             </div>
-            <AgentRow label="claude-code" status={metrics.claude_binary} />
-            <AgentRow label="codex" status={metrics.codex_binary} />
+            {metrics.providers.map((p) => (
+              <AgentRow key={p.provider} label={PROVIDER_LABELS[p.provider]} status={p.binary} />
+            ))}
           </div>
         )}
       </div>
