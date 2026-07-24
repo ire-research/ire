@@ -176,17 +176,23 @@ async fn register_route(inner: &RuntimeInner, session_id: &str, args: &SendArgs<
 }
 
 /// One-shot title generation: disposable session, blocking `/message` call.
+/// Still passes `mcp_config` to `ensure_started` — if this call is the one
+/// that starts the shared server, it must start with the same MCP config a
+/// concurrent chat send would use, even though the title request itself
+/// sends no tools.
 pub async fn generate_title(
     app: &AppHandle,
     runtime: &OpenCodeRuntime,
     session_manager: &SessionManager,
     workspace: &Path,
+    home_data_dir: &Path,
     model: &str,
     prompt: &str,
 ) -> Result<String, String> {
     let bin = opencode_bin()?;
+    let mcp_config = mcp_config_path(home_data_dir);
     let inner = runtime
-        .ensure_started(app, session_manager, workspace, &bin, None)
+        .ensure_started(app, session_manager, workspace, &bin, mcp_config.as_deref())
         .await
         .map_err(|e| e.to_string())?;
 

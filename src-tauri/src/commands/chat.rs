@@ -253,7 +253,8 @@ pub async fn generate_chat_title(
     let title = if agent.transport() == TurnTransport::OpenCodeServer {
         let runtime = app_handle.state::<OpenCodeRuntime>();
         let session = app_handle.state::<SessionManager>();
-        crate::opencode::turn::generate_title(&app_handle, &runtime, &session, &workspace_path, &model, &prompt).await?
+        let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
+        crate::opencode::turn::generate_title(&app_handle, &runtime, &session, &workspace_path, &home_data_dir, &model, &prompt).await?
     } else {
         let cli = agent_provider::cli_turn(&provider)
             .ok_or_else(|| format!("provider {provider} has no CLI turn support"))?;
