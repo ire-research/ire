@@ -1,7 +1,5 @@
-//! Owns the single `opencode serve` process for the active IRE workspace: one
-//! private, loopback-only server per workspace (never the user's own TUI
-//! server), started lazily on first use and torn down on workspace close.
-//! See docs/opencode-server-integration.md "Runtime ownership".
+//! Owns the single `opencode serve` process for the active IRE workspace,
+//! started lazily on first use and torn down on workspace close.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -19,12 +17,8 @@ use crate::opencode::events::{self, OpenCodeEvent, OpenCodeSessionState};
 use crate::session::{RunningTurn, SessionManager};
 use crate::stream_event::{AskQuestion, AskQuestionOption, StreamEvent};
 
-/// Routing + per-turn bookkeeping for one OpenCode session, mapped to the IRE
-/// tab that owns it. Lives for as long as the runtime does (an OpenCode
-/// session id is stable across multiple turns in the same tab), but
-/// `stream_id`/`event_id` are reset by `opencode::turn` at the start of every
-/// new turn — the frontend's `chat-stream` dedup keys on `stream_id`, one per
-/// turn, the same convention the CLI transport uses.
+/// Routing + per-turn bookkeeping for one OpenCode session, mapped to its
+/// IRE tab. `stream_id`/`event_id` reset at the start of every new turn.
 pub(crate) struct TabRoute {
     pub(crate) tab_id: String,
     pub(crate) stream_id: String,
@@ -40,18 +34,14 @@ pub(crate) struct RuntimeInner {
     pub(crate) sessions: Arc<AsyncMutex<HashMap<String, TabRoute>>>,
 }
 
-/// Tauri-managed state: at most one running OpenCode server, for the current
-/// `ActiveWorkspace`. `None` when no OpenCode turn has run yet this session,
-/// or after `stop()`.
+/// Tauri-managed state: at most one running OpenCode server, for the
+/// current `ActiveWorkspace`.
 #[derive(Default)]
 pub struct OpenCodeRuntime(AsyncMutex<Option<Arc<RuntimeInner>>>);
 
 impl OpenCodeRuntime {
-    /// Returns the running server for `workspace`, starting one if none is
-    /// running yet. If a server is already running for a *different*
-    /// workspace (shouldn't normally happen — `close_workspace` always stops
-    /// it first — but defensive since this is a lazily-started singleton),
-    /// it's stopped first.
+    /// Returns the running server for `workspace`, starting one if needed.
+    /// Stops a stale server for a different workspace first, defensively.
     pub async fn ensure_started(
         &self,
         app: &AppHandle,
@@ -78,15 +68,12 @@ impl OpenCodeRuntime {
         Ok(inner)
     }
 
-    /// The currently running server, if any — used by cancellation and
-    /// question-reply paths that must reach an already-started server but
-    /// never start one themselves.
+    /// The currently running server, if any — never starts one itself.
     pub async fn current(&self) -> Option<Arc<RuntimeInner>> {
         self.0.lock().await.clone()
     }
 
-    /// Aborts every session IRE knows about on this server, then terminates
-    /// the server process. Called on workspace close.
+    /// Aborts every known session, then kills the server process.
     pub async fn stop(&self) {
         let inner = self.0.lock().await.take();
         if let Some(inner) = inner {
@@ -149,9 +136,10 @@ async fn start_process(
     let sessions: Arc<AsyncMutex<HashMap<String, TabRoute>>> = Arc::new(AsyncMutex::new(HashMap::new()));
     let sse_task = {
         let sessions = Arc::clone(&sessions);
+        let client = client.clone();
         let base_url = base_url.clone();
         tauri::async_runtime::spawn(async move {
-            run_sse_loop(app, base_url, sessions, session_manager).await;
+            run_sse_loop(app, client, base_url, sessions, session_manager).await;
         })
     };
 
@@ -164,10 +152,8 @@ async fn start_process(
     })
 }
 
-/// `opencode serve` prints exactly one plain line — `opencode server
-/// listening on http://HOST:PORT` — to stdout once bound (confirmed against
-/// a real `--port 0` run; structured logs go to a log file by default, not
-/// stdout/stderr, so this line is the only stdout output to expect).
+/// `opencode serve` prints one plain "listening on http://HOST:PORT" line
+/// to stdout once bound; that's the only stdout output to expect.
 async fn read_listening_url(stdout: tokio::process::ChildStdout) -> Option<String> {
     use tokio::io::{AsyncBufReadExt, BufReader};
     let mut lines = BufReader::new(stdout).lines();
@@ -197,13 +183,11 @@ async fn wait_for_health(client: &OpenCodeClient) -> Result<(), OpenCodeError> {
     }
 }
 
-/// Maintains the single `/event` SSE subscription for the server's whole
-/// lifetime (not per-turn — see docs/opencode-server-integration.md "Runtime
-/// ownership"), reconnecting with bounded backoff on disconnect. Only events
-/// whose `sessionID` is a registered tab route are acted on; everything else
-/// (including sessions started outside IRE, if any ever attach) is ignored.
+/// Maintains one `/event` SSE subscription for the server's whole lifetime,
+/// reconnecting with bounded backoff. Only registered tab routes are acted on.
 async fn run_sse_loop(
     app: AppHandle,
+    client: OpenCodeClient,
     base_url: String,
     sessions: Arc<AsyncMutex<HashMap<String, TabRoute>>>,
     session_manager: SessionManager,
@@ -226,7 +210,7 @@ async fn run_sse_loop(
                             let Ok(raw) = serde_json::from_str::<Value>(data.trim_start()) else {
                                 continue;
                             };
-                            handle_event(&app, &sessions, &session_manager, &raw).await;
+                            handle_event(&app, &client, &sessions, &session_manager, &raw).await;
                         }
                     }
                 }
@@ -240,18 +224,30 @@ async fn run_sse_loop(
     }
 }
 
-/// Permission requests are not handled here: the server config overlay sets
-/// `permission: "allow"` unconditionally (see `opencode::config`), the same
-/// effective policy as the old CLI transport's `--auto` flag, so OpenCode
-/// never emits a `permission.asked` event to reply to in the first place.
+/// No `permission.asked` handling: the config overlay sets `permission:
+/// "allow"` unconditionally, so OpenCode never emits that event.
 async fn handle_event(
     app: &AppHandle,
+    client: &OpenCodeClient,
     sessions: &Arc<AsyncMutex<HashMap<String, TabRoute>>>,
     session_manager: &SessionManager,
     raw: &Value,
 ) {
     match events::parse_event(raw) {
+        OpenCodeEvent::MessageUpdated { session_id, message_id, role } => {
+            let mut guard = sessions.lock().await;
+            if let Some(route) = guard.get_mut(&session_id) {
+                if role == "assistant" {
+                    route.state.mark_assistant_message(message_id);
+                } else {
+                    route.state.mark_other_message(message_id);
+                }
+            }
+        }
         OpenCodeEvent::MessagePartUpdated { session_id, part } => {
+            let Some(message_id) = part["messageID"].as_str().map(str::to_string) else { return };
+            resolve_message_role(client, sessions, &session_id, &message_id).await;
+
             let mut guard = sessions.lock().await;
             let Some(route) = guard.get_mut(&session_id) else { return };
             let tab_id = route.tab_id.clone();
@@ -324,6 +320,35 @@ async fn handle_event(
             );
         }
         OpenCodeEvent::Other => {}
+    }
+}
+
+/// Resolves and caches a message id's role via `GET` if not already known —
+/// doesn't rely on `message.updated` having arrived first.
+async fn resolve_message_role(
+    client: &OpenCodeClient,
+    sessions: &Arc<AsyncMutex<HashMap<String, TabRoute>>>,
+    session_id: &str,
+    message_id: &str,
+) {
+    {
+        let guard = sessions.lock().await;
+        match guard.get(session_id) {
+            Some(route) if route.state.role_known(message_id) => return,
+            Some(_) => {}
+            None => return,
+        }
+    }
+    // A failed lookup leaves the id unresolved (retried on the next part
+    // update) rather than caching a possibly-wrong negative result.
+    let Ok(role) = client.get_message_role(session_id, message_id).await else { return };
+    let mut guard = sessions.lock().await;
+    if let Some(route) = guard.get_mut(session_id) {
+        if role == "assistant" {
+            route.state.mark_assistant_message(message_id.to_string());
+        } else {
+            route.state.mark_other_message(message_id.to_string());
+        }
     }
 }
 

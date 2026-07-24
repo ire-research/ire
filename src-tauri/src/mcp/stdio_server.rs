@@ -135,13 +135,8 @@ fn tool(name: &'static str, description: &'static str, input_schema: Value) -> T
     Tool::new(name, description, schema(input_schema))
 }
 
-/// Set only on the MCP subprocess(es) an OpenCode server spawns (see
-/// `opencode::config::server_config`): OpenCode has its own native
-/// `question` tool, and letting an OpenCode turn see both would be
-/// ambiguous about which one to use — see
-/// docs/opencode-server-integration.md "Native questions, not IRE's MCP
-/// question tool". Claude and Codex never set this and keep seeing
-/// `ask_user_question` unchanged.
+/// Set only on OpenCode's MCP subprocess — it has its own native question
+/// tool. Claude/Codex never set this and keep `ask_user_question`.
 fn ask_excluded() -> bool {
     std::env::var_os("IRE_MCP_EXCLUDE_ASK").is_some()
 }

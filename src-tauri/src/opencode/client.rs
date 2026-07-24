@@ -1,6 +1,4 @@
 //! Typed async client over one `opencode serve` process's HTTP API.
-//! Endpoint shapes verified against a live `opencode serve` (v1.18.4) and its
-//! `/doc` OpenAPI spec — see docs/opencode-server-integration.md.
 
 use std::collections::HashMap;
 
@@ -26,10 +24,8 @@ impl From<reqwest::Error> for OpenCodeError {
     }
 }
 
-/// Splits IRE's `<providerID>/<modelID>` model id at the first `/` — model
-/// ids themselves may contain further slashes (e.g. OpenRouter's
-/// `openrouter/~anthropic/claude-fable-latest`), so this must not split on
-/// every `/`.
+/// Splits at the first `/` only — model ids can contain further slashes
+/// (e.g. `openrouter/~anthropic/claude-fable-latest`).
 fn split_model_id(model: &str) -> Result<(&str, &str), OpenCodeError> {
     model
         .split_once('/')
@@ -72,9 +68,7 @@ pub struct Session {
     pub id: String,
 }
 
-/// One HTTP client bound to one running server's base URL (e.g.
-/// `http://127.0.0.1:PORT`). Cheap to clone (`reqwest::Client` is an `Arc`
-/// internally).
+/// Bound to one running server's base URL. Cheap to clone.
 #[derive(Clone)]
 pub struct OpenCodeClient {
     http: reqwest::Client,
@@ -127,12 +121,26 @@ impl OpenCodeClient {
             .await;
     }
 
-    /// Starts (or continues) a turn asynchronously; the reply streams over
-    /// the runtime's shared `/event` SSE connection. Returns `Ok(false)`
-    /// specifically for a 404 (the session id is unknown to this server —
-    /// e.g. it was restarted since the id was persisted), distinct from
-    /// other failures, so the caller can clear the stale resume id and start
-    /// a fresh session instead of surfacing a confusing error.
+    /// Authoritative role lookup, used when a `message.part.updated` event
+    /// arrives for a message id whose role isn't cached yet.
+    pub async fn get_message_role(&self, session_id: &str, message_id: &str) -> Result<String, OpenCodeError> {
+        let resp = self
+            .http
+            .get(format!("{}/session/{session_id}/message/{message_id}", self.base_url))
+            .send()
+            .await?;
+        if !resp.status().is_success() {
+            return Err(OpenCodeError(format!("get message failed: {}", resp.status())));
+        }
+        let value: Value = resp.json().await?;
+        value["info"]["role"]
+            .as_str()
+            .map(str::to_string)
+            .ok_or_else(|| OpenCodeError("message response missing role".to_string()))
+    }
+
+    /// Starts a turn; the reply streams over the shared `/event` connection.
+    /// `Ok(false)` means the session id is unknown to this server (404).
     #[allow(clippy::too_many_arguments)]
     pub async fn prompt_async(
         &self,
@@ -166,10 +174,7 @@ impl OpenCodeClient {
         Ok(true)
     }
 
-    /// Blocking single-turn send (`POST /session/:id/message`): returns once
-    /// the assistant's reply is complete rather than streaming it. Used only
-    /// for one-shot title generation, which has no tab/SSE routing to set up
-    /// and just wants the final text.
+    /// Blocking single-turn send; used only for one-shot title generation.
     pub async fn send_message_blocking(
         &self,
         session_id: &str,
@@ -247,13 +252,8 @@ impl OpenCodeClient {
         }
     }
 
-    /// Every model from every *connected* (authenticated) provider —
-    /// `GET /provider`'s `all` lists ~170 providers OpenCode merely knows the
-    /// shape of (most needing an API key the user hasn't set), which is not
-    /// what `opencode models` shows: that CLI catalog only ever lists
-    /// `connected` providers, and this matches it. `ModelInfo.id` is
-    /// `<providerID>/<modelID>` to match IRE's UI boundary; `effort_levels`
-    /// are a model's `variants` keys.
+    /// Models from every *connected* provider only — `all` lists ~170
+    /// providers OpenCode merely knows the shape of, most unauthenticated.
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>, OpenCodeError> {
         let resp = self.http.get(format!("{}/provider", self.base_url)).send().await?;
         if !resp.status().is_success() {
@@ -349,13 +349,7 @@ mod tests {
         assert_eq!(models[0].label, "big-pickle");
     }
 
-    /// Opt-in integration test against a real `opencode serve` process
-    /// (`cargo test -- --ignored`): exercises health, session create/delete,
-    /// and provider/model listing over the actual HTTP API. Skipped (not
-    /// failed) when no `opencode` binary is discoverable — see
-    /// docs/opencode-server-integration.md "Implementation sequence" step 7.
-    /// Deliberately does not send a prompt: that would need an authenticated
-    /// model and spend real API credits just to run the test suite.
+    /// Opt-in (`cargo test -- --ignored`): needs a real `opencode` binary.
     #[test]
     #[ignore]
     fn live_opencode_serve_health_session_and_catalog() {

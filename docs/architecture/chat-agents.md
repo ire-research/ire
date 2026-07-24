@@ -317,15 +317,18 @@ Unlike the old CLI transport, there is **no per-turn system prompt baked into se
 5. `POST /session/:id/prompt_async` with `{ model: { providerID, modelID }, variant: effort, system: system_prompt, parts: [{ type: "text", text: message }] }`. Returns `204` immediately — the reply streams over the runtime's already-open SSE connection, not this response.
 6. If the server reports the session id unknown (`404` — e.g. deleted, or from an incompatible version after a restart), create one fresh session, move the same `TabRoute` (same `stream_id`, so no duplicate `Init`) to the new id, persist the new resume id, and retry once. A second failure surfaces `StreamEvent::Error` + `Done` and returns an error rather than silently sending into an unrelated session.
 
-**Event normalization (`opencode::events`).** The runtime's SSE task parses every `/event` payload (`{ id, type, properties }`) via `parse_event`, acting only on the subset of OpenCode's ~90 event types IRE's UI needs — everything else (`session.updated`, `message.updated`, `session.diff`, `plugin.added`, the experimental `session.next.*` granular stream, ...) is ignored:
+**Event normalization (`opencode::events`).** The runtime's SSE task parses every `/event` payload (`{ id, type, properties }`) via `parse_event`, acting only on the subset of OpenCode's ~90 event types IRE's UI needs — everything else (`session.updated`, `session.diff`, `plugin.added`, the experimental `session.next.*` granular stream, ...) is ignored:
 
 | OpenCode event | IRE action |
 |---|---|
-| `message.part.updated` (`part.type == "text"` / `"reasoning"`) | Suffix-delta against `OpenCodeSessionState`'s per-part-id length tracking (OpenCode resends the *full* part text on every update, not a delta) → `TextDelta` / `ThinkingDelta` |
-| `message.part.updated` (`part.type == "tool"`) | `part.state.status` transitions `pending`/`running` → `ToolStart` (deduped per `callID` via `OpenCodeSessionState.tool_started`); `completed`/`error` → `ToolDone` (deduped via `tool_done`; emits a synthetic `ToolStart` first if a fast tool jumped straight to `completed` without an observed pending/running update) |
-| `session.idle` | `Result { text: None }` then `Done`; clears the tab's `RunningTurn` (guarded — only if it still matches the session id, same "still current" guard the CLI transport uses for pids) |
-| `session.error` | `Error { message }` (extracted from the error union's `data.message`/`message`/`name`) then `Done`; same `RunningTurn` clear |
+| `message.updated` | Caches `info.id`'s role (assistant vs. other) in `OpenCodeSessionState` — a fast path, see below |
+| `message.part.updated` (`part.type == "text"` / `"reasoning"`) | Role-gated (see below), then suffix-delta per part id → `TextDelta` / `ThinkingDelta` |
+| `message.part.updated` (`part.type == "tool"`) | Role-gated, then `pending`/`running` → `ToolStart` (deduped); `completed`/`error` → `ToolDone` (deduped, backfills a `ToolStart` if skipped) |
+| `session.idle` | `Result` then `Done`; clears the tab's `RunningTurn` if it still matches |
+| `session.error` | `Error { message }` then `Done`; same `RunningTurn` clear |
 | `question.asked` | See Native questions below |
+
+**Why parts are role-gated: OpenCode echoes the user's own prompt over the same stream.** `/event` broadcasts every message's parts, including the message OpenCode creates for the user's own submitted prompt — without gating, that text lands in the assistant's reply bubble (a real bug caught in manual testing). `message.updated` events cache each message id's role as a fast path; a `message.part.updated` for an id not yet cached triggers `OpenCodeClient::get_message_role` (`GET /session/:id/message/:messageId`) instead of assuming `message.updated` already arrived — event ordering isn't a documented guarantee, so correctness doesn't depend on it. A failed lookup leaves the id unresolved for a retry rather than caching a wrong answer.
 
 Turn completion is driven by `session.idle`/`session.error`, not inferred from a `step-finish` part reason like the CLI transport has to (the server has an explicit terminal event; the CLI's JSONL stream doesn't).
 

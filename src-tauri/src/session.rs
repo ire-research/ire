@@ -3,20 +3,15 @@ use std::sync::{Arc, Mutex};
 
 use tokio::sync::oneshot;
 
-/// A turn currently running for a tab, generalized over transport. `Process`
-/// covers Claude/Codex's CLI subprocess (a raw pid to signal); `OpenCode`
-/// covers a turn running inside the shared `opencode serve` process, tracked
-/// by its OpenCode session id instead — there is no pid to signal, and
-/// cancellation goes through `POST /session/:id/abort` instead of a kill().
+/// A turn currently running for a tab: a subprocess pid, or (for OpenCode)
+/// its session id — no pid to signal, cancelled via `POST /session/:id/abort`.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RunningTurn {
     Process(u32),
     OpenCode { session_id: String },
 }
 
-/// Transient, in-process state for the current turn of a tab. The durable resume
-/// id lives in the `chat_sessions` table (keyed by `session_uuid`); this holds
-/// only what the experiment wake-up flow needs to re-attach to a live turn.
+/// Transient, in-process state for the current turn of a tab.
 #[derive(Default)]
 struct PerTabSession {
     session_uuid: Option<String>,
@@ -25,10 +20,8 @@ struct PerTabSession {
     effort: Option<String>,
     running: Option<RunningTurn>,
     pending_ask: Option<oneshot::Sender<Vec<serde_json::Value>>>,
-    /// Set while a native OpenCode `question.asked` event is awaiting a
-    /// reply from the IRE UI. Distinct from `pending_ask` (IRE's own MCP
-    /// `ask_user_question` tool, which OpenCode turns never receive — see
-    /// docs/opencode-server-integration.md).
+    /// A native OpenCode `question.asked` awaiting a reply; distinct from
+    /// `pending_ask` (Claude/Codex's MCP `ask_user_question`).
     pending_opencode_question: Option<String>,
 }
 
@@ -51,9 +44,7 @@ impl Default for SessionManager {
 }
 
 impl SessionManager {
-    /// Record the transient state for the turn starting on `tab_id`: the session
-    /// uuid it belongs to and the agent options in use. The wake-up flow reads
-    /// these back via `get_active_session`.
+    /// Records the transient state for the turn starting on `tab_id`.
     pub fn set_agent_options(
         &self,
         tab_id: &str,
@@ -70,13 +61,8 @@ impl SessionManager {
         session.effort = effort.map(str::to_string);
     }
 
-    /// Atomically reads the running turn handle and its recorded provider name
-    /// for `tab_id` under one lock acquisition, so `chat_cancel` never observes
-    /// a handle and a provider read from two different points in time (which
-    /// two separate calls could, if another task mutates the session in
-    /// between). Returns `None` if no turn is currently running; the inner
-    /// `Option<String>` is `None` if a turn is running but its provider wasn't
-    /// recorded (or was cleared by `reset`).
+    /// Atomically reads the running turn handle and its provider under one
+    /// lock, so `chat_cancel` never sees them from two different moments.
     pub fn get_running_and_provider(&self, tab_id: &str) -> Option<(RunningTurn, Option<String>)> {
         let map = self.0.lock().unwrap();
         let session = map.get(tab_id)?;
@@ -95,10 +81,8 @@ impl SessionManager {
             Some(RunningTurn::OpenCode { session_id });
     }
 
-    /// Clears the running turn only if it still matches `expected` — the
-    /// generalized form of the old "only clear if our pid is still current"
-    /// guard, needed because `fire_wakeup` may have already registered a new
-    /// turn under the same `tab_id` by the time the original one completes.
+    /// Clears the running turn only if it still matches `expected` (a newer
+    /// turn may have already been registered under the same `tab_id`).
     pub fn clear_running_if(&self, tab_id: &str, expected: &RunningTurn) {
         if let Some(s) = self.0.lock().unwrap().get_mut(tab_id) {
             if s.running.as_ref() == Some(expected) {
@@ -116,22 +100,13 @@ impl SessionManager {
         }
     }
 
-    /// Returns the first tab with a running turn, of any transport. Used by
-    /// `experiment.start`, which any provider can call.
+    /// First tab with a running turn, any transport. Used by `experiment.start`.
     pub fn get_active_session(&self) -> Option<ActiveSession> {
         self.find_active_session(|s| s.running.is_some())
     }
 
-    /// Returns the first tab with a running `Process` (Claude/Codex) turn
-    /// specifically. Used by the MCP `ask_user_question` handshake, which
-    /// only a `Process`-transport agent can ever call — the tool is hidden
-    /// from OpenCode's catalog entirely (its native questions route through
-    /// `pending_opencode_question` instead, keyed by the event's own session
-    /// id — see docs/architecture/chat-agents.md "OpenCode Server
-    /// Transport"). Narrower than `get_active_session` on purpose: with a
-    /// Claude/Codex tab and an OpenCode tab both running concurrently, the
-    /// broader match could pick the OpenCode tab first and misroute the
-    /// answer to a tab that never asked.
+    /// First tab with a running `Process` turn specifically — narrower than
+    /// `get_active_session` so a concurrent OpenCode tab can't steal it.
     pub fn get_active_process_session(&self) -> Option<ActiveSession> {
         self.find_active_session(|s| matches!(s.running, Some(RunningTurn::Process(_))))
     }
@@ -155,9 +130,7 @@ impl SessionManager {
             })
     }
 
-    /// Register a pending `ask_user_question` for `tab_id` and return a
-    /// receiver that resolves once the user submits their answers via
-    /// `submit_ask`. Called from the MCP RPC handler, which blocks on it.
+    /// Registers a pending `ask_user_question` and returns its receiver.
     pub fn register_ask(&self, tab_id: &str) -> oneshot::Receiver<Vec<serde_json::Value>> {
         let (tx, rx) = oneshot::channel();
         let mut map = self.0.lock().unwrap();
@@ -202,13 +175,8 @@ impl SessionManager {
             .take()
     }
 
-    /// Drop all per-tab state and return the PIDs that were running (for
-    /// `Process`-transport tabs only — OpenCode turns are cleaned up
-    /// separately by tearing down the whole `OpenCodeRuntime`, since every
-    /// session on it belongs to the workspace being closed). Used on
-    /// workspace close to terminate stragglers; their late chat-stream events
-    /// would otherwise leak into the next workspace because the frontend
-    /// listener is global.
+    /// Drops all per-tab state and returns the running `Process` pids
+    /// (OpenCode turns are cleaned up separately, via `OpenCodeRuntime`).
     pub fn drain(&self) -> Vec<u32> {
         let mut map = self.0.lock().unwrap();
         let pids = map

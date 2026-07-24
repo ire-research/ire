@@ -1,15 +1,5 @@
-//! Provider-neutral adapter interface over the agent layer.
-//!
-//! `claude_code` and `codex` each implement discovery, spawn-arg building, and
-//! JSONL stream dispatch independently (see docs/architecture/chat-agents.md).
-//! `AgentProvider` is the trait every provider implements, naming identity,
-//! discovery, and readiness so a caller can hold `&dyn AgentProvider` instead
-//! of branching on a provider string. `CliTurn` is a separate, optional
-//! capability — implemented by providers whose turns run as a local
-//! subprocess emitting JSONL (Claude, Codex) — kept off the core trait so
-//! OpenCode's server-backed transport (`opencode::turn`, `opencode::runtime`)
-//! isn't forced to fake a `Command` it doesn't have. See
-//! docs/opencode-server-integration.md "Provider abstraction".
+//! Provider-neutral adapter interface over the agent layer. `CliTurn` is a
+//! separate, optional capability for CLI-subprocess providers only.
 
 use std::path::Path;
 use std::process::Command;
@@ -21,11 +11,7 @@ use crate::binary::{binary_status, BinaryStatus, DiscoveredBinary, DiscoveryErro
 use crate::stream_event::{StreamEvent, StreamState};
 use crate::tool_cards::ToolProvider;
 
-/// Everything needed to spawn one agent turn, independent of provider.
-/// `build_command` is where IRE MCP config and the composed system prompt
-/// get injected into the provider's own command-line surface (a raw file
-/// flag for Claude, translated `-c mcp_servers.*` / `-c developer_instructions`
-/// flags for Codex). Only meaningful for `CliTurn` providers.
+/// One CLI-subprocess turn's inputs. Only meaningful for `CliTurn` providers.
 pub struct TurnRequest<'a> {
     pub workspace: &'a Path,
     pub message: &'a str,
@@ -36,11 +22,7 @@ pub struct TurnRequest<'a> {
     pub system_prompt: Option<&'a str>,
 }
 
-/// One selectable model plus the effort levels valid for it (`[]` means the
-/// model doesn't take an effort flag at all, e.g. Claude's Haiku). Owned
-/// rather than `'static`: a provider backed by a dynamic/user-configured
-/// backend (e.g. Ollama or a custom endpoint) discovers this at runtime,
-/// it isn't a fixed compile-time list.
+/// One selectable model plus its valid effort levels (`[]` means none).
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ModelInfo {
     pub id: String,
@@ -61,16 +43,8 @@ impl std::fmt::Display for AgentError {
     }
 }
 
-/// The result of resolving one provider's model catalog — kept distinct
-/// from an empty list so callers (the frontend model picker) can tell "no
-/// usable models configured" apart from "catalog discovery failed" and show
-/// the right thing for each: `Available { models: [] }` means the provider
-/// resolved cleanly but has nothing to offer yet (e.g. no models pulled
-/// into a local Ollama install), while `Error` carries an actionable reason
-/// (e.g. the backend was unreachable). A provider with no `ModelCatalog`
-/// implementation at all is reported as `Available { models: [] }` too —
-/// from the caller's perspective there's simply nothing to enumerate,
-/// which isn't an error either.
+/// A provider's model catalog: `Available { models: [] }` means nothing
+/// to offer yet (not an error); `Error` means discovery itself failed.
 #[derive(Debug, Serialize)]
 #[serde(tag = "status", rename_all = "snake_case")]
 pub enum ModelCatalogStatus {
@@ -78,21 +52,15 @@ pub enum ModelCatalogStatus {
     Error { message: String },
 }
 
-/// How a provider runs one turn. `CliSubprocess` providers implement
-/// `CliTurn` and are driven by the generic spawn+JSONL-stream loop in
-/// `commands::chat` / `commands::resources` / `experiments::wake`.
-/// `OpenCodeServer` providers are driven by `opencode::turn` instead, which
-/// talks to a long-lived `opencode serve` process over HTTP/SSE — see
-/// docs/opencode-server-integration.md.
+/// How a provider runs one turn: local CLI subprocess, or the OpenCode
+/// server transport (`opencode::turn`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TurnTransport {
     CliSubprocess,
     OpenCodeServer,
 }
 
-/// A provider-scoped adapter over one agent (Claude Code, Codex, OpenCode,
-/// ...). Object-safe so callers can hold `&'static dyn AgentProvider` / look
-/// one up by wire name instead of branching on `provider == "codex"`.
+/// A provider-scoped adapter over one agent (Claude Code, Codex, OpenCode).
 pub trait AgentProvider: Send + Sync {
     /// Stable identity used in tool-card provenance (`ToolCall::provider`).
     fn id(&self) -> ToolProvider;
@@ -125,21 +93,13 @@ pub trait AgentProvider: Send + Sync {
     }
 }
 
-/// The CLI-subprocess turn surface: command building, title-turn shape, JSONL
-/// stream dispatch, and cancellation/error normalization for a provider whose
-/// `transport()` is `CliSubprocess`. Kept off `AgentProvider` itself — see the
-/// module doc comment.
+/// The CLI-subprocess turn surface. Implemented only by providers whose
+/// `transport()` is `CliSubprocess`.
 pub trait CliTurn: Send + Sync {
-    /// Builds the subprocess command for one turn. `req.resume_id` selects
-    /// resume vs. fresh-session invocation; `req.mcp_config` / `req.system_prompt`
-    /// are injected in whatever form the underlying CLI expects.
+    /// Builds the subprocess command for one turn.
     fn build_command(&self, bin: &Path, req: &TurnRequest<'_>) -> Command;
 
-    /// Builds a title-generation turn: no system prompt, no MCP config, no
-    /// session resume. `model` is the caller's choice (typically its
-    /// lightest/cheapest one) — the trait doesn't assume a fixed catalog it
-    /// could pick a default from; see `ModelCatalog` for providers that can
-    /// enumerate one.
+    /// Builds a title-generation turn: no system prompt, no MCP, no resume.
     fn title_request<'a>(&self, workspace: &'a Path, prompt: &'a str, model: &'a str) -> TurnRequest<'a> {
         TurnRequest {
             workspace,
@@ -153,20 +113,14 @@ pub trait CliTurn: Send + Sync {
     }
 
     /// Parses one JSONL line into zero or more `StreamEvent`s via `emit`.
-    /// Every provider shares the same `StreamState`/`StreamEvent` (defined in
-    /// `stream_event`) so the frontend handles one event shape.
     fn dispatch(&self, json: &Value, state: &mut StreamState, emit: &mut dyn FnMut(StreamEvent));
 
-    /// Terminates a running turn's subprocess by pid. Default is SIGTERM
-    /// (Unix) / `taskkill` (Windows); override if a provider ever needs to
-    /// kill a process group or child tree instead of a single pid.
+    /// Terminates a running turn's subprocess by pid.
     fn cancel(&self, pid: u32) {
         crate::commands::chat::kill_process(pid);
     }
 
     /// Maps a raw spawn/IO failure into a provider-neutral `AgentError`.
-    /// Providers may recognize their own known failure text (e.g. Codex's
-    /// missing-node-in-PATH case) and return a clearer message.
     fn normalize_spawn_error(&self, err: &std::io::Error) -> AgentError {
         AgentError {
             message: err.to_string(),
@@ -174,11 +128,8 @@ pub trait CliTurn: Send + Sync {
     }
 }
 
-/// One entry in the provider registry: the wire-format name paired with its
-/// `AgentProvider`, and (if it has them) its `ModelCatalog` and `CliTurn`
-/// capabilities. This is the single place that knows which providers exist —
-/// `provider()`, `cli_turn()`, and `all()` all read from it, so registering a
-/// provider here is enough for every caller to pick it up.
+/// One provider registry entry: name, `AgentProvider`, and its optional
+/// `ModelCatalog`/`CliTurn` capabilities.
 struct Registered {
     name: &'static str,
     agent: &'static dyn AgentProvider,
@@ -207,41 +158,25 @@ static REGISTRY: &[Registered] = &[
     },
 ];
 
-/// Looks up the adapter for a wire-format provider name (`"claude"` /
-/// `"codex"` / `"opencode"`), the same strings used in `ChatOptions::provider`
-/// and the `chat_resume_ids` rows.
+/// Looks up the adapter for a wire-format provider name.
 pub fn provider(name: &str) -> Option<&'static dyn AgentProvider> {
     REGISTRY.iter().find(|r| r.name == name).map(|r| r.agent)
 }
 
-/// Looks up the `CliTurn` capability for a wire-format provider name, if it
-/// has one. `None` for a server-backed provider (`transport() ==
-/// OpenCodeServer`) — callers branch on `AgentProvider::transport()` first.
+/// Looks up the `CliTurn` capability, if any (`None` for OpenCode).
 pub fn cli_turn(name: &str) -> Option<&'static dyn CliTurn> {
     REGISTRY.iter().find(|r| r.name == name).and_then(|r| r.cli)
 }
 
 /// Every registered provider, paired with its model catalog if it has one.
-/// Used by `list_agent_models` so the known-provider set has exactly one
-/// owner instead of a separately maintained name list. OpenCode's catalog
-/// isn't surfaced here — its models require a live `opencode serve` process
-/// to enumerate, so `list_agent_models` fetches them separately via
-/// `opencode::runtime`/`opencode::client`.
+/// OpenCode isn't surfaced here — its catalog needs a live server round-trip.
 pub fn all() -> impl Iterator<Item = (&'static dyn AgentProvider, Option<&'static dyn ModelCatalog>)> {
     REGISTRY.iter().map(|r| (r.agent, r.catalog))
 }
 
-/// Optional capability, separate from `AgentProvider`: a provider whose
-/// available models can be enumerated synchronously (a fixed list, or one
-/// resolvable with a quick local subprocess call). Claude and Codex both ship
-/// a fixed model list; OpenCode's catalog is dynamic *and* requires an async
-/// round-trip to a running server, which doesn't fit this synchronous shape —
-/// see `all()`.
+/// A provider whose available models can be enumerated synchronously.
 pub trait ModelCatalog: Send + Sync {
-    /// Lists currently available models, in display order. Fallible
-    /// independent of `AgentProvider::discover`/`readiness` — a provider's
-    /// binary can be installed and ready while its model catalog still
-    /// fails to resolve (e.g. its backend is unreachable).
+    /// Lists currently available models, in display order.
     fn discover_models(&self) -> Result<Vec<ModelInfo>, AgentError>;
 }
 
@@ -423,12 +358,8 @@ impl ModelCatalog for CodexProvider {
     }
 }
 
-/// OpenCode is a local gateway to many providers (Anthropic, OpenAI, Google,
-/// Ollama, custom OpenAI-compatible endpoints, ...) that the user configures
-/// once via `opencode auth login` in their own terminal — IRE never sees or
-/// stores those credentials. Turns run against an IRE-owned `opencode serve`
-/// process over HTTP/SSE (`opencode::runtime`, `opencode::turn`) rather than
-/// a per-turn CLI subprocess — see docs/opencode-server-integration.md.
+/// A local gateway to many providers. Turns run against an IRE-owned
+/// `opencode serve` process over HTTP/SSE, not a per-turn CLI subprocess.
 pub struct OpenCodeProvider;
 
 impl AgentProvider for OpenCodeProvider {

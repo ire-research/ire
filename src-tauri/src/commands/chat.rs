@@ -351,12 +351,8 @@ pub fn chat_reset_session(
     Ok(())
 }
 
-/// Deliver the user's answers for a pending question. For Claude/Codex this
-/// wakes the blocked `ask_user_question` MCP handler (in mcp/rpc.rs), which
-/// returns the answers as the tool_result on the same subprocess. For
-/// OpenCode there is no MCP round-trip to wake — a pending native
-/// `question.asked` event (see `opencode::runtime`) is answered directly via
-/// `POST /question/:requestID/reply` instead.
+/// Delivers the user's answers: wakes the MCP handler for Claude/Codex, or
+/// posts directly to OpenCode's native question endpoint.
 #[tauri::command]
 pub async fn submit_ask_answer(
     session: State<'_, SessionManager>,
@@ -383,9 +379,7 @@ pub async fn submit_ask_answer(
     }
 }
 
-/// OpenCode's question-reply body wants each answer as an array of selected
-/// option labels (`QuestionAnswer = string[]`); IRE's `AskAnswer` is either a
-/// single label or an array of labels depending on `multiSelect`.
+/// OpenCode wants each answer as an array of selected option labels.
 fn normalize_opencode_answer(value: &serde_json::Value) -> Vec<String> {
     match value {
         serde_json::Value::String(s) => vec![s.clone()],

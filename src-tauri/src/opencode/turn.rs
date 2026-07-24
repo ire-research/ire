@@ -1,9 +1,5 @@
-//! The OpenCode-transport turn runner: session ensure/create/reuse, resume-id
-//! persistence, tab-route registration, and `prompt_async` dispatch. Every
-//! OpenCode turn type (chat send, resource summary, experiment wake-up) goes
-//! through `send`; title generation uses the simpler blocking endpoint via
-//! `generate_title`. See docs/opencode-server-integration.md "Turn
-//! lifecycle" and "Other IRE turn types".
+//! The OpenCode-transport turn runner: session ensure/create/reuse,
+//! resume-id persistence, tab-route registration, and `prompt_async` dispatch.
 
 use std::path::{Path, PathBuf};
 
@@ -60,9 +56,8 @@ fn persist_resume_id(
     }
 }
 
-/// Starts (or continues) one OpenCode turn for `args.tab_id`. Used for chat
-/// sends, resource summaries, and experiment wake-ups alike — callers differ
-/// only in which `tab_id`/`session_uuid`/prompt they pass in.
+/// Starts (or continues) one OpenCode turn. Used for chat sends, resource
+/// summaries, and experiment wake-ups alike.
 pub async fn send(
     app: &AppHandle,
     runtime: &OpenCodeRuntime,
@@ -128,9 +123,7 @@ pub async fn send(
         return Ok(());
     }
 
-    // The persisted session id is unknown to this server (e.g. deleted, or
-    // from an incompatible version) — start a fresh one and retry once,
-    // reusing the same stream_id since Init was already emitted for it.
+    // Session id unknown to this server — start fresh and retry once.
     tracing::warn!(tab_id = %args.tab_id, session_id = %session_id, "opencode session not found on server, retrying with a fresh session");
     let route = { inner.sessions.lock().await.remove(&session_id) };
     let fresh = inner.client.create_session().await.map_err(|e| e.to_string())?;
@@ -182,10 +175,7 @@ async fn register_route(inner: &RuntimeInner, session_id: &str, args: &SendArgs<
     );
 }
 
-/// One-shot title generation: a disposable session, no MCP, no system
-/// prompt, no session resume — mirrors `AgentProvider::title_request`'s CLI
-/// shape. Uses the blocking `/message` endpoint since there's no tab/SSE
-/// routing to set up for a turn nobody will resume.
+/// One-shot title generation: disposable session, blocking `/message` call.
 pub async fn generate_title(
     app: &AppHandle,
     runtime: &OpenCodeRuntime,

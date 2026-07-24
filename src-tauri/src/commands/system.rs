@@ -47,10 +47,8 @@ fn capabilities(agent: &dyn AgentProvider, catalog: Option<&dyn ModelCatalog>) -
     }
 }
 
-/// OpenCode's catalog isn't in the static registry (see `agent_provider::all`
-/// doc): enumerating it means talking to a live `opencode serve` process, so
-/// it's resolved separately here instead of through the synchronous
-/// `ModelCatalog` trait the other providers use.
+/// OpenCode's catalog needs a live server round-trip, so it's resolved here
+/// instead of through the synchronous `ModelCatalog` trait.
 async fn opencode_capabilities(
     app: &tauri::AppHandle,
     active: &State<'_, ActiveWorkspace>,

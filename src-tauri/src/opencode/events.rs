@@ -1,7 +1,4 @@
-//! Parses `opencode serve`'s `/event` SSE stream and normalizes it into IRE's
-//! provider-neutral `StreamEvent`. Shapes verified against a live
-//! `opencode serve` (v1.18.4) and its `/doc` OpenAPI spec — see
-//! docs/opencode-server-integration.md "Event normalization".
+//! Parses `opencode serve`'s `/event` SSE stream into IRE's `StreamEvent`.
 
 use std::collections::HashSet;
 
@@ -10,11 +7,8 @@ use serde_json::Value;
 use crate::stream_event::StreamEvent;
 use crate::tool_cards::{build_tool_call, text_output, ToolProvider, ToolStatus};
 
-/// One parsed `/event` payload, reduced to the subset IRE's turn runner
-/// acts on. Everything else (session.updated, message.updated,
-/// session.diff, permission.asked, plugin.added, ...) is `Other` and
-/// ignored — OpenCode emits far more event types than IRE's UI has a use
-/// for.
+/// One parsed `/event` payload, reduced to the subset IRE acts on.
+/// Everything else is `Other`.
 #[derive(Debug, PartialEq)]
 pub enum OpenCodeEvent {
     SessionIdle {
@@ -23,6 +17,12 @@ pub enum OpenCodeEvent {
     SessionError {
         session_id: Option<String>,
         message: String,
+    },
+    /// Used only to tell an assistant message id apart from a user one.
+    MessageUpdated {
+        session_id: String,
+        message_id: String,
+        role: String,
     },
     MessagePartUpdated {
         session_id: String,
@@ -46,6 +46,11 @@ pub fn parse_event(raw: &Value) -> OpenCodeEvent {
             session_id: props["sessionID"].as_str().map(str::to_string),
             message: extract_error_message(&props["error"]),
         },
+        "message.updated" => OpenCodeEvent::MessageUpdated {
+            session_id: props["sessionID"].as_str().unwrap_or_default().to_string(),
+            message_id: props["info"]["id"].as_str().unwrap_or_default().to_string(),
+            role: props["info"]["role"].as_str().unwrap_or_default().to_string(),
+        },
         "message.part.updated" => OpenCodeEvent::MessagePartUpdated {
             session_id: props["sessionID"].as_str().unwrap_or_default().to_string(),
             part: props["part"].clone(),
@@ -59,10 +64,7 @@ pub fn parse_event(raw: &Value) -> OpenCodeEvent {
     }
 }
 
-/// `error` is a tagged union of several shapes (`ProviderAuthError`,
-/// `APIError`, `ContextOverflowError`, ...) that all carry the useful text
-/// under either `data.message` or `message`; fall back to `name` (always
-/// present) rather than modeling every variant.
+/// `error` is a tagged union; try `data.message`, `message`, then `name`.
 fn extract_error_message(error: &Value) -> String {
     error["data"]["message"]
         .as_str()
@@ -71,26 +73,45 @@ fn extract_error_message(error: &Value) -> String {
         .unwrap_or_else(|| error["name"].as_str().unwrap_or("unknown error").to_string())
 }
 
-/// Per-OpenCode-session bookkeeping for turning "full part on every update"
-/// SSE payloads into suffix deltas and deduplicated tool start/done events —
-/// the OpenCode analog of `StreamState`'s `emitted_text_chars_by_block` /
-/// `emitted_tool_ids` fields, keyed by OpenCode's own part/call ids instead
-/// of Claude/Codex's block indices.
+/// Per-session bookkeeping: turns "full part on every update" SSE payloads
+/// into suffix deltas and dedupes tool start/done events.
 #[derive(Default)]
 pub struct OpenCodeSessionState {
     text_len_by_part: std::collections::HashMap<String, usize>,
     reasoning_len_by_part: std::collections::HashMap<String, usize>,
     tool_started: HashSet<String>,
     tool_done: HashSet<String>,
+    /// Message ids confirmed (by role, not by arrival order) as the
+    /// assistant's — an allow-list so the user's own echoed prompt is
+    /// never misattributed.
+    assistant_message_ids: HashSet<String>,
+    /// Message ids confirmed as *not* the assistant's, so a role lookup
+    /// isn't repeated for every part update on the same message.
+    other_message_ids: HashSet<String>,
 }
 
-/// Normalizes one `message.part.updated` part into zero or more
-/// `StreamEvent`s. `step-finish`/`step-start`/`file`/`agent`/`subtask`/
-/// `snapshot`/`patch`/`retry`/`compaction` parts are ignored: turn
-/// completion is signalled by `session.idle`/`session.error` instead (unlike
-/// the old CLI transport, which had no separate terminal event and had to
-/// infer "done" from `step-finish.reason == "stop"`).
+impl OpenCodeSessionState {
+    pub fn mark_assistant_message(&mut self, message_id: String) {
+        self.assistant_message_ids.insert(message_id);
+    }
+
+    pub fn mark_other_message(&mut self, message_id: String) {
+        self.other_message_ids.insert(message_id);
+    }
+
+    /// Whether this message's role has already been resolved either way.
+    pub fn role_known(&self, message_id: &str) -> bool {
+        self.assistant_message_ids.contains(message_id) || self.other_message_ids.contains(message_id)
+    }
+}
+
+/// Normalizes one `message.part.updated` part. Parts not (yet) known to
+/// belong to the assistant's message are dropped.
 pub fn normalize_part(part: &Value, state: &mut OpenCodeSessionState, emit: &mut dyn FnMut(StreamEvent)) {
+    let Some(message_id) = part["messageID"].as_str() else { return };
+    if !state.assistant_message_ids.contains(message_id) {
+        return;
+    }
     match part["type"].as_str().unwrap_or("") {
         "text" => emit_suffix_delta(part, &mut state.text_len_by_part, emit, |text| {
             StreamEvent::TextDelta { text }
@@ -202,8 +223,17 @@ mod tests {
     use super::*;
     use serde_json::json;
 
-    fn run_part(part: &Value) -> Vec<StreamEvent> {
+    /// Default message id, pre-confirmed as the assistant's.
+    const ASSISTANT_MSG: &str = "msg_assistant";
+
+    fn assistant_state() -> OpenCodeSessionState {
         let mut state = OpenCodeSessionState::default();
+        state.mark_assistant_message(ASSISTANT_MSG.to_string());
+        state
+    }
+
+    fn run_part(part: &Value) -> Vec<StreamEvent> {
+        let mut state = assistant_state();
         let mut out = Vec::new();
         normalize_part(part, &mut state, &mut |e| out.push(e));
         out
@@ -257,15 +287,15 @@ mod tests {
 
     #[test]
     fn text_part_emits_suffix_delta_across_updates() {
-        let mut state = OpenCodeSessionState::default();
+        let mut state = assistant_state();
         let mut out = Vec::new();
         normalize_part(
-            &json!({"type": "text", "id": "prt_1", "text": "Hello"}),
+            &json!({"type": "text", "id": "prt_1", "messageID": ASSISTANT_MSG, "text": "Hello"}),
             &mut state,
             &mut |e| out.push(e),
         );
         normalize_part(
-            &json!({"type": "text", "id": "prt_1", "text": "Hello, world"}),
+            &json!({"type": "text", "id": "prt_1", "messageID": ASSISTANT_MSG, "text": "Hello, world"}),
             &mut state,
             &mut |e| out.push(e),
         );
@@ -280,26 +310,26 @@ mod tests {
 
     #[test]
     fn reasoning_part_emits_thinking_delta() {
-        let out = run_part(&json!({"type": "reasoning", "id": "prt_1", "text": "thinking..."}));
+        let out = run_part(&json!({"type": "reasoning", "id": "prt_1", "messageID": ASSISTANT_MSG, "text": "thinking..."}));
         assert_eq!(out, vec![StreamEvent::ThinkingDelta { text: "thinking...".to_string() }]);
     }
 
     #[test]
     fn tool_part_pending_then_completed_emits_start_once_then_done() {
-        let mut state = OpenCodeSessionState::default();
+        let mut state = assistant_state();
         let mut out = Vec::new();
         normalize_part(
-            &json!({"type": "tool", "callID": "call_1", "tool": "bash", "state": {"status": "pending", "input": {"command": "ls"}}}),
+            &json!({"type": "tool", "callID": "call_1", "messageID": ASSISTANT_MSG, "tool": "bash", "state": {"status": "pending", "input": {"command": "ls"}}}),
             &mut state,
             &mut |e| out.push(e),
         );
         normalize_part(
-            &json!({"type": "tool", "callID": "call_1", "tool": "bash", "state": {"status": "running", "input": {"command": "ls"}}}),
+            &json!({"type": "tool", "callID": "call_1", "messageID": ASSISTANT_MSG, "tool": "bash", "state": {"status": "running", "input": {"command": "ls"}}}),
             &mut state,
             &mut |e| out.push(e),
         );
         normalize_part(
-            &json!({"type": "tool", "callID": "call_1", "tool": "bash", "state": {"status": "completed", "input": {"command": "ls"}, "output": "a.txt\n"}}),
+            &json!({"type": "tool", "callID": "call_1", "messageID": ASSISTANT_MSG, "tool": "bash", "state": {"status": "completed", "input": {"command": "ls"}, "output": "a.txt\n"}}),
             &mut state,
             &mut |e| out.push(e),
         );
@@ -318,7 +348,7 @@ mod tests {
     #[test]
     fn tool_part_jumping_straight_to_error_emits_start_and_done() {
         let out = run_part(&json!({
-            "type": "tool", "callID": "call_2", "tool": "bash",
+            "type": "tool", "callID": "call_2", "messageID": ASSISTANT_MSG, "tool": "bash",
             "state": {"status": "error", "input": {"command": "false"}, "error": "exit 1"}
         }));
         assert_eq!(out.len(), 2);
@@ -331,14 +361,53 @@ mod tests {
 
     #[test]
     fn duplicate_sse_update_does_not_duplicate_events() {
-        let mut state = OpenCodeSessionState::default();
+        let mut state = assistant_state();
         let mut out = Vec::new();
         let completed = json!({
-            "type": "tool", "callID": "call_3", "tool": "bash",
+            "type": "tool", "callID": "call_3", "messageID": ASSISTANT_MSG, "tool": "bash",
             "state": {"status": "completed", "input": {}, "output": "ok"}
         });
         normalize_part(&completed, &mut state, &mut |e| out.push(e));
         normalize_part(&completed, &mut state, &mut |e| out.push(e));
         assert_eq!(out.len(), 2, "second identical update must be a no-op");
+    }
+
+    #[test]
+    fn parses_message_updated_role_and_id() {
+        let raw = json!({
+            "type": "message.updated",
+            "properties": {"sessionID": "ses_1", "info": {"id": "msg_1", "role": "assistant"}}
+        });
+        assert_eq!(
+            parse_event(&raw),
+            OpenCodeEvent::MessageUpdated {
+                session_id: "ses_1".to_string(),
+                message_id: "msg_1".to_string(),
+                role: "assistant".to_string(),
+            }
+        );
+    }
+
+    /// Regression test: OpenCode echoes the user's own prompt as a part
+    /// update too, and it must not leak into the assistant's reply.
+    #[test]
+    fn text_part_on_unmarked_message_id_is_dropped() {
+        let mut state = OpenCodeSessionState::default();
+        let mut out = Vec::new();
+
+        normalize_part(
+            &json!({"type": "text", "id": "prt_user", "messageID": "msg_user", "text": "hello there"}),
+            &mut state,
+            &mut |e| out.push(e),
+        );
+        assert!(out.is_empty(), "user's own echoed text must not become a StreamEvent");
+
+        state.mark_assistant_message("msg_assistant".to_string());
+        normalize_part(
+            &json!({"type": "text", "id": "prt_reply", "messageID": "msg_assistant", "text": "hi!"}),
+            &mut state,
+            &mut |e| out.push(e),
+        );
+        assert_eq!(out, vec![StreamEvent::TextDelta { text: "hi!".to_string() }]);
     }
 }
