@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faLink, faXmark, faCircleExclamation, faChevronDown, faClaude, faOpenai, iconClass } from "../icons";
-import { ipc, pickResourceFiles, type ResourceSourceInput } from "../ipc";
+import { faLink, faXmark, faCircleExclamation, faChevronDown, faClaude, faOpenai, faAnglesRight, iconClass } from "../icons";
+import { ipc, pickResourceFiles, type ResourceSourceInput, type UserConfig } from "../ipc";
 import { useChat } from "../state/chat";
+import { useOpenCodeModal } from "../state/opencodeModal";
 import { MODELS, effortLevelsForModel, useChatOptions, type ModelEntry, type Provider } from "../state/chatOptions";
 
 type QueuedSource =
@@ -36,6 +37,7 @@ interface Props {
 
 export function AddResourceModal({ onClose }: Props) {
   const { model: globalModel, provider: globalProvider, effort: globalEffort, availableProviders } = useChatOptions();
+  const openOpenCodeProviders = useOpenCodeModal((s) => s.openModal);
 
   const [url, setUrl] = useState("");
   const [sources, setSources] = useState<QueuedSource[]>([]);
@@ -49,8 +51,23 @@ export function AddResourceModal({ onClose }: Props) {
   const [selectedEffort, setSelectedEffort] = useState(globalEffort);
   const [modelOpen, setModelOpen] = useState(false);
   const [effortOpen, setEffortOpen] = useState(false);
+  const [pinnedOpenCodeModels, setPinnedOpenCodeModels] = useState<string[]>([]);
   const modelRef = useRef<HTMLDivElement>(null);
   const effortRef = useRef<HTMLDivElement>(null);
+  const opencodeAvailable = availableProviders.includes("opencode");
+
+  // Mirrors Composer.tsx: re-read pins whenever the dropdown opens.
+  useEffect(() => {
+    if (!opencodeAvailable) {
+      setPinnedOpenCodeModels([]);
+      return;
+    }
+    let cancelled = false;
+    ipc.readUserConfig().catch((): UserConfig => ({})).then((config) => {
+      if (!cancelled) setPinnedOpenCodeModels(config.pinned_opencode_models ?? []);
+    });
+    return () => { cancelled = true; };
+  }, [opencodeAvailable, modelOpen]);
 
   useEffect(() => {
     if (availableProviders.length === 0 || availableProviders.includes(selectedProvider)) return;
@@ -127,8 +144,10 @@ export function AddResourceModal({ onClose }: Props) {
     setSources((current) => current.filter((s) => s.id !== id));
   };
 
+  const noModelSelected = selectedProvider === "opencode" && !selectedModel;
+
   const handleSubmit = async () => {
-    if (loading || sources.length === 0) return;
+    if (loading || sources.length === 0 || noModelSelected) return;
     setLoading(true);
     clearError();
     try {
@@ -271,7 +290,7 @@ export function AddResourceModal({ onClose }: Props) {
               </p>
               <button
                 onClick={handleSubmit}
-                disabled={loading}
+                disabled={loading || noModelSelected}
                 className={`border border-outline text-on-surface px-4 py-1.5 rounded text-[12px] hover:bg-surface-container-high transition-colors shrink-0 disabled:opacity-50 ${loading ? "ingest-loading-button" : ""}`}
               >
                 {loading ? "Ingesting…" : "Ingest"}
@@ -298,6 +317,40 @@ export function AddResourceModal({ onClose }: Props) {
                 <div className={`${modelOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 min-w-[230px] overflow-hidden z-50`}>
                   {claudeModels.length > 0 && <ProviderSection label="Claude Code" provider="claude" models={claudeModels} />}
                   {codexModels.length > 0 && <ProviderSection label="Codex" provider="codex" models={codexModels} />}
+                  {opencodeAvailable && (
+                    <div className="py-2 first:pt-2 last:pb-2 border-t border-outline-variant/50 first:border-t-0">
+                      <div className="px-3 pb-1.5 text-[10px] font-medium uppercase tracking-normal text-on-surface-variant/60">
+                        OpenCode
+                      </div>
+                      {pinnedOpenCodeModels.map((id) => (
+                        <button
+                          key={id}
+                          className={`w-full grid grid-cols-[18px_1fr_14px] items-center gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-surface-container-highest transition-colors ${id === selectedModel ? "font-medium text-on-surface" : "text-on-surface-variant"}`}
+                          onClick={() => {
+                            setSelectedModel(id);
+                            setSelectedProvider("opencode");
+                            setSelectedEffort(null);
+                            setModelOpen(false);
+                          }}
+                        >
+                          <span className="text-center text-[10px] text-primary">★</span>
+                          <span>{id}</span>
+                          <span className="text-[11px] text-primary">{id === selectedModel ? "✓" : ""}</span>
+                        </button>
+                      ))}
+                      <button
+                        className="w-full grid grid-cols-[18px_1fr_14px] items-center gap-2 px-3 py-1.5 text-left text-[12px] text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors border-t border-outline-variant/40 mt-1"
+                        onClick={() => {
+                          setModelOpen(false);
+                          openOpenCodeProviders();
+                        }}
+                      >
+                        <span />
+                        <span>Browse OpenCode models…</span>
+                        <FontAwesomeIcon icon={faAnglesRight} className={`${iconClass.sm} justify-self-end`} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
