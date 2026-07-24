@@ -136,12 +136,21 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         };
         let mut emit_event = |event: StreamEvent| {
             if let StreamEvent::Init { ref session_id } = event {
-                let _ = crate::db::models::update_chat_resume_id(
+                if let Err(e) = crate::db::models::update_chat_resume_id(
                     &home_data_dir,
                     session_uuid,
                     provider,
                     session_id,
-                );
+                ) {
+                    tracing::warn!(session_uuid = %session_uuid, error = %e, "persist resume id failed (wake)");
+                    let _ = app.emit(
+                        "error",
+                        serde_json::json!({
+                            "scope": "resume id",
+                            "message": format!("Couldn't save the resume id for the experiment wake-up on session {session_uuid}. ({e})"),
+                        }),
+                    );
+                }
             }
             event_id += 1;
             let _ = app.emit(

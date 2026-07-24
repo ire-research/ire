@@ -15,7 +15,7 @@ fn home_data_dir(active: &State<'_, ActiveWorkspace>) -> Result<std::path::PathB
 /// session. Passing the same UUID on subsequent calls upserts the row so the session
 /// stays current without creating duplicates.
 #[tauri::command]
-pub fn chat_history_save(
+pub async fn chat_history_save(
     active: State<'_, ActiveWorkspace>,
     session_uuid: Option<String>,
     tab_label: String,
@@ -25,37 +25,41 @@ pub fn chat_history_save(
     messages_json: String,
 ) -> Result<(), String> {
     let dir = home_data_dir(&active)?;
-    let session_uuid = session_uuid.unwrap_or_else(|| Uuid::new_v4().to_string());
-    let ended_at = chrono::Local::now().to_rfc3339();
+    tauri::async_runtime::spawn_blocking(move || {
+        let session_uuid = session_uuid.unwrap_or_else(|| Uuid::new_v4().to_string());
+        let ended_at = chrono::Local::now().to_rfc3339();
 
-    // Parse minimally to extract count and first user message.
-    let msgs: Vec<serde_json::Value> = serde_json::from_str(&messages_json).unwrap_or_default();
-    let message_count = msgs.len() as i64;
+        // Parse minimally to extract count and first user message.
+        let msgs: Vec<serde_json::Value> = serde_json::from_str(&messages_json).unwrap_or_default();
+        let message_count = msgs.len() as i64;
 
-    // Skip saving empty sessions.
-    if message_count == 0 {
-        return Ok(());
-    }
+        // Skip saving empty sessions.
+        if message_count == 0 {
+            return Ok(());
+        }
 
-    let first_user_msg: Option<String> = msgs
-        .iter()
-        .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
-        .and_then(|m| m.get("text").and_then(|t| t.as_str()))
-        .map(|t| t.chars().take(120).collect());
+        let first_user_msg: Option<String> = msgs
+            .iter()
+            .find(|m| m.get("role").and_then(|r| r.as_str()) == Some("user"))
+            .and_then(|m| m.get("text").and_then(|t| t.as_str()))
+            .map(|t| t.chars().take(120).collect());
 
-    models::insert_chat_session(
-        &dir,
-        &session_uuid,
-        &tab_label,
-        &provider,
-        &model,
-        &started_at,
-        &ended_at,
-        message_count,
-        first_user_msg.as_deref(),
-        &messages_json,
-    )
-    .map_err(|e| e.to_string())
+        models::insert_chat_session(
+            &dir,
+            &session_uuid,
+            &tab_label,
+            &provider,
+            &model,
+            &started_at,
+            &ended_at,
+            message_count,
+            first_user_msg.as_deref(),
+            &messages_json,
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 /// List past chat sessions (summary only — no messages blob).
