@@ -134,14 +134,26 @@ async fn start_process(
     }
 
     let sessions: Arc<AsyncMutex<HashMap<String, TabRoute>>> = Arc::new(AsyncMutex::new(HashMap::new()));
+    let (connected_tx, connected_rx) = tokio::sync::oneshot::channel();
     let sse_task = {
         let sessions = Arc::clone(&sessions);
         let client = client.clone();
         let base_url = base_url.clone();
         tauri::async_runtime::spawn(async move {
-            run_sse_loop(app, client, base_url, sessions, session_manager).await;
+            run_sse_loop(app, client, base_url, sessions, session_manager, connected_tx).await;
         })
     };
+
+    // Don't hand back a runtime whose SSE loop hasn't connected yet: a prompt
+    // dispatched before `/event` is subscribed can complete or fail before
+    // that first event is ever observed, leaving the tab streaming forever.
+    if tokio::time::timeout(Duration::from_secs(10), connected_rx).await.is_err() {
+        sse_task.abort();
+        let _ = child.start_kill();
+        return Err(OpenCodeError(
+            "opencode serve: /event stream did not connect in time".to_string(),
+        ));
+    }
 
     Ok(RuntimeInner {
         workspace: workspace.to_path_buf(),
@@ -191,13 +203,18 @@ async fn run_sse_loop(
     base_url: String,
     sessions: Arc<AsyncMutex<HashMap<String, TabRoute>>>,
     session_manager: SessionManager,
+    connected_tx: tokio::sync::oneshot::Sender<()>,
 ) {
+    let mut connected_tx = Some(connected_tx);
     let http = reqwest::Client::new();
     let mut backoff = Duration::from_millis(500);
     loop {
         match http.get(format!("{base_url}/event")).send().await {
             Ok(resp) => {
                 backoff = Duration::from_millis(500);
+                if let Some(tx) = connected_tx.take() {
+                    let _ = tx.send(());
+                }
                 let mut buf = String::new();
                 let mut stream = resp.bytes_stream();
                 while let Some(chunk) = stream.next().await {
