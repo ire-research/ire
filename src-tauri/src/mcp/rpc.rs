@@ -105,13 +105,20 @@ async fn handle_connection(
         dispatch(&method, &params, &workspace_root, &session_manager, &app)
     })
     .await
-    .map_err(|e| anyhow!("task join error: {e}"))??;
+    .map_err(|e| anyhow!("task join error: {e}"))?;
 
-    // If the result itself is an error object from dispatch, propagate it.
-    let resp = if result.get("_rpc_error").is_some() {
-        serde_json::json!({ "id": id, "ok": false, "error": result["_rpc_error"] })
-    } else {
-        serde_json::json!({ "id": id, "ok": true, "result": result })
+    // A `dispatch` failure (missing active session, bad params, stale
+    // version, ...) must still get a response line — propagating it via `?`
+    // instead returns from this function before `write_half.write_all` runs,
+    // which drops the connection with zero bytes written. The client then
+    // sees a bare EOF instead of the actual error, surfacing as an opaque
+    // "EOF while parsing a value" with no indication of what went wrong
+    // (confirmed: this is the exact error OpenCode reported for a failed
+    // `ask_user_question` call — the real failure reason was silently lost
+    // here, not a problem in the tool-call dispatch itself).
+    let resp = match result {
+        Ok(value) => serde_json::json!({ "id": id, "ok": true, "result": value }),
+        Err(e) => serde_json::json!({ "id": id, "ok": false, "error": e.to_string() }),
     };
     let mut bytes = serde_json::to_vec(&resp)?;
     bytes.push(b'\n');

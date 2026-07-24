@@ -8,7 +8,6 @@ import {
 } from "../../state/chatOptions";
 import { useOpenCodeModal } from "../../state/opencodeModal";
 import { ipc, type UserConfig } from "../../ipc";
-import type { ModelInfo } from "../../types";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faChevronDown, faArrowUp, faAnglesRight, faClaude, faOpenai, iconClass } from "../../icons";
 
@@ -31,13 +30,18 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
 
   const { model, provider, effort, availableProviders, setModel, setEffort } = useChatOptions();
   const openOpenCodeProviders = useOpenCodeModal((s) => s.openModal);
-  const [pinnedOpenCodeModels, setPinnedOpenCodeModels] = useState<ModelInfo[]>([]);
+  const [pinnedOpenCodeModels, setPinnedOpenCodeModels] = useState<string[]>([]);
   const noProvidersAvailable = availableProviders.length === 0;
   const opencodeAvailable = availableProviders.includes("opencode");
-  const modelLabel = noProvidersAvailable
-    ? "n/a"
-    : MODELS.find((m) => m.id === model)?.label
-      ?? (provider === "opencode" ? pinnedOpenCodeModels.find((m) => m.id === model)?.label ?? model : model);
+  // OpenCode has no static default model (its catalog is dynamic) — if it
+  // becomes the only available provider before the user has pinned one in
+  // OpenCodeProvidersModal, `model` is "". Block sending rather than letting
+  // `opencode run --model ""` fail CLI-side.
+  const noModelSelected = provider === "opencode" && !model;
+  // OpenCode model ids double as their own label (discover_models sets
+  // label = id), so falling through to `model` covers it — no separate
+  // OpenCode lookup needed.
+  const modelLabel = noProvidersAvailable ? "n/a" : MODELS.find((m) => m.id === model)?.label ?? model;
   const effortLevels = effortLevelsForModel(provider, model);
   const effortLabel = effortLevels.find((l) => l.value === effort)?.label ?? effort;
   const showEffortPicker = !noProvidersAvailable && effortLevels.length > 0;
@@ -48,26 +52,21 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
     ? MODELS.filter((m) => m.provider === "codex")
     : [];
 
-  // OpenCode's catalog is dynamic and its pins are a user preference, unlike
-  // the static MODELS-filter pattern above — only pinned models show here
-  // (the full catalog is browsable via OpenCodeProvidersModal).
+  // OpenCode's pins are a user preference edited from a separate modal
+  // (OpenCodeProvidersModal), not local component state — re-read config
+  // whenever the dropdown opens so a pin/unpin made there shows up here
+  // without needing a shared store just for this.
   useEffect(() => {
     if (!opencodeAvailable) {
       setPinnedOpenCodeModels([]);
       return;
     }
     let cancelled = false;
-    Promise.all([ipc.listAgentModels(), ipc.readUserConfig().catch((): UserConfig => ({}))]).then(
-      ([capabilities, config]) => {
-        if (cancelled) return;
-        const catalog = capabilities.find((c) => c.provider === "opencode");
-        const models = catalog?.catalog.status === "available" ? catalog.catalog.models : [];
-        const pinned = new Set(config.pinned_opencode_models ?? []);
-        setPinnedOpenCodeModels(models.filter((m) => pinned.has(m.id)));
-      },
-    ).catch(() => {});
+    ipc.readUserConfig().catch((): UserConfig => ({})).then((config) => {
+      if (!cancelled) setPinnedOpenCodeModels(config.pinned_opencode_models ?? []);
+    });
     return () => { cancelled = true; };
-  }, [opencodeAvailable]);
+  }, [opencodeAvailable, modelOpen]);
 
   useEffect(() => {
     if (!showEffortPicker) setEffortOpen(false);
@@ -105,7 +104,7 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
 
   const handleSend = () => {
     const trimmed = text.trim();
-    if (!trimmed || disabled) return;
+    if (!trimmed || disabled || noModelSelected) return;
     onSend?.(trimmed);
     setText("");
   };
@@ -205,20 +204,20 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
                   <div className="px-3 pb-1.5 text-[10px] font-medium uppercase tracking-normal text-on-surface-variant/60">
                     OpenCode
                   </div>
-                  {pinnedOpenCodeModels.map((m) => (
+                  {pinnedOpenCodeModels.map((id) => (
                     <button
-                      key={m.id}
+                      key={id}
                       className={`w-full grid grid-cols-[18px_1fr_14px] items-center gap-2 px-3 py-1.5 text-left text-[12px] hover:bg-surface-container-highest transition-colors ${
-                        m.id === model ? "font-medium text-on-surface" : "text-on-surface-variant"
+                        id === model ? "font-medium text-on-surface" : "text-on-surface-variant"
                       }`}
                       onClick={() => {
-                        setModel(m.id, "opencode");
+                        setModel(id, "opencode");
                         setModelOpen(false);
                       }}
                     >
                       <span className="text-center text-[10px] text-primary">★</span>
-                      <span>{m.label}</span>
-                      <span className="text-[11px] text-primary">{m.id === model ? "✓" : ""}</span>
+                      <span>{id}</span>
+                      <span className="text-[11px] text-primary">{id === model ? "✓" : ""}</span>
                     </button>
                   ))}
                   <button
@@ -279,11 +278,20 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
             </button>
           ) : (
             <>
-              <span className="text-[10px] text-on-surface-variant/50">⌘↵</span>
+              {noModelSelected ? (
+                <button
+                  className="text-[10px] text-warn hover:underline"
+                  onClick={() => { setModelOpen(false); openOpenCodeProviders(); }}
+                >
+                  Pick an OpenCode model to send
+                </button>
+              ) : (
+                <span className="text-[10px] text-on-surface-variant/50">⌘↵</span>
+              )}
               <button
                 className="bg-accent text-accent-fg px-4 py-1 rounded text-[12px] font-medium hover:opacity-90 transition-opacity flex items-center gap-1 disabled:opacity-40"
                 onClick={handleSend}
-                disabled={!text.trim() || disabled}
+                disabled={!text.trim() || disabled || noModelSelected}
               >
                 Send <FontAwesomeIcon icon={faArrowUp} className={iconClass.md} />
               </button>

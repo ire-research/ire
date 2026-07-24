@@ -432,22 +432,29 @@ impl AgentProvider for OpenCodeProvider {
 }
 
 impl ModelCatalog for OpenCodeProvider {
-    /// Parses `opencode models --verbose`, which is *not* a single JSON
-    /// document — it repeats a bare `<providerID>/<modelID>` header line
-    /// followed by that model's pretty-printed JSON object (confirmed by
-    /// running the real CLI). The header line is used verbatim as
-    /// `ModelInfo.id` (it's exactly what `--model` expects); `label` comes
-    /// from the JSON body's `name` field; `effort_levels` are the keys of
-    /// its `variants` object (each model advertises its own valid
-    /// `--variant` values there — e.g. one model has `low`/`medium`/`high`,
-    /// another only `high`/`max` — so this needs no separate IRE-side
-    /// effort vocabulary or mapping table).
+    /// Deliberately *not* `opencode models --verbose`: that prints a header
+    /// line per model followed by that model's full pretty-printed JSON
+    /// object (cost table, context limits, capability flags, ...), with no
+    /// delimiter between entries other than the header line itself — telling
+    /// header from body apart requires a text heuristic, and every one tried
+    /// so far breaks on some real id (e.g. OpenRouter's
+    /// `~anthropic/claude-fable-latest`, which nests a second `/` inside the
+    /// model id and desyncs a "header has exactly one slash" heuristic,
+    /// silently dropping most of the catalog after it).
+    ///
+    /// Plain `opencode models` (no `--verbose`) sidesteps all of that: it
+    /// prints exactly one bare `<providerID>/<modelID>` id per line and
+    /// nothing else (confirmed against a real 345-model catalog, including
+    /// the nested-slash OpenRouter ids) — no per-model metadata, but nothing
+    /// here reads it: v1 has no per-model effort-level picker for OpenCode
+    /// (see `effortLevelsForModel` on the frontend), so the `--verbose` body
+    /// bought nothing but parsing risk. The bare id doubles as `label`.
     fn discover_models(&self) -> Result<Vec<ModelInfo>, AgentError> {
         let bin = crate::opencode::discovery::find_opencode_binary().map_err(|e| AgentError {
             message: e.to_string(),
         })?;
         let out = Command::new(&bin.path)
-            .args(["models", "--verbose"])
+            .arg("models")
             .output()
             .map_err(|e| AgentError {
                 message: format!("failed to run opencode models: {e}"),
@@ -458,48 +465,21 @@ impl ModelCatalog for OpenCodeProvider {
             });
         }
         let stdout = String::from_utf8_lossy(&out.stdout);
-        Ok(parse_opencode_models(&stdout))
+        Ok(parse_opencode_model_ids(&stdout))
     }
 }
 
-fn parse_opencode_models(stdout: &str) -> Vec<ModelInfo> {
-    let is_header = |line: &str| {
-        let line = line.trim_end();
-        !line.is_empty()
-            && !line.starts_with(char::is_whitespace)
-            && !line.contains(['{', '}', '"'])
-            && line.matches('/').count() == 1
-    };
-
-    let lines: Vec<&str> = stdout.lines().collect();
-    let mut models = Vec::new();
-    let mut i = 0;
-    while i < lines.len() {
-        if !is_header(lines[i]) {
-            i += 1;
-            continue;
-        }
-        let id = lines[i].trim().to_string();
-        let mut j = i + 1;
-        while j < lines.len() && !is_header(lines[j]) {
-            j += 1;
-        }
-        let body = lines[i + 1..j].join("\n");
-        if let Ok(parsed) = serde_json::from_str::<Value>(&body) {
-            let label = parsed["name"].as_str().unwrap_or(&id).to_string();
-            let effort_levels = parsed["variants"]
-                .as_object()
-                .map(|m| m.keys().cloned().collect())
-                .unwrap_or_default();
-            models.push(ModelInfo {
-                id,
-                label,
-                effort_levels,
-            });
-        }
-        i = j;
-    }
-    models
+fn parse_opencode_model_ids(stdout: &str) -> Vec<ModelInfo> {
+    stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(|id| ModelInfo {
+            id: id.to_string(),
+            label: id.to_string(),
+            effort_levels: Vec::new(),
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -563,9 +543,7 @@ mod tests {
     fn all_returns_every_registered_provider_paired_with_its_catalog() {
         let all: Vec<_> = all().collect();
         assert_eq!(all.len(), 3);
-        assert!(all
-            .iter()
-            .all(|(_, catalog)| catalog.is_some()));
+        assert!(all.iter().all(|(_, catalog)| catalog.is_some()));
         let names: Vec<&str> = all.iter().map(|(agent, _)| agent.name()).collect();
         assert!(names.contains(&"claude"));
         assert!(names.contains(&"codex"));
@@ -677,47 +655,28 @@ mod tests {
     }
 
     #[test]
-    fn parse_opencode_models_reads_header_plus_json_block_pairs() {
-        // Real shape captured from `opencode models --verbose`.
-        let sample = r#"opencode/big-pickle
-{
-  "id": "big-pickle",
-  "providerID": "opencode",
-  "name": "Big Pickle",
-  "api": {
-    "url": "https://opencode.ai/zen/v1"
-  },
-  "variants": {}
-}
-anthropic/claude-opus-4-8
-{
-  "id": "claude-opus-4-8",
-  "providerID": "anthropic",
-  "name": "Claude Opus 4.8",
-  "variants": {
-    "low": { "reasoningEffort": "low" },
-    "high": { "reasoningEffort": "high" }
-  }
-}
-"#;
-        let models = parse_opencode_models(sample);
-        assert_eq!(models.len(), 2);
-        assert_eq!(models[0].id, "opencode/big-pickle");
-        assert_eq!(models[0].label, "Big Pickle");
-        assert_eq!(models[0].effort_levels, Vec::<String>::new());
-        assert_eq!(models[1].id, "anthropic/claude-opus-4-8");
-        assert_eq!(models[1].label, "Claude Opus 4.8");
-        let mut levels = models[1].effort_levels.clone();
-        levels.sort();
-        assert_eq!(levels, vec!["high".to_string(), "low".to_string()]);
+    fn parse_opencode_model_ids_handles_nested_slash_ids() {
+        // Real shape from plain `opencode models` (no --verbose): one bare
+        // id per line. `openrouter/~anthropic/claude-fable-latest` nests a
+        // second slash inside the model id — the case that broke the old
+        // `--verbose`-based, header-heuristic parser.
+        let sample = "opencode/big-pickle\nopenrouter/~anthropic/claude-fable-latest\nanthropic/claude-opus-4-8\n";
+        let models = parse_opencode_model_ids(sample);
+        assert_eq!(
+            models.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec![
+                "opencode/big-pickle",
+                "openrouter/~anthropic/claude-fable-latest",
+                "anthropic/claude-opus-4-8",
+            ]
+        );
+        assert!(models.iter().all(|m| m.label == m.id && m.effort_levels.is_empty()));
     }
 
     #[test]
-    fn parse_opencode_models_skips_unparseable_blocks() {
-        let sample = "opencode/broken\nnot json at all\nopencode/big-pickle\n{\"id\":\"big-pickle\",\"providerID\":\"opencode\",\"name\":\"Big Pickle\",\"variants\":{}}\n";
-        let models = parse_opencode_models(sample);
-        assert_eq!(models.len(), 1);
-        assert_eq!(models[0].id, "opencode/big-pickle");
+    fn parse_opencode_model_ids_skips_blank_lines() {
+        let models = parse_opencode_model_ids("opencode/big-pickle\n\n\nanthropic/claude-opus-4-8\n");
+        assert_eq!(models.len(), 2);
     }
 
     #[test]
