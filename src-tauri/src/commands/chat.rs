@@ -141,6 +141,15 @@ pub async fn chat_send(
                             session_id,
                         ) {
                             tracing::warn!(tab_id = %tab_id, error = %e, "persist resume id failed");
+                            let _ = app_handle.emit(
+                                "error",
+                                serde_json::json!({
+                                    "scope": "resume id",
+                                    "message": format!(
+                                        "Couldn't save the resume id for \"{tab_label_cl}\" — reopening this chat will start a new conversation instead of continuing it. ({e})"
+                                    ),
+                                }),
+                            );
                         }
                         tracing::debug!(tab_id = %tab_id, session_id = %session_id, "stream session init");
                     }
