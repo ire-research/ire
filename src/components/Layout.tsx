@@ -114,9 +114,9 @@ export function Layout() {
       }
     }
     await ipc.closeWorkspace();
-    useChat.getState().reset();
     const status = await ipc.setupStatus();
     setPhase({ kind: "setup", status });
+    useChat.getState().reset();
   };
 
   const workspacePath = phase.kind === "ready" ? phase.workspace.path : "";

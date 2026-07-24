@@ -111,21 +111,24 @@ export function OpenCodeProvidersModal({ onClose }: Props) {
       list.push(m);
       byProvider.set(providerKey, list);
     }
+    for (const list of byProvider.values()) {
+      list.sort((a, b) => Number(pinned.includes(b.id)) - Number(pinned.includes(a.id)));
+    }
     return Array.from(byProvider.entries()).sort(([a], [b]) => a.localeCompare(b));
-  }, [state, search]);
+  }, [state, search, pinned]);
 
   const statusLine = (() => {
-    if (!state) return { text: "Checking OpenCode…", tone: "muted" as const };
+    if (!state) return { text: "Checking opencode…", tone: "muted" as const };
     switch (state.kind) {
       case "not_installed":
-        return { text: "OpenCode not installed", tone: "error" as const };
+        return { text: "opencode not installed", tone: "error" as const };
       case "no_credentials":
-        return { text: "OpenCode installed · no credentials detected", tone: "warn" as const };
+        return { text: "opencode installed · no credentials detected", tone: "warn" as const };
       case "error":
-        return { text: "Couldn't read OpenCode configuration", tone: "error" as const };
+        return { text: "Couldn't read opencode configuration", tone: "error" as const };
       case "configured":
         return {
-          text: `OpenCode installed · credentials detected · ${state.models.length} model${state.models.length === 1 ? "" : "s"} available`,
+          text: `opencode installed · credentials detected · ${state.models.length} model${state.models.length === 1 ? "" : "s"} available`,
           tone: "ok" as const,
         };
     }
@@ -142,7 +145,7 @@ export function OpenCodeProvidersModal({ onClose }: Props) {
 
   return (
     <div
-      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
+      className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="w-[560px] max-h-[80vh] bg-surface-container border border-outline-variant rounded-lg flex flex-col shadow-2xl overflow-hidden">

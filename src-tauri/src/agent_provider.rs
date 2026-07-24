@@ -271,6 +271,21 @@ impl ModelCatalog for ClaudeCodeProvider {
 /// variant (`src/state/chatOptions.ts` `CODEX_EFFORT_LEVELS`).
 const CODEX_MODELS: &[StaticModel] = &[
     StaticModel {
+        id: "gpt-5.6-sol",
+        label: "GPT-5.6-Sol",
+        effort_levels: &["low", "medium", "high", "xhigh"],
+    },
+    StaticModel {
+        id: "gpt-5.6-terra",
+        label: "GPT-5.6-Terra",
+        effort_levels: &["low", "medium", "high", "xhigh"],
+    },
+    StaticModel {
+        id: "gpt-5.6-luna",
+        label: "GPT-5.6-Luna",
+        effort_levels: &["low", "medium", "high", "xhigh"],
+    },
+    StaticModel {
         id: "gpt-5.5",
         label: "GPT-5.5",
         effort_levels: &["low", "medium", "high", "xhigh"],
@@ -283,11 +298,6 @@ const CODEX_MODELS: &[StaticModel] = &[
     StaticModel {
         id: "gpt-5.4-mini",
         label: "GPT-5.4-Mini",
-        effort_levels: &["low", "medium", "high", "xhigh"],
-    },
-    StaticModel {
-        id: "gpt-5.3-codex",
-        label: "GPT-5.3-Codex",
         effort_levels: &["low", "medium", "high", "xhigh"],
     },
 ];
@@ -424,7 +434,7 @@ mod tests {
     #[test]
     fn codex_effort_levels_are_uniform_across_models() {
         let models = CodexProvider.discover_models().unwrap();
-        for id in ["gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex"] {
+        for id in ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini"] {
             assert_eq!(
                 effort_levels_for(&models, id),
                 ["low", "medium", "high", "xhigh"]
@@ -438,7 +448,7 @@ mod tests {
             ClaudeCodeProvider.discover_models().unwrap()[0].id,
             "claude-sonnet-5"
         );
-        assert_eq!(CodexProvider.discover_models().unwrap()[0].id, "gpt-5.5");
+        assert_eq!(CodexProvider.discover_models().unwrap()[0].id, "gpt-5.6-sol");
     }
 
     #[test]

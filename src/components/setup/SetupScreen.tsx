@@ -207,7 +207,7 @@ export function SetupScreen({ status, onRefresh }: Props) {
           ))}
           {!canOpenWorkspace && (
             <div className="font-mono text-[11px] text-error">
-              install claude-code or codex to continue
+              install claude or codex to continue
             </div>
           )}
         </div>

@@ -4,9 +4,9 @@ export type ToolProvider = "claude" | "codex" | "opencode";
 export type Provider = ToolProvider;
 
 export const PROVIDER_LABELS: Record<ToolProvider, string> = {
-  claude: "claude-code",
+  claude: "claude",
   codex: "codex",
-  opencode: "OpenCode",
+  opencode: "opencode",
 };
 
 export interface ChatOptions {

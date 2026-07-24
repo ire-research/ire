@@ -14,10 +14,12 @@ export const MODELS: ModelEntry[] = [
   { id: "claude-opus-4-8",           label: "Opus 4.8",      provider: "claude" },
   { id: "claude-fable-5",            label: "Fable 5",       provider: "claude" },
   { id: "claude-haiku-4-5-20251001", label: "Haiku 4.5",     provider: "claude" },
+  { id: "gpt-5.6-sol",               label: "GPT-5.6-Sol",   provider: "codex" },
+  { id: "gpt-5.6-terra",             label: "GPT-5.6-Terra", provider: "codex" },
+  { id: "gpt-5.6-luna",              label: "GPT-5.6-Luna",  provider: "codex" },
   { id: "gpt-5.5",                   label: "GPT-5.5",       provider: "codex" },
   { id: "gpt-5.4",                   label: "GPT-5.4",       provider: "codex" },
   { id: "gpt-5.4-mini",              label: "GPT-5.4-Mini",  provider: "codex" },
-  { id: "gpt-5.3-codex",             label: "GPT-5.3-Codex", provider: "codex" },
 ];
 
 export const CLAUDE_EFFORT_LEVELS: { value: EffortLevel; label: string }[] = [

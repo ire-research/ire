@@ -52,6 +52,7 @@ export function AddResourceModal({ onClose }: Props) {
   const [modelOpen, setModelOpen] = useState(false);
   const [effortOpen, setEffortOpen] = useState(false);
   const [pinnedOpenCodeModels, setPinnedOpenCodeModels] = useState<string[]>([]);
+  const [openCodeModelLabels, setOpenCodeModelLabels] = useState<Record<string, string>>({});
   const modelRef = useRef<HTMLDivElement>(null);
   const effortRef = useRef<HTMLDivElement>(null);
   const opencodeAvailable = availableProviders.includes("opencode");
@@ -60,11 +61,18 @@ export function AddResourceModal({ onClose }: Props) {
   useEffect(() => {
     if (!opencodeAvailable) {
       setPinnedOpenCodeModels([]);
+      setOpenCodeModelLabels({});
       return;
     }
     let cancelled = false;
     ipc.readUserConfig().catch((): UserConfig => ({})).then((config) => {
       if (!cancelled) setPinnedOpenCodeModels(config.pinned_opencode_models ?? []);
+    });
+    ipc.listAgentModels().catch(() => []).then((capabilities) => {
+      if (cancelled) return;
+      const catalog = capabilities.find((c) => c.provider === "opencode");
+      const models = catalog?.catalog.status === "available" ? catalog.catalog.models : [];
+      setOpenCodeModelLabels(Object.fromEntries(models.map((m) => [m.id, m.label])));
     });
     return () => { cancelled = true; };
   }, [opencodeAvailable, modelOpen]);
@@ -175,7 +183,9 @@ export function AddResourceModal({ onClose }: Props) {
 
   const noProvidersAvailable = availableProviders.length === 0;
   const effortLevels = effortLevelsForModel(selectedProvider, selectedModel);
-  const modelLabel = noProvidersAvailable ? "n/a" : MODELS.find((m) => m.id === selectedModel)?.label ?? selectedModel;
+  const modelLabel = noProvidersAvailable
+    ? "n/a"
+    : MODELS.find((m) => m.id === selectedModel)?.label ?? openCodeModelLabels[selectedModel] ?? selectedModel;
   const effortLabel = effortLevels.find((l) => l.value === selectedEffort)?.label ?? selectedEffort;
   const showEffortPicker = !noProvidersAvailable && effortLevels.length > 0;
   const claudeModels = availableProviders.includes("claude") ? MODELS.filter((m) => m.provider === "claude") : [];
@@ -334,7 +344,7 @@ export function AddResourceModal({ onClose }: Props) {
                           }}
                         >
                           <span className="text-center text-[10px] text-primary">★</span>
-                          <span>{id}</span>
+                          <span>{openCodeModelLabels[id] ?? id}</span>
                           <span className="text-[11px] text-primary">{id === selectedModel ? "✓" : ""}</span>
                         </button>
                       ))}

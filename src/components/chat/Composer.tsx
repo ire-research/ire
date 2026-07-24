@@ -31,6 +31,7 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
   const { model, provider, effort, availableProviders, setModel, setEffort } = useChatOptions();
   const openOpenCodeProviders = useOpenCodeModal((s) => s.openModal);
   const [pinnedOpenCodeModels, setPinnedOpenCodeModels] = useState<string[]>([]);
+  const [openCodeModelLabels, setOpenCodeModelLabels] = useState<Record<string, string>>({});
   const noProvidersAvailable = availableProviders.length === 0;
   const opencodeAvailable = availableProviders.includes("opencode");
   // OpenCode has no static default model (its catalog is dynamic) — if it
@@ -38,10 +39,9 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
   // OpenCodeProvidersModal, `model` is "". Block sending rather than letting
   // `opencode run --model ""` fail CLI-side.
   const noModelSelected = provider === "opencode" && !model;
-  // OpenCode model ids double as their own label (discover_models sets
-  // label = id), so falling through to `model` covers it — no separate
-  // OpenCode lookup needed.
-  const modelLabel = noProvidersAvailable ? "n/a" : MODELS.find((m) => m.id === model)?.label ?? model;
+  const modelLabel = noProvidersAvailable
+    ? "n/a"
+    : MODELS.find((m) => m.id === model)?.label ?? openCodeModelLabels[model] ?? model;
   const effortLevels = effortLevelsForModel(provider, model);
   const effortLabel = effortLevels.find((l) => l.value === effort)?.label ?? effort;
   const showEffortPicker = !noProvidersAvailable && effortLevels.length > 0;
@@ -59,11 +59,18 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
   useEffect(() => {
     if (!opencodeAvailable) {
       setPinnedOpenCodeModels([]);
+      setOpenCodeModelLabels({});
       return;
     }
     let cancelled = false;
     ipc.readUserConfig().catch((): UserConfig => ({})).then((config) => {
       if (!cancelled) setPinnedOpenCodeModels(config.pinned_opencode_models ?? []);
+    });
+    ipc.listAgentModels().catch(() => []).then((capabilities) => {
+      if (cancelled) return;
+      const catalog = capabilities.find((c) => c.provider === "opencode");
+      const models = catalog?.catalog.status === "available" ? catalog.catalog.models : [];
+      setOpenCodeModelLabels(Object.fromEntries(models.map((m) => [m.id, m.label])));
     });
     return () => { cancelled = true; };
   }, [opencodeAvailable, modelOpen]);
@@ -216,7 +223,7 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
                       }}
                     >
                       <span className="text-center text-[10px] text-primary">★</span>
-                      <span>{id}</span>
+                      <span>{openCodeModelLabels[id] ?? id}</span>
                       <span className="text-[11px] text-primary">{id === model ? "✓" : ""}</span>
                     </button>
                   ))}
