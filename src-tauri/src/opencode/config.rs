@@ -18,6 +18,17 @@ pub fn server_config(mcp_config: Option<&Path>) -> String {
         Value::String("allow".to_string()),
     );
 
+    // OpenCode's built-in "title" agent auto-generates a title from every
+    // session's first user message, unconditionally — including the
+    // disposable session `turn::generate_title` creates purely to ask for
+    // an IRE-formatted title. IRE always generates its own title, so this
+    // built-in one is pure waste (an extra billed LLM call per new chat).
+    let mut title_agent = Map::new();
+    title_agent.insert("disable".to_string(), Value::Bool(true));
+    let mut agent = Map::new();
+    agent.insert("title".to_string(), Value::Object(title_agent));
+    root.insert("agent".to_string(), Value::Object(agent));
+
     if let Some(path) = mcp_config {
         if let Some(mcp) = translate_mcp_servers(path) {
             if !mcp.is_empty() {
@@ -70,6 +81,13 @@ mod tests {
         let parsed: Value = serde_json::from_str(&config).unwrap();
         assert_eq!(parsed["permission"], "allow");
         assert!(parsed.get("mcp").is_none());
+    }
+
+    #[test]
+    fn disables_built_in_title_agent() {
+        let config = server_config(None);
+        let parsed: Value = serde_json::from_str(&config).unwrap();
+        assert_eq!(parsed["agent"]["title"]["disable"], true);
     }
 
     #[test]
