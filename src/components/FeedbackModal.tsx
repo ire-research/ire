@@ -6,10 +6,11 @@ import { useToasts } from "../state/toasts";
 
 interface Props {
   onClose: () => void;
+  initialMessage?: string;
 }
 
-export function FeedbackModal({ onClose }: Props) {
-  const [message, setMessage] = useState("");
+export function FeedbackModal({ onClose, initialMessage = "" }: Props) {
+  const [message, setMessage] = useState(initialMessage);
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const push = useToasts((s) => s.push);

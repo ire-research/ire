@@ -7,6 +7,7 @@ import { useWorkspace } from "./state/workspace";
 import { useWorkspaceData } from "./state/workspaceData";
 import { ipc, onBackendError, onWorkspaceEvent } from "./ipc";
 import { useToasts } from "./state/toasts";
+import { useFeedbackModal } from "./state/feedbackModal";
 import { useAutoUpdater } from "./hooks/useAutoUpdater";
 
 export default function App() {
@@ -19,6 +20,24 @@ export default function App() {
 
   useEffect(() => {
     const unlisten = onBackendError(({ scope, message }) => {
+      // Resume-id persistence failures are silent otherwise (the turn itself
+      // still succeeds) — surface a report-able toast so it doesn't go unnoticed.
+      if (scope === "resume id") {
+        useToasts.getState().push({
+          kind: "error",
+          scope,
+          message,
+          persistent: true,
+          action: {
+            label: "Report",
+            onClick: (id) => {
+              useToasts.getState().dismiss(id);
+              useFeedbackModal.getState().openWith(message);
+            },
+          },
+        });
+        return;
+      }
       useToasts.getState().push({ kind: "error", scope, message });
     });
     return () => {

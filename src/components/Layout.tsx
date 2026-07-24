@@ -8,6 +8,7 @@ import { useChat } from "../state/chat";
 import { useWorkspaceData, selectRunningCount } from "../state/workspaceData";
 import { useChatOptions } from "../state/chatOptions";
 import { toastError } from "../state/toasts";
+import { useFeedbackModal } from "../state/feedbackModal";
 import { useSystemMetrics } from "../hooks/useSystemStatus";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFolder, faChevronDown, faSidebarLeft, faSidebarRight, faGear, faCircleQuestion, faMessage, iconClass } from "../icons";
@@ -42,7 +43,10 @@ export function Layout() {
   const settingsRef = useRef<HTMLDivElement>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const helpRef = useRef<HTMLDivElement>(null);
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const feedbackOpen = useFeedbackModal((s) => s.open);
+  const feedbackPrefill = useFeedbackModal((s) => s.prefill);
+  const openFeedback = useFeedbackModal((s) => s.openWith);
+  const closeFeedback = useFeedbackModal((s) => s.close);
   const [appVersion, setAppVersion] = useState("");
 
   useEffect(() => {
@@ -260,7 +264,7 @@ export function Layout() {
                   className="flex items-center gap-2 w-full px-3 py-2 text-xs font-medium text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors"
                   onClick={() => {
                     setHelpOpen(false);
-                    setFeedbackOpen(true);
+                    openFeedback();
                   }}
                 >
                   <FontAwesomeIcon icon={faMessage} className={`${iconClass.md} shrink-0`} />
@@ -273,7 +277,7 @@ export function Layout() {
               </div>
             )}
           </div>
-          {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
+          {feedbackOpen && <FeedbackModal initialMessage={feedbackPrefill} onClose={closeFeedback} />}
           <button
             className="h-7 border border-outline-variant rounded px-3 text-xs font-medium text-on-surface-variant hover:text-on-surface transition-colors"
             onClick={handleClose}
