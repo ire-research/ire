@@ -46,6 +46,7 @@ use commands::workspace::{
     save_user_config, setup_status,
 };
 use mcp::McpState;
+use opencode::runtime::OpenCodeRuntime;
 use workspace::ActiveWorkspace;
 
 /// Run as the stdio MCP server (`ire --mcp-stdio`), spawned by Claude Code / Codex.
@@ -85,6 +86,7 @@ pub fn run() {
         .manage(SystemInfoCache::default())
         .manage(CpuMonitor::default())
         .manage(ProviderReadinessCache::default())
+        .manage(OpenCodeRuntime::default())
         .invoke_handler(tauri::generate_handler![
             setup_status,
             open_workspace,

@@ -5,10 +5,11 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::Deserialize;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::agent_provider::{self, TurnRequest};
+use crate::agent_provider::{self, TurnRequest, TurnTransport};
 use crate::commands::chat::ChatOptions;
+use crate::opencode::runtime::OpenCodeRuntime;
 use crate::prompts;
 use crate::resources::fetch::fetch_and_extract;
 use crate::resources::local::extract_local_file;
@@ -365,8 +366,6 @@ fn start_resource_summary(
     let agent = agent_provider::provider(&options.provider)
         .ok_or_else(|| format!("unsupported provider: {}", options.provider))?;
 
-    let bin = agent.discover().map_err(|e| e.to_string())?.path;
-
     let tab_id = uuid::Uuid::new_v4().to_string();
     app_handle
         .emit(
@@ -395,6 +394,46 @@ fn start_resource_summary(
     let effort = options.effort.clone();
     let sha256_for_log = sha256.clone();
 
+    if agent.transport() == TurnTransport::OpenCodeServer {
+        tokio::spawn(async move {
+            let Ok(home_data_dir) = crate::workspace::init::require_home_data_dir(&workspace_clone2) else {
+                tracing::error!(tab_id = %tab_id_clone, "resource summary: cannot resolve home data dir");
+                return;
+            };
+            let system_prompt = build_resource_system_prompt(&workspace_clone2);
+            let prompt = build_resource_summary_prompt(&sha256, &sources_clone);
+            let started_at = chrono::Local::now().to_rfc3339();
+            let runtime = app.state::<OpenCodeRuntime>();
+            let result = crate::opencode::turn::send(
+                &app,
+                &runtime,
+                &session,
+                &workspace_clone2,
+                &home_data_dir,
+                crate::opencode::turn::SendArgs {
+                    tab_id: &tab_id_clone,
+                    session_uuid: &tab_id_clone,
+                    tab_label: "Ingest",
+                    started_at: &started_at,
+                    model: &model,
+                    effort: effort.as_deref(),
+                    message: &prompt,
+                    system_prompt: Some(&system_prompt),
+                },
+            )
+            .await;
+            if let Err(e) = result {
+                tracing::warn!(tab_id = %tab_id_clone, error = %e, "resource agent turn (opencode) failed");
+            }
+        });
+        tracing::info!(tab_id = %tab_id, sha256 = %sha256_for_log, "resource summary started");
+        return Ok(());
+    }
+
+    let cli = agent_provider::cli_turn(&options.provider)
+        .ok_or_else(|| format!("provider {} has no CLI turn support", options.provider))?;
+    let bin = agent.discover().map_err(|e| e.to_string())?.path;
+
     tokio::spawn(async move {
         let result = tokio::task::spawn_blocking(move || {
             let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_clone2)?;
@@ -408,7 +447,7 @@ fn start_resource_summary(
                 None
             };
 
-            let mut cmd = agent.build_command(
+            let mut cmd = cli.build_command(
                 &bin,
                 &TurnRequest {
                     workspace: &workspace_clone2,
@@ -423,7 +462,7 @@ fn start_resource_summary(
 
             let mut child = cmd
                 .spawn()
-                .map_err(|e| agent.normalize_spawn_error(&e).to_string())?;
+                .map_err(|e| cli.normalize_spawn_error(&e).to_string())?;
             let pid = child.id();
             let stream_id = format!("{}:{}", tab_id_clone, uuid::Uuid::new_v4());
             let mut event_id = 0_u64;
@@ -460,12 +499,12 @@ fn start_resource_summary(
                             }),
                         );
                     };
-                    agent.dispatch(&json, &mut state, &mut emit_event);
+                    cli.dispatch(&json, &mut state, &mut emit_event);
                 }
             }
 
             let _ = child.wait();
-            session.clear_pid(&tab_id_clone);
+            session.clear_running_if(&tab_id_clone, &crate::session::RunningTurn::Process(pid));
 
             if !state.emitted_done {
                 event_id += 1;

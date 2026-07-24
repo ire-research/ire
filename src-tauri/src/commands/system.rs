@@ -8,6 +8,8 @@ use tauri::State;
 
 use crate::agent_provider::{self, AgentProvider, ModelCatalog, ModelCatalogStatus};
 use crate::commands::workspace::ProviderReadiness;
+use crate::opencode::runtime::OpenCodeRuntime;
+use crate::session::SessionManager;
 use crate::tool_cards::ToolProvider;
 use crate::workspace::state::ActiveWorkspace;
 
@@ -45,11 +47,83 @@ fn capabilities(agent: &dyn AgentProvider, catalog: Option<&dyn ModelCatalog>) -
     }
 }
 
+/// OpenCode's catalog isn't in the static registry (see `agent_provider::all`
+/// doc): enumerating it means talking to a live `opencode serve` process, so
+/// it's resolved separately here instead of through the synchronous
+/// `ModelCatalog` trait the other providers use.
+async fn opencode_capabilities(
+    app: &tauri::AppHandle,
+    active: &State<'_, ActiveWorkspace>,
+    session: &State<'_, SessionManager>,
+    runtime: &State<'_, OpenCodeRuntime>,
+) -> ProviderCapabilities {
+    let agent = agent_provider::provider("opencode").expect("opencode is always registered");
+    let error = |message: String| ProviderCapabilities {
+        provider: agent.id(),
+        default_model: None,
+        catalog: ModelCatalogStatus::Error { message },
+    };
+
+    let workspace_path = match active.0.lock() {
+        Ok(guard) => guard.as_ref().map(|h| h.state.path.clone()),
+        Err(e) => return error(e.to_string()),
+    };
+    let Some(workspace_path) = workspace_path else {
+        return error("no workspace open".to_string());
+    };
+    let bin = match agent.discover() {
+        Ok(b) => b.path,
+        Err(e) => return error(e.to_string()),
+    };
+    let home_data_dir = match crate::workspace::init::require_home_data_dir(&workspace_path) {
+        Ok(d) => d,
+        Err(e) => return error(e),
+    };
+    let mcp_config = {
+        let p = home_data_dir.join("mcp.json");
+        p.exists().then_some(p)
+    };
+
+    let status = match runtime
+        .ensure_started(app, session, &workspace_path, &bin, mcp_config.as_deref())
+        .await
+    {
+        Ok(inner) => match inner.client.list_models().await {
+            Ok(models) => ModelCatalogStatus::Available { models },
+            Err(e) => {
+                tracing::warn!(provider = "opencode", error = %e, "model discovery failed");
+                ModelCatalogStatus::Error { message: e.to_string() }
+            }
+        },
+        Err(e) => {
+            tracing::warn!(provider = "opencode", error = %e, "opencode server failed to start");
+            ModelCatalogStatus::Error { message: e.to_string() }
+        }
+    };
+    let default_model = match &status {
+        ModelCatalogStatus::Available { models } => models.first().map(|m| m.id.clone()),
+        ModelCatalogStatus::Error { .. } => None,
+    };
+    ProviderCapabilities {
+        provider: agent.id(),
+        default_model,
+        catalog: status,
+    }
+}
+
 #[tauri::command]
-pub fn list_agent_models() -> Vec<ProviderCapabilities> {
-    crate::agent_provider::all()
+pub async fn list_agent_models(
+    app: tauri::AppHandle,
+    active: State<'_, ActiveWorkspace>,
+    session: State<'_, SessionManager>,
+    runtime: State<'_, OpenCodeRuntime>,
+) -> Result<Vec<ProviderCapabilities>, String> {
+    let mut out: Vec<ProviderCapabilities> = crate::agent_provider::all()
+        .filter(|(agent, _)| agent.name() != "opencode")
         .map(|(agent, catalog)| capabilities(agent, catalog))
-        .collect()
+        .collect();
+    out.push(opencode_capabilities(&app, &active, &session, &runtime).await);
+    Ok(out)
 }
 
 /// Machine-level info that doesn't change for the lifetime of the app
@@ -313,9 +387,8 @@ fn query_nvidia_smi() -> (Option<String>, Option<f32>, Option<u32>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent_provider::{AgentError, ModelInfo, TurnRequest};
+    use crate::agent_provider::{AgentError, ModelInfo};
     use crate::binary::{DiscoveredBinary, DiscoveryError};
-    use crate::stream_event::{StreamEvent, StreamState};
 
     struct StubProvider;
 
@@ -331,16 +404,6 @@ mod tests {
         }
         fn is_logged_in(&self, _bin: &Path) -> bool {
             false
-        }
-        fn build_command(&self, _bin: &Path, _req: &TurnRequest<'_>) -> Command {
-            Command::new("true")
-        }
-        fn dispatch(
-            &self,
-            _json: &serde_json::Value,
-            _state: &mut StreamState,
-            _emit: &mut dyn FnMut(StreamEvent),
-        ) {
         }
     }
 

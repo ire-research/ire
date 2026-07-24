@@ -246,7 +246,7 @@ fn ask_user_question(
     session_manager: &SessionManager,
 ) -> Result<serde_json::Value> {
     let active = session_manager
-        .get_active_session()
+        .get_active_process_session()
         .ok_or_else(|| anyhow!("no active agent session"))?;
 
     let questions = params["questions"]

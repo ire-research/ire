@@ -66,6 +66,13 @@ impl ServerHandler for IreMcp {
         request: CallToolRequestParams,
         _ctx: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, McpError> {
+        if request.name.as_ref() == "ask_user_question" && ask_excluded() {
+            return Err(McpError::invalid_params(
+                "ask_user_question is not available for this agent — use the built-in question tool instead",
+                None,
+            ));
+        }
+
         let params = request
             .arguments
             .map(Value::Object)
@@ -128,10 +135,21 @@ fn tool(name: &'static str, description: &'static str, input_schema: Value) -> T
     Tool::new(name, description, schema(input_schema))
 }
 
+/// Set only on the MCP subprocess(es) an OpenCode server spawns (see
+/// `opencode::config::server_config`): OpenCode has its own native
+/// `question` tool, and letting an OpenCode turn see both would be
+/// ambiguous about which one to use — see
+/// docs/opencode-server-integration.md "Native questions, not IRE's MCP
+/// question tool". Claude and Codex never set this and keep seeing
+/// `ask_user_question` unchanged.
+fn ask_excluded() -> bool {
+    std::env::var_os("IRE_MCP_EXCLUDE_ASK").is_some()
+}
+
 /// Catalog mirrored from the former `mcp/server.js`. Descriptions and schemas
 /// are the single source of truth agents see via `tools/list`.
 fn tool_catalog() -> Vec<Tool> {
-    vec![
+    let mut tools = vec![
         tool(
             "ire.read",
             "Read the workspace's ire.json (notes, focus, ideas, experiments). Returns its raw JSON `content` and a `version` token. You MUST call this before ire.edit.",
@@ -264,5 +282,9 @@ fn tool_catalog() -> Vec<Tool> {
                 "required": ["uuid"]
             }),
         ),
-    ]
+    ];
+    if ask_excluded() {
+        tools.retain(|t| t.name.as_ref() != "ask_user_question");
+    }
+    tools
 }
