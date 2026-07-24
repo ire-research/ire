@@ -363,14 +363,18 @@ pub async fn submit_ask_answer(
 ) -> Result<(), String> {
     tracing::debug!(tab_id = %tab_id, "submit_ask_answer");
 
-    if let Some(request_id) = session.take_pending_opencode_question(&tab_id) {
+    if let Some(request_id) = session.peek_pending_opencode_question(&tab_id) {
         let inner = runtime.current().await.ok_or("opencode server is not running")?;
         let normalized: Vec<Vec<String>> = answers.iter().map(normalize_opencode_answer).collect();
-        return inner
-            .client
-            .reply_question(&request_id, normalized)
-            .await
-            .map_err(|e| e.to_string());
+        return match inner.client.reply_question(&request_id, normalized).await {
+            Ok(()) => {
+                session.take_pending_opencode_question(&tab_id);
+                Ok(())
+            }
+            // Keep the id pending on failure — OpenCode is still waiting
+            // server-side, so the frontend can retry the same request.
+            Err(e) => Err(e.to_string()),
+        };
     }
 
     if session.submit_ask(&tab_id, answers) {

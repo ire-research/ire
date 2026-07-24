@@ -175,6 +175,18 @@ impl SessionManager {
             .take()
     }
 
+    /// Read (without clearing) the pending OpenCode question request id for
+    /// `tab_id`, if any — used to keep the id around until a reply attempt
+    /// actually succeeds, so a failed reply can be retried.
+    pub fn peek_pending_opencode_question(&self, tab_id: &str) -> Option<String> {
+        self.0
+            .lock()
+            .unwrap()
+            .get(tab_id)?
+            .pending_opencode_question
+            .clone()
+    }
+
     /// Drops all per-tab state and returns the running `Process` pids
     /// (OpenCode turns are cleaned up separately, via `OpenCodeRuntime`).
     pub fn drain(&self) -> Vec<u32> {

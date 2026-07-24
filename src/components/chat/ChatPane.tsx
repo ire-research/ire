@@ -344,8 +344,13 @@ export function ChatPane() {
     }
   };
 
-  const handleAskSubmit = (_ask: AskBlockState, answers: AskAnswer[]) => {
-    void ipc.submitAskAnswer(activeTabId, answers).catch((e) => toastError("submit answer", e));
+  const handleAskSubmit = async (_ask: AskBlockState, answers: AskAnswer[]) => {
+    try {
+      await ipc.submitAskAnswer(activeTabId, answers);
+    } catch (e) {
+      toastError("submit answer", e);
+      throw e;
+    }
   };
 
   const handleNewTab = () => {
