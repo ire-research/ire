@@ -1,4 +1,5 @@
 use std::path::Path;
+use std::time::Duration;
 
 use anyhow::{Context, Result};
 use rusqlite::{params, Connection};
@@ -128,7 +129,10 @@ pub fn list_experiments(home_data_dir: &Path, limit: usize) -> Result<Vec<Experi
 
 fn open(home_data_dir: &Path) -> Result<Connection> {
     let db_path = home_data_dir.join("local.db");
-    Connection::open(&db_path).with_context(|| format!("open {}", db_path.display()))
+    let conn = Connection::open(&db_path).with_context(|| format!("open {}", db_path.display()))?;
+    // Retry on SQLITE_BUSY instead of failing instantly under concurrent writers.
+    conn.busy_timeout(Duration::from_secs(5))?;
+    Ok(conn)
 }
 
 // ── Chat Sessions ─────────────────────────────────────────────────────────────
