@@ -319,7 +319,10 @@ export function ChatPane() {
 
     if (shouldTitle) {
       ipc
-        .generateChatTitle(text, lightweightModelForProvider(provider), provider)
+        // OpenCode has no fixed "lightweight" model to fall back to (its
+        // catalog is dynamic) — the chat's own selected model is already
+        // guaranteed non-empty by Composer's send guard, so reuse it.
+        .generateChatTitle(text, provider === "opencode" ? model : lightweightModelForProvider(provider), provider)
         .then((title) => { if (title) renameTab(titleTabId, title); })
         .catch(() => {}); // best-effort; leave label as "Untitled" on failure
     }
@@ -341,8 +344,13 @@ export function ChatPane() {
     }
   };
 
-  const handleAskSubmit = (_ask: AskBlockState, answers: AskAnswer[]) => {
-    void ipc.submitAskAnswer(activeTabId, answers).catch((e) => toastError("submit answer", e));
+  const handleAskSubmit = async (_ask: AskBlockState, answers: AskAnswer[]) => {
+    try {
+      await ipc.submitAskAnswer(activeTabId, answers);
+    } catch (e) {
+      toastError("submit answer", e);
+      throw e;
+    }
   };
 
   const handleNewTab = () => {

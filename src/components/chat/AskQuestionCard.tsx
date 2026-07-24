@@ -6,7 +6,7 @@ import { faCheck, faCircleQuestion, faPenToSquare, faChevronRight, faChevronLeft
 
 interface Props {
   ask: AskBlockState;
-  onSubmit: (answers: AskAnswer[]) => void;
+  onSubmit: (answers: AskAnswer[]) => void | Promise<void>;
 }
 
 const STAGE_HEIGHT = 380;
@@ -22,6 +22,7 @@ export function AskQuestionCard({ ask, onSubmit }: Props) {
   const [step, setStep] = useState(0);
   const [outgoing, setOutgoing] = useState<{ index: number; direction: 1 | -1 } | null>(null);
   const [editing, setEditing] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   // Drop the outgoing panel after the animation finishes.
   useEffect(() => {
@@ -38,10 +39,20 @@ export function AskQuestionCard({ ask, onSubmit }: Props) {
   const goNext = () => goTo(step + 1);
   const goPrev = () => goTo(step - 1);
 
-  const handleSubmit = () => {
+  // Only lock the card once the reply IPC actually resolves — a transient
+  // failure leaves the question open so the user can retry the submit.
+  const handleSubmit = async () => {
+    if (submitting) return;
     const final = ask.answers.map((a) => a ?? "") as AskAnswer[];
-    markAskSubmitted(ask.tool_id);
-    onSubmit(final);
+    setSubmitting(true);
+    try {
+      await onSubmit(final);
+      markAskSubmitted(ask.tool_id);
+    } catch {
+      // Caller surfaces the error (toast); card stays open for retry.
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (ask.submitted) {
@@ -86,6 +97,7 @@ export function AskQuestionCard({ ask, onSubmit }: Props) {
         onNext={goNext}
         onReview={() => goTo(reviewStep)}
         onSubmit={handleSubmit}
+        submitting={submitting}
       />
 
       {editing !== null && (
@@ -274,9 +286,10 @@ interface NavFooterProps {
   onNext: () => void;
   onReview: () => void;
   onSubmit: () => void;
+  submitting: boolean;
 }
 
-function NavFooter({ step, total, canGoBack, onPrev, onNext, onReview, onSubmit }: NavFooterProps) {
+function NavFooter({ step, total, canGoBack, onPrev, onNext, onReview, onSubmit, submitting }: NavFooterProps) {
   const isReview = step === total;
   const isLastQuestion = step === total - 1;
 
@@ -297,9 +310,10 @@ function NavFooter({ step, total, canGoBack, onPrev, onNext, onReview, onSubmit 
         <button
           type="button"
           onClick={onSubmit}
-          className="px-3 py-1.5 text-[12px] rounded bg-accent text-accent-fg font-medium hover:opacity-90 transition-opacity"
+          disabled={submitting}
+          className="px-3 py-1.5 text-[12px] rounded bg-accent text-accent-fg font-medium hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          Submit answers
+          {submitting ? "Submitting…" : "Submit answers"}
         </button>
       ) : isLastQuestion ? (
         <button

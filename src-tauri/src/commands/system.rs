@@ -2,11 +2,14 @@ use serde::Serialize;
 use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use sysinfo::{CpuRefreshKind, RefreshKind, System};
 use tauri::State;
 
 use crate::agent_provider::{self, AgentProvider, ModelCatalog, ModelCatalogStatus};
 use crate::commands::workspace::ProviderReadiness;
+use crate::opencode::runtime::OpenCodeRuntime;
+use crate::session::SessionManager;
 use crate::tool_cards::ToolProvider;
 use crate::workspace::state::ActiveWorkspace;
 
@@ -44,11 +47,81 @@ fn capabilities(agent: &dyn AgentProvider, catalog: Option<&dyn ModelCatalog>) -
     }
 }
 
+/// OpenCode's catalog needs a live server round-trip, so it's resolved here
+/// instead of through the synchronous `ModelCatalog` trait.
+async fn opencode_capabilities(
+    app: &tauri::AppHandle,
+    active: &State<'_, ActiveWorkspace>,
+    session: &State<'_, SessionManager>,
+    runtime: &State<'_, OpenCodeRuntime>,
+) -> ProviderCapabilities {
+    let agent = agent_provider::provider("opencode").expect("opencode is always registered");
+    let error = |message: String| ProviderCapabilities {
+        provider: agent.id(),
+        default_model: None,
+        catalog: ModelCatalogStatus::Error { message },
+    };
+
+    let workspace_path = match active.0.lock() {
+        Ok(guard) => guard.as_ref().map(|h| h.state.path.clone()),
+        Err(e) => return error(e.to_string()),
+    };
+    let Some(workspace_path) = workspace_path else {
+        return error("no workspace open".to_string());
+    };
+    let bin = match agent.discover() {
+        Ok(b) => b.path,
+        Err(e) => return error(e.to_string()),
+    };
+    let home_data_dir = match crate::workspace::init::require_home_data_dir(&workspace_path) {
+        Ok(d) => d,
+        Err(e) => return error(e),
+    };
+    let mcp_config = {
+        let p = home_data_dir.join("mcp.json");
+        p.exists().then_some(p)
+    };
+
+    let status = match runtime
+        .ensure_started(app, session, &workspace_path, &bin, mcp_config.as_deref())
+        .await
+    {
+        Ok(inner) => match inner.client.list_models().await {
+            Ok(models) => ModelCatalogStatus::Available { models },
+            Err(e) => {
+                tracing::warn!(provider = "opencode", error = %e, "model discovery failed");
+                ModelCatalogStatus::Error { message: e.to_string() }
+            }
+        },
+        Err(e) => {
+            tracing::warn!(provider = "opencode", error = %e, "opencode server failed to start");
+            ModelCatalogStatus::Error { message: e.to_string() }
+        }
+    };
+    let default_model = match &status {
+        ModelCatalogStatus::Available { models } => models.first().map(|m| m.id.clone()),
+        ModelCatalogStatus::Error { .. } => None,
+    };
+    ProviderCapabilities {
+        provider: agent.id(),
+        default_model,
+        catalog: status,
+    }
+}
+
 #[tauri::command]
-pub fn list_agent_models() -> Vec<ProviderCapabilities> {
-    crate::agent_provider::all()
+pub async fn list_agent_models(
+    app: tauri::AppHandle,
+    active: State<'_, ActiveWorkspace>,
+    session: State<'_, SessionManager>,
+    runtime: State<'_, OpenCodeRuntime>,
+) -> Result<Vec<ProviderCapabilities>, String> {
+    let mut out: Vec<ProviderCapabilities> = crate::agent_provider::all()
+        .filter(|(agent, _)| agent.name() != "opencode")
         .map(|(agent, catalog)| capabilities(agent, catalog))
-        .collect()
+        .collect();
+    out.push(opencode_capabilities(&app, &active, &session, &runtime).await);
+    Ok(out)
 }
 
 /// Machine-level info that doesn't change for the lifetime of the app
@@ -76,6 +149,41 @@ pub struct SystemMetrics {
 
 #[derive(Default)]
 pub struct SystemInfoCache(pub Mutex<Option<SystemInfo>>);
+
+/// `get_system_metrics` is polled every 5s for CPU/GPU/git stats
+/// (`useSystemStatus.ts`'s `useSystemMetrics`), but provider readiness
+/// (`AgentProvider::readiness`) spawns a real subprocess per provider
+/// (a login/auth-status check, and `which <bin>` in discovery) — running
+/// that on every 5s tick is constant background subprocess churn for data
+/// that changes rarely (a user logging into/out of a provider is a
+/// deliberate, occasional action). Cached with a TTL well above the poll
+/// interval so it's rechecked roughly every 30s instead of every 5s, while
+/// CPU/GPU/git stay on the fast cadence. `setup_status` (user-triggered,
+/// not polled) deliberately does *not* use this cache — its "Refresh"
+/// button should reflect a just-completed `opencode auth login` immediately.
+const PROVIDER_READINESS_TTL: Duration = Duration::from_secs(30);
+
+type ReadinessCacheEntry = (Instant, Vec<ProviderReadiness>);
+
+#[derive(Clone, Default)]
+pub struct ProviderReadinessCache(Arc<Mutex<Option<ReadinessCacheEntry>>>);
+
+fn cached_provider_readiness(cache: &ProviderReadinessCache) -> Vec<ProviderReadiness> {
+    let mut guard = cache.0.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((checked_at, providers)) = guard.as_ref() {
+        if checked_at.elapsed() < PROVIDER_READINESS_TTL {
+            return providers.clone();
+        }
+    }
+    let providers: Vec<ProviderReadiness> = agent_provider::all()
+        .map(|(agent, _catalog)| ProviderReadiness {
+            provider: agent.id(),
+            binary: agent.readiness(),
+        })
+        .collect();
+    *guard = Some((Instant::now(), providers.clone()));
+    providers
+}
 
 /// Long-lived sysinfo handle for CPU usage. Kept alive across polls so each
 /// `get_system_metrics` call can compute usage from the delta since the last
@@ -110,6 +218,7 @@ pub async fn get_system_metrics(
     active: State<'_, ActiveWorkspace>,
     cache: State<'_, SystemInfoCache>,
     cpu_monitor: State<'_, CpuMonitor>,
+    readiness_cache: State<'_, ProviderReadinessCache>,
 ) -> Result<SystemMetrics, String> {
     let workspace_path = {
         let guard = active.0.lock().map_err(|e| e.to_string())?;
@@ -129,9 +238,10 @@ pub async fn get_system_metrics(
         .is_some_and(|info| info.gpu_model.is_some());
 
     let cpu_monitor = cpu_monitor.inner().clone();
+    let readiness_cache = readiness_cache.inner().clone();
 
     tauri::async_runtime::spawn_blocking(move || {
-        collect_system_metrics(&workspace_path, has_gpu, &cpu_monitor)
+        collect_system_metrics(&workspace_path, has_gpu, &cpu_monitor, &readiness_cache)
     })
     .await
     .map_err(|e| e.to_string())
@@ -169,6 +279,7 @@ fn collect_system_metrics(
     workspace_path: &Path,
     has_gpu: bool,
     cpu_monitor: &CpuMonitor,
+    readiness_cache: &ProviderReadinessCache,
 ) -> SystemMetrics {
     // Git branch: symbolic-ref works even on a fresh repo with no commits;
     // rev-parse is only reached in detached-HEAD state.
@@ -203,12 +314,7 @@ fn collect_system_metrics(
     // Only re-query nvidia-smi for live usage if a GPU was detected at all.
     let gpu_usage_pct = if has_gpu { query_nvidia_smi().1 } else { None };
 
-    let providers = agent_provider::all()
-        .map(|(agent, _catalog)| ProviderReadiness {
-            provider: agent.id(),
-            binary: agent.readiness(),
-        })
-        .collect();
+    let providers = cached_provider_readiness(readiness_cache);
 
     SystemMetrics {
         git_branch,
@@ -279,9 +385,8 @@ fn query_nvidia_smi() -> (Option<String>, Option<f32>, Option<u32>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::agent_provider::{AgentError, ModelInfo, TurnRequest};
+    use crate::agent_provider::{AgentError, ModelInfo};
     use crate::binary::{DiscoveredBinary, DiscoveryError};
-    use crate::stream_event::{StreamEvent, StreamState};
 
     struct StubProvider;
 
@@ -297,16 +402,6 @@ mod tests {
         }
         fn is_logged_in(&self, _bin: &Path) -> bool {
             false
-        }
-        fn build_command(&self, _bin: &Path, _req: &TurnRequest<'_>) -> Command {
-            Command::new("true")
-        }
-        fn dispatch(
-            &self,
-            _json: &serde_json::Value,
-            _state: &mut StreamState,
-            _emit: &mut dyn FnMut(StreamEvent),
-        ) {
         }
     }
 
@@ -355,5 +450,39 @@ mod tests {
             ModelCatalogStatus::Available { models } => assert!(models.is_empty()),
             ModelCatalogStatus::Error { .. } => panic!("expected Available status"),
         }
+    }
+
+    #[test]
+    fn cached_provider_readiness_returns_cached_value_within_ttl() {
+        let cache = ProviderReadinessCache::default();
+        let fake = vec![ProviderReadiness {
+            provider: ToolProvider::Claude,
+            binary: crate::binary::BinaryStatus::Missing,
+        }];
+        *cache.0.lock().unwrap() = Some((Instant::now(), fake));
+
+        let result = cached_provider_readiness(&cache);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].provider, ToolProvider::Claude);
+        match result[0].binary {
+            crate::binary::BinaryStatus::Missing => {}
+            _ => panic!("expected the cached entry, cache was not honored"),
+        }
+    }
+
+    #[test]
+    fn cached_provider_readiness_recomputes_after_ttl_expires() {
+        let cache = ProviderReadinessCache::default();
+        let fake = vec![ProviderReadiness {
+            provider: ToolProvider::Claude,
+            binary: crate::binary::BinaryStatus::Missing,
+        }];
+        let stale_time = Instant::now() - PROVIDER_READINESS_TTL - Duration::from_secs(1);
+        *cache.0.lock().unwrap() = Some((stale_time, fake));
+
+        // Recomputed from the real registry (claude, codex, opencode), not
+        // the single stale fake entry.
+        let result = cached_provider_readiness(&cache);
+        assert_eq!(result.len(), 3);
     }
 }

@@ -42,6 +42,11 @@ export const DEFAULT_CHAT_OPTIONS = {
 };
 
 export function effortLevelsForModel(provider: Provider, model: string) {
+  // OpenCode models each advertise their own variant vocabulary dynamically
+  // (fetched via list_agent_models, not a static per-provider table like
+  // Claude/Codex have) — v1 doesn't expose per-model variant selection in
+  // the composer, so there's no effort picker for it here.
+  if (provider === "opencode") return [];
   if (provider === "codex") return CODEX_EFFORT_LEVELS;
   if (model.includes("haiku")) return [];
   if (model.includes("opus")) return CLAUDE_EFFORT_LEVELS;
@@ -61,6 +66,13 @@ function normalizedEffortForModel(provider: Provider, model: string, effort: str
 }
 
 export function isValidChatOptions(model: string | null | undefined, provider: string | null | undefined, effort: string | null | undefined): model is string {
+  // OpenCode's catalog is dynamic (fetched via list_agent_models), so it
+  // can't be checked against the static MODELS list the way Claude/Codex
+  // are — a non-empty model id and no effort selected is as far as this can
+  // validate without a network/process round-trip.
+  if (provider === "opencode") {
+    return !!model && (effort === null || effort === undefined || effort === "");
+  }
   if (provider !== "claude" && provider !== "codex") return false;
   if (!model) return false;
   if (!MODELS.some((entry) => entry.id === model && entry.provider === provider)) return false;
@@ -71,11 +83,16 @@ export function isValidChatOptions(model: string | null | undefined, provider: s
 }
 
 export function defaultModelForProvider(provider: Provider): string {
+  // No static default exists for OpenCode's dynamic catalog — callers that
+  // fall back to this (e.g. OpenCode becoming the only available provider)
+  // get an empty model id and must prompt the user to pick one explicitly.
+  if (provider === "opencode") return "";
   return MODELS.find((entry) => entry.provider === provider)?.id ?? DEFAULT_CHAT_OPTIONS.model;
 }
 
 /** Smallest/cheapest model per provider — used for background chat-title generation. */
 export function lightweightModelForProvider(provider: Provider): string {
+  if (provider === "opencode") return "";
   return provider === "codex" ? "gpt-5.4-mini" : "claude-haiku-4-5-20251001";
 }
 
@@ -85,6 +102,10 @@ export function optionsForAvailableProviders(
   effort: string | null | undefined,
   availableProviders: Provider[],
 ) {
+  if (provider === "opencode" && model && availableProviders.includes("opencode")) {
+    return { model, provider: "opencode" as Provider, effort: null };
+  }
+
   if (provider === "claude" || provider === "codex") {
     const validProvider = provider as Provider;
     if (

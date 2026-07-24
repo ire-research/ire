@@ -7,7 +7,7 @@ import { ToolCard } from "./ToolCard";
 
 interface MessageListProps {
   messages: ChatMessage[];
-  onAskSubmit?: (ask: AskBlockState, answers: AskAnswer[]) => void;
+  onAskSubmit?: (ask: AskBlockState, answers: AskAnswer[]) => void | Promise<void>;
 }
 
 export function MessageList({ messages, onAskSubmit }: MessageListProps) {

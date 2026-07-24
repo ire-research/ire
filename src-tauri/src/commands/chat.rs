@@ -2,10 +2,11 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 
-use crate::agent_provider::{self, TurnRequest};
-use crate::session::SessionManager;
+use crate::agent_provider::{self, TurnRequest, TurnTransport};
+use crate::opencode::runtime::OpenCodeRuntime;
+use crate::session::{RunningTurn, SessionManager};
 use crate::stream_event::{StreamEvent, StreamState};
 use crate::workspace::state::ActiveWorkspace;
 
@@ -54,8 +55,43 @@ pub async fn chat_send(
     let agent = agent_provider::provider(&provider)
         .ok_or_else(|| format!("unsupported provider: {provider}"))?;
 
-    let bin = agent.discover().map_err(|e| e.to_string())?.path;
     let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
+    let system_prompt = build_system_prompt(&workspace_path);
+
+    tracing::info!(
+        tab_id = %tab_id,
+        provider = %provider,
+        model = %options.model,
+        effort = ?options.effort,
+        msg = %trunc(&message),
+        "chat_send"
+    );
+
+    if agent.transport() == TurnTransport::OpenCodeServer {
+        let runtime = app_handle.state::<OpenCodeRuntime>();
+        return crate::opencode::turn::send(
+            &app_handle,
+            &runtime,
+            &session,
+            &workspace_path,
+            &home_data_dir,
+            crate::opencode::turn::SendArgs {
+                tab_id: &tab_id,
+                session_uuid: &session_uuid,
+                tab_label: &tab_label,
+                started_at: &started_at,
+                model: &options.model,
+                effort: options.effort.as_deref(),
+                message: &message,
+                system_prompt: Some(&system_prompt),
+            },
+        )
+        .await;
+    }
+
+    let cli = agent_provider::cli_turn(&provider)
+        .ok_or_else(|| format!("provider {provider} has no CLI turn support"))?;
+    let bin = agent.discover().map_err(|e| e.to_string())?.path;
     let resume_id = match crate::db::models::get_chat_resume_id(&home_data_dir, &session_uuid, &provider) {
         Ok(v) => v,
         Err(e) => {
@@ -73,8 +109,6 @@ pub async fn chat_send(
         }
     };
 
-    let system_prompt = build_system_prompt(&workspace_path);
-
     // Clone the SessionManager handle (cheap Arc clone) so it can move into spawn_blocking.
     let session_clone = (*session).clone();
     let tab_id_outer = tab_id.clone();
@@ -83,15 +117,6 @@ pub async fn chat_send(
     let session_uuid_cl = session_uuid.clone();
     let tab_label_cl = tab_label.clone();
     let started_at_cl = started_at.clone();
-
-    tracing::info!(
-        tab_id = %tab_id,
-        provider = %provider,
-        model = %options.model,
-        effort = ?options.effort,
-        msg = %trunc(&message),
-        "chat_send"
-    );
 
     let result = tokio::task::spawn_blocking(move || {
         session_clone.set_agent_options(
@@ -102,7 +127,7 @@ pub async fn chat_send(
             options.effort.as_deref(),
         );
 
-        let mut cmd = agent.build_command(
+        let mut cmd = cli.build_command(
             &bin,
             &TurnRequest {
                 workspace: &workspace_path,
@@ -117,7 +142,7 @@ pub async fn chat_send(
 
         let mut child = cmd
             .spawn()
-            .map_err(|e| agent.normalize_spawn_error(&e).to_string())?;
+            .map_err(|e| cli.normalize_spawn_error(&e).to_string())?;
         let pid = child.id();
         let stream_id = format!("{tab_id}:{}", uuid::Uuid::new_v4());
         let mut event_id = 0_u64;
@@ -167,16 +192,14 @@ pub async fn chat_send(
                         }),
                     );
                 };
-                agent.dispatch(&json, &mut state, &mut emit_event);
+                cli.dispatch(&json, &mut state, &mut emit_event);
             }
         }
 
         let _ = child.wait();
         // Only clear if our PID is still current — fire_wakeup may have already
         // registered the wake-up CC subprocess under the same tab_id.
-        if session_clone.get_pid(&tab_id) == Some(pid) {
-            session_clone.clear_pid(&tab_id);
-        }
+        session_clone.clear_running_if(&tab_id, &RunningTurn::Process(pid));
         tracing::info!(tab_id = %tab_id, "chat_send complete");
 
         if !state.emitted_done {
@@ -203,10 +226,10 @@ pub async fn chat_send(
 }
 
 /// Generate a short descriptive title for a brand-new chat from its first user
-/// message. One-shot: spawns a fresh lightweight-model subprocess (no system
-/// prompt, no MCP, no session resume, no tools) and returns the collected text.
+/// message. One-shot: no system prompt, no MCP, no session resume, no tools.
 #[tauri::command]
 pub async fn generate_chat_title(
+    app_handle: tauri::AppHandle,
     active: State<'_, ActiveWorkspace>,
     message: String,
     model: String,
@@ -225,40 +248,49 @@ pub async fn generate_chat_title(
     let agent = agent_provider::provider(&provider)
         .ok_or_else(|| format!("unsupported provider: {provider}"))?;
 
-    let bin = agent.discover().map_err(|e| e.to_string())?.path;
-
     let prompt = crate::prompts::chat_title(&message);
 
-    let title = tokio::task::spawn_blocking(move || {
-        // `title_request` gives the no-resume/no-MCP/no-system-prompt shape;
-        // the frontend picks which lightweight model to use.
-        let req = agent.title_request(&workspace_path, &prompt, &model);
-        let mut cmd = agent.build_command(&bin, &req);
+    let title = if agent.transport() == TurnTransport::OpenCodeServer {
+        let runtime = app_handle.state::<OpenCodeRuntime>();
+        let session = app_handle.state::<SessionManager>();
+        let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
+        crate::opencode::turn::generate_title(&app_handle, &runtime, &session, &workspace_path, &home_data_dir, &model, &prompt).await?
+    } else {
+        let cli = agent_provider::cli_turn(&provider)
+            .ok_or_else(|| format!("provider {provider} has no CLI turn support"))?;
+        let bin = agent.discover().map_err(|e| e.to_string())?.path;
 
-        let mut child = cmd
-            .spawn()
-            .map_err(|e| agent.normalize_spawn_error(&e).to_string())?;
-        let stdout = child.stdout.take().ok_or("no stdout")?;
-        let mut state = StreamState::default();
-        let mut collected = String::new();
+        tokio::task::spawn_blocking(move || {
+            // `title_request` gives the no-resume/no-MCP/no-system-prompt shape;
+            // the frontend picks which lightweight model to use.
+            let req = cli.title_request(&workspace_path, &prompt, &model);
+            let mut cmd = cli.build_command(&bin, &req);
 
-        for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
-                let mut collect = |event: StreamEvent| match event {
-                    StreamEvent::TextDelta { text } => collected.push_str(&text),
-                    StreamEvent::Result {
-                        text: Some(text), ..
-                    } => collected.push_str(&text),
-                    _ => {}
-                };
-                agent.dispatch(&json, &mut state, &mut collect);
+            let mut child = cmd
+                .spawn()
+                .map_err(|e| cli.normalize_spawn_error(&e).to_string())?;
+            let stdout = child.stdout.take().ok_or("no stdout")?;
+            let mut state = StreamState::default();
+            let mut collected = String::new();
+
+            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
+                    let mut collect = |event: StreamEvent| match event {
+                        StreamEvent::TextDelta { text } => collected.push_str(&text),
+                        StreamEvent::Result {
+                            text: Some(text), ..
+                        } => collected.push_str(&text),
+                        _ => {}
+                    };
+                    cli.dispatch(&json, &mut state, &mut collect);
+                }
             }
-        }
-        let _ = child.wait();
-        Ok::<String, String>(collected)
-    })
-    .await
-    .map_err(|e| format!("task error: {e}"))??;
+            let _ = child.wait();
+            Ok::<String, String>(collected)
+        })
+        .await
+        .map_err(|e| format!("task error: {e}"))??
+    };
 
     let cleaned = clean_title(&title);
     if cleaned.is_empty() {
@@ -279,14 +311,31 @@ fn clean_title(raw: &str) -> String {
 }
 
 #[tauri::command]
-pub fn chat_cancel(session: State<'_, SessionManager>, tab_id: String) -> Result<(), String> {
+pub async fn chat_cancel(
+    session: State<'_, SessionManager>,
+    runtime: State<'_, OpenCodeRuntime>,
+    tab_id: String,
+) -> Result<(), String> {
     tracing::debug!(tab_id = %tab_id, "chat_cancel");
     session.cancel_ask(&tab_id);
-    if let Some((pid, provider)) = session.get_pid_and_provider(&tab_id) {
-        tracing::info!(tab_id = %tab_id, pid = pid, "cancelling agent subprocess");
-        match provider.and_then(|name| agent_provider::provider(&name)) {
-            Some(agent) => agent.cancel(pid),
-            None => kill_process(pid),
+    if let Some((running, provider)) = session.get_running_and_provider(&tab_id) {
+        match running {
+            RunningTurn::Process(pid) => {
+                tracing::info!(tab_id = %tab_id, pid = pid, "cancelling agent subprocess");
+                match provider.as_deref().and_then(agent_provider::cli_turn) {
+                    Some(cli) => cli.cancel(pid),
+                    None => kill_process(pid),
+                }
+            }
+            RunningTurn::OpenCode { session_id } => {
+                tracing::info!(tab_id = %tab_id, session_id = %session_id, "cancelling opencode session");
+                if let Some(inner) = runtime.current().await {
+                    if let Some(request_id) = session.take_pending_opencode_question(&tab_id) {
+                        let _ = inner.client.reject_question(&request_id).await;
+                    }
+                    let _ = inner.client.abort_session(&session_id).await;
+                }
+            }
         }
     }
     Ok(())
@@ -303,20 +352,47 @@ pub fn chat_reset_session(
     Ok(())
 }
 
-/// Deliver the user's answers for a pending `ask_user_question` MCP call. The
-/// blocked MCP handler (in mcp/rpc.rs) is woken up and returns the answers as
-/// the tool_result, letting the same subprocess continue.
+/// Delivers the user's answers: wakes the MCP handler for Claude/Codex, or
+/// posts directly to OpenCode's native question endpoint.
 #[tauri::command]
-pub fn submit_ask_answer(
+pub async fn submit_ask_answer(
     session: State<'_, SessionManager>,
+    runtime: State<'_, OpenCodeRuntime>,
     tab_id: String,
     answers: Vec<serde_json::Value>,
 ) -> Result<(), String> {
     tracing::debug!(tab_id = %tab_id, "submit_ask_answer");
+
+    if let Some(request_id) = session.peek_pending_opencode_question(&tab_id) {
+        let inner = runtime.current().await.ok_or("opencode server is not running")?;
+        let normalized: Vec<Vec<String>> = answers.iter().map(normalize_opencode_answer).collect();
+        return match inner.client.reply_question(&request_id, normalized).await {
+            Ok(()) => {
+                session.take_pending_opencode_question(&tab_id);
+                Ok(())
+            }
+            // Keep the id pending on failure — OpenCode is still waiting
+            // server-side, so the frontend can retry the same request.
+            Err(e) => Err(e.to_string()),
+        };
+    }
+
     if session.submit_ask(&tab_id, answers) {
         Ok(())
     } else {
         Err("no pending question for this tab".to_string())
+    }
+}
+
+/// OpenCode wants each answer as an array of selected option labels.
+fn normalize_opencode_answer(value: &serde_json::Value) -> Vec<String> {
+    match value {
+        serde_json::Value::String(s) => vec![s.clone()],
+        serde_json::Value::Array(items) => items
+            .iter()
+            .filter_map(|v| v.as_str().map(str::to_string))
+            .collect(),
+        _ => Vec::new(),
     }
 }
 
@@ -397,7 +473,7 @@ pub(crate) fn kill_process(_pid: u32) {}
 
 #[cfg(test)]
 mod tests {
-    use super::clean_title;
+    use super::{clean_title, normalize_opencode_answer};
 
     #[test]
     fn clean_title_strips_quotes_and_takes_first_line() {
@@ -410,5 +486,21 @@ mod tests {
             "Tuning a Sampler"
         );
         assert_eq!(clean_title(""), "");
+    }
+
+    #[test]
+    fn normalize_opencode_answer_wraps_single_string() {
+        assert_eq!(
+            normalize_opencode_answer(&serde_json::json!("Option A")),
+            vec!["Option A".to_string()]
+        );
+    }
+
+    #[test]
+    fn normalize_opencode_answer_passes_through_array() {
+        assert_eq!(
+            normalize_opencode_answer(&serde_json::json!(["A", "B"])),
+            vec!["A".to_string(), "B".to_string()]
+        );
     }
 }

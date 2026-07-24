@@ -1,11 +1,12 @@
 export type EffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
-export type ToolProvider = "claude" | "codex";
+export type ToolProvider = "claude" | "codex" | "opencode";
 /** Alias for `ToolProvider` used in chat/agent-selection contexts. */
 export type Provider = ToolProvider;
 
 export const PROVIDER_LABELS: Record<ToolProvider, string> = {
   claude: "claude-code",
   codex: "codex",
+  opencode: "OpenCode",
 };
 
 export interface ChatOptions {
@@ -275,4 +276,20 @@ export interface SystemMetrics {
   cpu_usage_pct: number;
   gpu_usage_pct: number | null;
   providers: ProviderReadiness[];
+}
+
+export interface ModelInfo {
+  id: string;
+  label: string;
+  effort_levels: string[];
+}
+
+export type ModelCatalogStatus =
+  | { status: "available"; models: ModelInfo[] }
+  | { status: "error"; message: string };
+
+export interface ProviderCapabilities {
+  provider: ToolProvider;
+  default_model: string | null;
+  catalog: ModelCatalogStatus;
 }

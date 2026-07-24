@@ -35,9 +35,11 @@ The MCP server is a **thin RPC bridge** to the running app over a Unix domain so
 | `experiment.start({ name, command, working_dir?, wake_prompt })` | Spawn detached subprocess, return `{ uuid }`. |
 | `experiment.status({ uuid })` | Return `{ status, exit_code?, started_at, ended_at? }`. |
 | `experiment.tail_logs({ uuid, kb? })` | Tail of stdout/stderr from `.ire/cache/experiments/<uuid>/`. |
-| `ask_user_question({ questions })` | Block until the user answers via the IRE UI; returns `{ answers: [{ header, answer }] }`. Replaces CC's built-in `AskUserQuestion`, which is passed `--disallowedTools` (see [chat-agents.md](chat-agents.md#agent-subprocess-layer)). |
+| `ask_user_question({ questions })` | Block until the user answers via the IRE UI; returns `{ answers: [{ header, answer }] }`. Replaces CC's built-in `AskUserQuestion`, which is passed `--disallowedTools` (see [chat-agents.md](chat-agents.md#agent-subprocess-layer)). **Not advertised to OpenCode** — see below. |
 
 Resources are otherwise read with the built-in `Read` tool against `.ire/resources/` (and its `_index.md`); there is no `wiki.*` or resource-read MCP tool, and `experiment.list` is dropped (read experiments from `ire.json` via `ire.read`).
+
+**`ask_user_question` is excluded for OpenCode.** The MCP subprocess OpenCode's server spawns gets `IRE_MCP_EXCLUDE_ASK=1` in its environment (set by `opencode::config::server_config`'s MCP translation, not present in Claude/Codex's `mcp.json`). `stdio_server.rs`'s `tool_catalog()` checks this env var and omits `ask_user_question` from `tools/list`; `call_tool` also rejects a direct call to it as defense-in-depth. OpenCode's system prompt instead directs it to use its own built-in `question` tool, whose `question.asked` SSE event is mapped straight to the same `AskQuestionCard` the frontend already renders for Claude/Codex — see [chat-agents.md](chat-agents.md#opencode-server-transport) "Native questions". This split exists because IRE's MCP-based ask flow finds the answering tab by scanning for *any* running subprocess (`SessionManager::get_active_session`), which cannot safely identify one of several concurrent OpenCode server sessions; the native event carries OpenCode's own session id instead.
 
 All tools return JSON. Errors are surfaced to CC as MCP error responses, which CC interprets as tool failures and reports in chat.
 

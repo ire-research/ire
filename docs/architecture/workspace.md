@@ -55,7 +55,8 @@ On startup, `App.tsx` calls `setup_status` and `read_user_config` in parallel. `
 ### Close
 
 - Stop the MCP server (drops `McpHandle`, which aborts the task and removes the socket file).
-- SIGTERM every in-flight CC subprocess tracked by `SessionManager` and clear all per-tab session state. The frontend `chat-stream` listener is global, so leaving stragglers running would leak late `TextDelta`/`Done` events into whichever workspace opens next.
+- Stop the `OpenCodeRuntime` (`opencode::runtime`), if one was ever started this session: abort every OpenCode session it knows about via `POST /session/:id/abort`, then kill the `opencode serve` process. A no-op if no OpenCode turn has run since the workspace opened — the server starts lazily on first use, not eagerly on open (see [chat-agents.md](chat-agents.md#opencode-server-transport)).
+- SIGTERM every in-flight CC/Codex subprocess tracked by `SessionManager` and clear all per-tab session state. The frontend `chat-stream` listener is global, so leaving stragglers running would leak late `TextDelta`/`Done` events into whichever workspace opens next.
 - Frontend resets the `useChat` Zustand store (`tabs = [MAIN_TAB with empty messages]`, `activeTabId = "main"`) so the next workspace starts with a clean chat pane.
 - Release `<data_dir>/.lock` (drops `WorkspaceHandle`, which releases the lock).
 

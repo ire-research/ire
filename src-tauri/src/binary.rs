@@ -42,7 +42,7 @@ pub struct DiscoveredBinary {
 
 /// Tri-state readiness for an agent binary: installed and authenticated,
 /// installed but not logged in, or not found at all.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BinaryStatus {
     Ready {

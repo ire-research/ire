@@ -10,13 +10,14 @@ use crate::session::SessionManager;
 use crate::db::schema;
 use crate::events::{self, EventSource};
 use crate::mcp::{McpHandle, McpState};
+use crate::opencode::runtime::OpenCodeRuntime;
 use crate::tool_cards::ToolProvider;
 use crate::user_config::{self, UserConfig};
 use crate::workspace::init as ws_init;
 use crate::workspace::lock::{LockError, WorkspaceLock};
 use crate::workspace::state::{ActiveWorkspace, WorkspaceHandle, WorkspaceState};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct ProviderReadiness {
     pub provider: ToolProvider,
     pub binary: BinaryStatus,
@@ -71,14 +72,19 @@ pub fn open_workspace(
 }
 
 #[tauri::command]
-pub fn close_workspace(
+pub async fn close_workspace(
     active: State<'_, ActiveWorkspace>,
     mcp: State<'_, McpState>,
     session: State<'_, SessionManager>,
+    runtime: State<'_, OpenCodeRuntime>,
 ) -> Result<(), String> {
     tracing::info!("close_workspace");
     // Stop MCP server first (Drop impl aborts task + removes socket file).
     mcp.0.lock().map_err(|e| e.to_string())?.take();
+
+    // Abort every OpenCode session on this workspace's server and terminate
+    // it — a no-op if OpenCode was never used this session.
+    runtime.stop().await;
 
     // Terminate any in-flight CC subprocesses so their late chat-stream events
     // don't leak into the next workspace (the frontend listener is global).

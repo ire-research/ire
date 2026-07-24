@@ -10,6 +10,7 @@ import type {
   ExperimentStartingPayload,
   ExperimentStatusPayload,
   IdeaItem,
+  ProviderCapabilities,
   ProviderReadiness,
   ResourcePendingPayload,
   SystemInfo,
@@ -20,7 +21,7 @@ import type {
   WorkspaceEvent,
 } from "./types";
 
-export type { BinaryStatus, ProviderReadiness };
+export type { BinaryStatus, ProviderCapabilities, ProviderReadiness };
 
 export interface SetupStatus {
   providers: ProviderReadiness[];
@@ -35,7 +36,7 @@ export interface PersistedWorkspace {
   version: number;
   panel_layout?: PanelLayouts | null;
   model?: string | null;
-  provider?: "claude" | "codex" | null;
+  provider?: "claude" | "codex" | "opencode" | null;
   last_opened?: string | null;
   effort?: string | null;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -47,6 +48,8 @@ export interface UserConfig {
   theme?: "dark" | "light" | null;
   recent_workspaces?: string[];
   analytics_enabled?: boolean | null;
+  /** Model ids (`"<providerID>/<modelID>"`) pinned in the OpenCode Providers panel. */
+  pinned_opencode_models?: string[];
 }
 
 export interface PanelLayouts {
@@ -65,6 +68,7 @@ export type ResourceSourceInput =
 
 export const ipc = {
   setupStatus: (): Promise<SetupStatus> => invoke("setup_status"),
+  listAgentModels: (): Promise<ProviderCapabilities[]> => invoke("list_agent_models"),
   openWorkspace: (path: string): Promise<WorkspaceState> =>
     invoke("open_workspace", { path }),
   closeWorkspace: (): Promise<void> => invoke("close_workspace"),

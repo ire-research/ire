@@ -2,12 +2,13 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
-use crate::agent_provider::{self, TurnRequest};
+use crate::agent_provider::{self, TurnRequest, TurnTransport};
 use crate::commands::chat::build_system_prompt;
+use crate::opencode::runtime::OpenCodeRuntime;
 use crate::prompts::{self, WakeupArgs};
-use crate::session::SessionManager;
+use crate::session::{RunningTurn, SessionManager};
 use crate::stream_event::{StreamEvent, StreamState};
 
 pub struct FireWakeupArgs<'a> {
@@ -74,6 +75,39 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
 
     tracing::info!(uuid = %uuid, tab_id = %tab_id, provider = %provider, "firing experiment wake-up");
 
+    if agent.transport() == TurnTransport::OpenCodeServer {
+        let runtime = app.state::<OpenCodeRuntime>();
+        let result = tauri::async_runtime::block_on(crate::opencode::turn::send(
+            app,
+            &runtime,
+            session_manager,
+            workspace_root,
+            &home_data_dir,
+            crate::opencode::turn::SendArgs {
+                tab_id,
+                session_uuid,
+                tab_label: "Wake-up",
+                started_at: &chrono::Local::now().to_rfc3339(),
+                model,
+                effort,
+                message: &message,
+                system_prompt: Some(&system_prompt),
+            },
+        ));
+        if let Err(e) = result {
+            tracing::error!(uuid = %uuid, tab_id = %tab_id, error = %e, "wake-up: opencode turn failed");
+        }
+        return;
+    }
+
+    let cli = match agent_provider::cli_turn(provider) {
+        Some(c) => c,
+        None => {
+            tracing::error!(provider = %provider, "wake-up: provider has no CLI turn support");
+            return;
+        }
+    };
+
     let bin = match agent.discover() {
         Ok(b) => b.path,
         Err(e) => {
@@ -90,7 +124,7 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         }
     };
 
-    let mut cmd = agent.build_command(
+    let mut cmd = cli.build_command(
         &bin,
         &TurnRequest {
             workspace: workspace_root,
@@ -106,7 +140,7 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
     let mut child = match cmd.spawn() {
         Ok(c) => c,
         Err(e) => {
-            tracing::error!(error = %agent.normalize_spawn_error(&e), provider = %provider, "wake-up: failed to spawn agent");
+            tracing::error!(error = %cli.normalize_spawn_error(&e), provider = %provider, "wake-up: failed to spawn agent");
             return;
         }
     };
@@ -163,11 +197,11 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
                 }),
             );
         };
-        agent.dispatch(&json, &mut state, &mut emit_event);
+        cli.dispatch(&json, &mut state, &mut emit_event);
     }
 
     let _ = child.wait();
-    session_manager.clear_pid(tab_id);
+    session_manager.clear_running_if(tab_id, &RunningTurn::Process(pid));
 
     if !state.emitted_done {
         event_id += 1;
