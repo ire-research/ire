@@ -247,33 +247,46 @@ impl OpenCodeClient {
         }
     }
 
-    /// Every model OpenCode knows about across every configured provider —
-    /// including ones the user hasn't authenticated yet, mirroring the old
-    /// `opencode models` CLI catalog. `ModelInfo.id` is `<providerID>/<modelID>`
-    /// to match IRE's UI boundary; `effort_levels` are a model's `variants` keys.
+    /// Every model from every *connected* (authenticated) provider —
+    /// `GET /provider`'s `all` lists ~170 providers OpenCode merely knows the
+    /// shape of (most needing an API key the user hasn't set), which is not
+    /// what `opencode models` shows: that CLI catalog only ever lists
+    /// `connected` providers, and this matches it. `ModelInfo.id` is
+    /// `<providerID>/<modelID>` to match IRE's UI boundary; `effort_levels`
+    /// are a model's `variants` keys.
     pub async fn list_models(&self) -> Result<Vec<ModelInfo>, OpenCodeError> {
         let resp = self.http.get(format!("{}/provider", self.base_url)).send().await?;
         if !resp.status().is_success() {
             return Err(OpenCodeError(format!("list providers failed: {}", resp.status())));
         }
         let list: ProviderList = resp.json().await?;
-        let mut models = Vec::new();
-        for provider in list.all {
-            for (model_id, model) in provider.models {
-                models.push(ModelInfo {
-                    id: format!("{}/{}", provider.id, model_id),
-                    label: if model.name.is_empty() { model_id } else { model.name },
-                    effort_levels: model.variants.into_keys().collect(),
-                });
-            }
-        }
-        Ok(models)
+        Ok(connected_models(list))
     }
+}
+
+fn connected_models(list: ProviderList) -> Vec<ModelInfo> {
+    let connected: std::collections::HashSet<String> = list.connected.into_iter().collect();
+    let mut models = Vec::new();
+    for provider in list.all {
+        if !connected.contains(&provider.id) {
+            continue;
+        }
+        for (model_id, model) in provider.models {
+            models.push(ModelInfo {
+                id: format!("{}/{}", provider.id, model_id),
+                label: if model.name.is_empty() { model_id } else { model.name },
+                effort_levels: model.variants.into_keys().collect(),
+            });
+        }
+    }
+    models
 }
 
 #[derive(Deserialize)]
 struct ProviderList {
     all: Vec<ProviderEntry>,
+    #[serde(default)]
+    connected: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -306,6 +319,34 @@ mod tests {
             ("anthropic", "claude-opus-4-8")
         );
         assert!(split_model_id("no-slash-here").is_err());
+    }
+
+    #[test]
+    fn connected_models_excludes_unauthenticated_providers() {
+        let mut anthropic_models = HashMap::new();
+        anthropic_models.insert(
+            "claude-opus-4-8".to_string(),
+            ModelEntry { name: "Opus 4.8".to_string(), variants: HashMap::new() },
+        );
+        let mut openrouter_models = HashMap::new();
+        openrouter_models.insert(
+            "big-pickle".to_string(),
+            ModelEntry { name: String::new(), variants: HashMap::new() },
+        );
+
+        let list = ProviderList {
+            connected: vec!["openrouter".to_string()],
+            all: vec![
+                ProviderEntry { id: "anthropic".to_string(), models: anthropic_models },
+                ProviderEntry { id: "openrouter".to_string(), models: openrouter_models },
+            ],
+        };
+
+        let models = connected_models(list);
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "openrouter/big-pickle");
+        // Unlabeled model falls back to its bare model id (not the full id).
+        assert_eq!(models[0].label, "big-pickle");
     }
 
     /// Opt-in integration test against a real `opencode serve` process
