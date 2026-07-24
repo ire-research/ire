@@ -28,15 +28,19 @@ pub struct SetupStatus {
 }
 
 #[tauri::command]
-pub fn setup_status() -> SetupStatus {
+pub async fn setup_status() -> Result<SetupStatus, String> {
     tracing::debug!("setup_status");
-    let providers = agent_provider::all()
-        .map(|(agent, _catalog)| ProviderReadiness {
-            provider: agent.id(),
-            binary: agent.readiness(),
-        })
-        .collect();
-    SetupStatus { providers }
+    tauri::async_runtime::spawn_blocking(|| {
+        let providers = agent_provider::all()
+            .map(|(agent, _catalog)| ProviderReadiness {
+                provider: agent.id(),
+                binary: agent.readiness(),
+            })
+            .collect();
+        SetupStatus { providers }
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
