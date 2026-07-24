@@ -355,6 +355,19 @@ fn cleanup_resource_cache(workspace_path: &Path, resource_id: &str) {
     }
 }
 
+/// Emits the terminal events a failed OpenCode resource-summary send never
+/// gets otherwise, so the resource tab (already showing "summarizing") can
+/// leave that state instead of hanging forever, and clears the running turn
+/// (if `turn::send` registered one before failing).
+fn emit_resource_summary_failure(app: &AppHandle, session: &SessionManager, tab_id: &str, message: String) {
+    if let Some((running, _)) = session.get_running_and_provider(tab_id) {
+        session.clear_running_if(tab_id, &running);
+    }
+    let stream_id = format!("{tab_id}:{}", uuid::Uuid::new_v4());
+    crate::opencode::runtime::emit_stream(app, tab_id, &stream_id, 1, &StreamEvent::Error { message });
+    crate::opencode::runtime::emit_stream(app, tab_id, &stream_id, 2, &StreamEvent::Done);
+}
+
 fn start_resource_summary(
     app_handle: tauri::AppHandle,
     session: SessionManager,
@@ -398,6 +411,12 @@ fn start_resource_summary(
         tokio::spawn(async move {
             let Ok(home_data_dir) = crate::workspace::init::require_home_data_dir(&workspace_clone2) else {
                 tracing::error!(tab_id = %tab_id_clone, "resource summary: cannot resolve home data dir");
+                emit_resource_summary_failure(
+                    &app,
+                    &session,
+                    &tab_id_clone,
+                    "resource summary: cannot resolve home data dir".to_string(),
+                );
                 return;
             };
             let system_prompt = build_resource_system_prompt(&workspace_clone2);
@@ -424,6 +443,12 @@ fn start_resource_summary(
             .await;
             if let Err(e) = result {
                 tracing::warn!(tab_id = %tab_id_clone, error = %e, "resource agent turn (opencode) failed");
+                emit_resource_summary_failure(
+                    &app,
+                    &session,
+                    &tab_id_clone,
+                    format!("resource summary failed: {e}"),
+                );
             }
         });
         tracing::info!(tab_id = %tab_id, sha256 = %sha256_for_log, "resource summary started");
