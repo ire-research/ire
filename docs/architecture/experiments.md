@@ -1,11 +1,20 @@
 # Experiments
 
-An experiment is a detached shell subprocess the agent (Claude Code / Codex / OpenCode)
-launches on its own initiative to test something — an ablation run, a build, a script —
-then gets **woken up** once the process exits. There is no "Run experiment" button;
-the trigger is conversational (see [Triggering](#triggering-mcp-tools--the-experiment-workflow-rule)),
-and the whole mechanism exists because CLI-agent sessions don't stay alive waiting on a
-background job.
+An experiment is a detached shell subprocess the agent (Claude Code / Codex / OpenCode) launches on its own initiative to test something, e.g. an ablation run, a build, a script. It gets **woken up** once the process exits. There is no "Run experiment" button; the trigger is conversational (see [Triggering](#triggering-mcp-tools--the-experiment-workflow-rule)), and the whole mechanism exists because CLI-agent sessions don't stay alive waiting on a background job.
+
+---
+
+## Design Principles
+
+**Lean.** Minimal moving parts. Cheap at idle. Anything added in on top of the experiment feature should first meet this principle.
+
+**Robust.** An experiment's state must never depend on the process, the app, or the machine it ran on staying alive to remain true. The system reconciles its own ground truth on its own; nobody has to remember an experiment happened or notice that it didn't finish cleanly.
+
+**Self-contained.** Every experiment's own artifact carries everything needed to interpret it: what was run, why, and what "done" looks like. It must be readable cold by any agent (weak or strong) or person, at any point in time.
+
+This document describes the system as built. Where a later section falls short of a
+principle above, that's an open item, tracked as a GitHub issue — not a reason to
+weaken the principle.
 
 ---
 
