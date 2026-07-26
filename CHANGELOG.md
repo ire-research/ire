@@ -3,6 +3,8 @@
 All notable changes to this project are documented in this file.
 
 ## [Unreleased]
+### Fixed
+- Sidebar resize handle no longer gets stuck after dragging a panel closed (#109)
 
 ## [0.1.8] - 2026-07-24
 ### Added
