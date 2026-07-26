@@ -96,3 +96,11 @@ Multiple agents may be working simultaneously. If you see errors in files you di
 
 - Do not run `git add`, stage untracked files, or create commits unless explicitly instructed by the user.
 - Never add `Co-authored-by` trailers or otherwise mark commits as co-authored.
+
+### 9. Changelog
+
+**Always remind the user to update `CHANGELOG.md` when a user-facing change lands.**
+
+- After implementing a feature, fix, or behavior change worth noting to users, remind the user to add an entry under `[Unreleased]` in `CHANGELOG.md` — don't assume it's out of scope just because it wasn't explicitly requested.
+- Follow the existing format: `Added` / `Changed` / `Fixed` sections, one concise bullet per change, PR number in parentheses where known.
+- Internal refactors, CI tweaks, and docs-only changes generally don't need an entry unless they affect users directly.
