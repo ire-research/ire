@@ -322,11 +322,11 @@ export function Layout() {
         >
           <LeftRail />
         </Panel>
-        <Separator id="body-left-center" className={leftCollapsed ? "hidden" : "drag-handle-col"} disabled={leftCollapsed} />
+        <Separator id="body-left-center" className="drag-handle-col" />
         <Panel id="center" className="h-full min-w-0" minSize="320px">
           <ChatPane />
         </Panel>
-        <Separator id="body-center-right" className={rightCollapsed ? "hidden" : "drag-handle-col"} disabled={rightCollapsed} />
+        <Separator id="body-center-right" className="drag-handle-col" />
         <Panel
           id="right"
           className="h-full"
