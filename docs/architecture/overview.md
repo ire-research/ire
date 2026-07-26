@@ -61,7 +61,7 @@ Two design-driving pain points:
 **Key points:**
 - Claude Code and Codex are headless subprocesses selected per chat turn. IRE is a thin IPC bridge: messages in, typed events out.
 - The MCP server is the *only* high-level surface the selected agent uses to interact with IRE state. Plain filesystem tools are also enabled, but wiki / memory / experiment work goes through MCP for structure.
-- Experiments run as **detached** child processes. The wake-up path resumes the same provider session that started the experiment: Claude Code via `--resume`, or Codex via `codex exec resume <thread_id>`.
+- Experiments run as **detached** child processes. The wake-up path resumes the same provider session that started the experiment: Claude Code via `--resume`, or Codex via `codex exec resume <thread_id>`. Full lifecycle in [experiments.md](experiments.md).
 
 ---
 
@@ -158,6 +158,7 @@ ire/
 │   ├── workspace.md                    # workspace lifecycle + concurrency model
 │   ├── wiki-memory.md                  # wiki layer, memory layer, SQLite schema
 │   ├── chat-agents.md                  # pipelines, chat, agent subprocess layer
+│   ├── experiments.md                  # experiment lifecycle (wake-up pattern), data model, MCP tools, UI
 │   ├── mcp.md                          # MCP server, tool catalog, RPC channel
 │   ├── frontend.md                     # frontend components, Tauri IPC surface
 │   └── blueprints/                     # deep implementation guides per feature

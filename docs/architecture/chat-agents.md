@@ -1,6 +1,6 @@
 # Chat & Agent Layer
 
-Covers the ingestion pipelines, the chat system (send flow, experiment lifecycle, multi-tab), and the agent subprocess layer (binary discovery, spawn, JSONL parsers, session management).
+Covers the ingestion pipelines, the chat system (send flow, multi-tab), and the agent subprocess layer (binary discovery, spawn, JSONL parsers, session management). Experiment lifecycle lives in [experiments.md](experiments.md).
 
 ---
 
@@ -66,7 +66,7 @@ In-flight ingestion state (the source refs for a transient resource id) lives in
 
 ## Chat
 
-IRE uses a **single unified agent surface** in the central pane. The user selects Claude Code or Codex via the model picker. The selected agent receives the same composed wiki system prompt and IRE MCP server configuration; frontend stream handling is shared through a common `StreamEvent` shape. The experiment workflow instructions are part of `.ire/_SYSTEM.md` (see [wiki-memory.md — context injection rules](wiki-memory.md#context-injection-rules)).
+IRE uses a **single unified agent surface** in the central pane. The user selects Claude Code or Codex via the model picker. The selected agent receives the same composed wiki system prompt and IRE MCP server configuration; frontend stream handling is shared through a common `StreamEvent` shape. Experiment lifecycle (a separate mechanism the agent triggers from within a chat turn) is documented in [experiments.md](experiments.md).
 
 ### Send message flow
 
@@ -97,53 +97,11 @@ User types in central pane → Send
 
 **Auto-title (first message of a new chat tab):** When the user sends the first message in a brand-new chat tab whose label is still the default `"Chat"`, `ChatPane.handleSend` fires `generate_chat_title({ message, model, provider })` in the background. The model is the smallest of the selected provider (`claude-haiku-4-5-20251001` / `gpt-5.4-mini`). The Rust command spawns a one-shot subprocess with **no** system prompt, MCP config, session resume, or effort, and returns a cleaned single-line title. On resolve the frontend calls `renameTab`, which types over the old label (40 ms/char typewriter). Any failure is silent — the label stays `"Chat"`.
 
-### Experiment lifecycle (the wake-up pattern)
-
-```
-T0  User asks: "Run an ablation over learning rates [1e-3, 1e-4, 1e-5]."
-T1  CC plans, gets agreement, then calls MCP tool experiment.start({
-       name: "lr-ablation",
-       command: "python scripts/ablate_lr.py --output runs/lr_ablation",
-       working_dir: "<project root>",
-       wake_prompt: "Experiment lr-ablation finished. Read its result.md and
-                     logs, then update the wiki and pulse."
-    })
-T2  MCP server forwards to IRE Rust backend:
-       - inserts experiment row (status=running, uuid, start_time, command, …)
-       - spawns the command as a DETACHED process group:
-           Command::new("sh").args(["-c", &command])
-                 .current_dir(working_dir)
-                 .stdin(Stdio::null())
-                 .process_group(0)             // setsid
-                 .env_remove("CLAUDECODE")
-                 .spawn()
-       - returns { uuid, status: "started" } to CC
-T3  CC's response to the user: "Started experiment <uuid>; I'll come back
-    when it's done." Then this agent turn ENDS naturally.
-T4  Backend monitor task waits on the child PID (off-thread). Frontend
-    receives experiment-status events (started, log lines, …) and renders
-    a live tail.
-T5  Process exits. Backend:
-       - updates the DB row (status, exit_code, end_time) and mirrors it
-         into ire.json (`upsert_experiment`)
-       - reads tail of stdout/stderr (last N kB) from .ire/cache/experiments/<uuid>/
-       - composes wake-up message and spawns the same provider with its
-         resume id and that message
-T6  The agent reads result files, uses memory.write_short_term for daily
-    notes, memory.write_long_term for durable conclusions, and ire.read +
-    ire.edit to update focus/notes/ideas if the research direction changed.
-```
-
-**Subtleties:**
-- The user can keep using the chat pane during T3–T5. The next user message and the wake-up share the same provider-scoped session id; whichever arrives first runs first. We serialise agent turns: only one subprocess per session at a time. If a user message arrives while a wake-up is running, it queues; if a wake-up fires while the user is mid-turn, it queues. The pending-queue is shown in the UI ("1 wake-up pending").
-- `process_group(0)` (Linux/macOS) ensures killing IRE doesn't kill running experiments. On Windows we use `CREATE_NEW_PROCESS_GROUP`.
-- Logs are streamed to disk; the UI tails them via `experiment-log-line` events.
-
 ### Cancellation
 
 - **User cancels agent turn**: kill the running subprocess; emit `chat-cancelled`. Session id is retained.
 - **User resets session**: starting a fresh session means a new chat tab, which gets a new `historySessionUuid` (hence a new `chat_sessions` row with no resume id). `chat_reset_session(tab_id)` clears the tab's transient `SessionManager` state; it is not currently wired to a frontend control.
-- **User cancels experiment**: SIGTERM the process group; on next monitor tick, mark `status=cancelled` and fire the wake-up with that fact.
+- **User cancels an experiment**: see [experiments.md — Cancellation, deletion, rename](experiments.md#cancellation-deletion-rename).
 
 ### Multi-tab chat
 

@@ -32,7 +32,7 @@ The MCP server is a **thin RPC bridge** to the running app over a Unix domain so
 | `resource.add({ markdown, title?, sources? })` | Simulated ingestion (no fetch): writes the agent-supplied markdown to a draft and opens an Approve/Discard preview tab. On Approve it lands at `resources/<slug>.md` with `sources` injected into frontmatter. |
 | `memory.write_long_term({ section, content })` | Append to `.ire/long-term.md` under section. Does not commit. |
 | `memory.write_short_term({ content })` | Append to today's `.ire/short-term/YYYY-MM-DD.md`. Does not commit. |
-| `experiment.start({ name, command, working_dir?, wake_prompt })` | Spawn detached subprocess, return `{ uuid }`. |
+| `experiment.start({ name, command, working_dir?, wake_prompt })` | Spawn detached subprocess, return `{ uuid }`. See [experiments.md](experiments.md) for the full lifecycle. |
 | `experiment.status({ uuid })` | Return `{ status, exit_code?, started_at, ended_at? }`. |
 | `experiment.tail_logs({ uuid, kb? })` | Tail of stdout/stderr from `.ire/cache/experiments/<uuid>/`. |
 | `ask_user_question({ questions })` | Block until the user answers via the IRE UI; returns `{ answers: [{ header, answer }] }`. Replaces CC's built-in `AskUserQuestion`, which is passed `--disallowedTools` (see [chat-agents.md](chat-agents.md#agent-subprocess-layer)). **Not advertised to OpenCode** — see below. |

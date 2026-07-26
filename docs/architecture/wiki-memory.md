@@ -61,7 +61,7 @@ The git-tracked record of shareable state. Read/written through `IreStore` (`src
 - `edit_ire(old, new, version, app)` — backs the `ire.edit` MCP tool. Validates `version` against the current on-disk hash (rejects a stale/missing version), requires `old` to be present and **unique**, applies the replacement, re-parses against the schema, writes, and emits the section events. The pure core is `apply_edit` (unit-tested).
 - `upsert_experiment` / `remove_experiment` — the experiment runner and commands mirror DB rows into `ire.json` here; these **do not** emit section events (`experiment-changed` is owned by the runner).
 
-Experiments are duplicated by design: `ire.json` holds the git-tracked **display** subset; `local.db.experiments` retains the **operational** fields (`pid`, `working_dir`, `wake_prompt`, `session_id`, `tab_id`). On a fresh clone, `ire.json` shows experiment history while logs/operational data are absent.
+Experiment rows are duplicated between `ire.json` and `local.db` — see [experiments.md — Data model](experiments.md#data-model).
 
 ---
 
@@ -124,27 +124,9 @@ When IRE spawns an agent turn, the system prompt (`build_system_prompt`) is:
 
 ## SQLite Schema
 
-Single file at `~/.ire/workspaces/<id>/local.db`, created on workspace open (`src-tauri/src/db/schema.rs`). Greenfield — `CREATE TABLE IF NOT EXISTS`, no `schema_migrations`, no versioned migrations. Only two tables remain:
+Single file at `~/.ire/workspaces/<id>/local.db`, created on workspace open (`src-tauri/src/db/schema.rs`). Greenfield — `CREATE TABLE IF NOT EXISTS`, no `schema_migrations`, no versioned migrations. Only two tables remain: `experiments` (schema in [experiments.md — Data model](experiments.md#data-model)) and:
 
 ```sql
-CREATE TABLE experiments (
-  uuid TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  command TEXT NOT NULL,
-  working_dir TEXT NOT NULL,
-  status TEXT NOT NULL,             -- running | completed | failed | cancelled
-  exit_code INTEGER,
-  started_at TEXT NOT NULL,
-  ended_at TEXT,
-  pid INTEGER,
-  wake_prompt TEXT,
-  session_id TEXT NOT NULL,         -- chat session_uuid whose resume id the wake-up uses
-  tab_id TEXT NOT NULL DEFAULT 'main'
-);
-
-CREATE INDEX idx_experiments_status ON experiments(status);
-CREATE INDEX idx_experiments_started ON experiments(started_at DESC);
-
 CREATE TABLE chat_sessions (
   session_uuid      TEXT PRIMARY KEY, -- frontend historySessionUuid
   tab_label         TEXT NOT NULL,
