@@ -600,7 +600,12 @@ export function ChatPane() {
               </div>
             )}
             <div className="pointer-events-auto">
-              <Composer onSend={handleSend} disabled={activeTab.isStreaming} onCancel={() => ipc.chatCancel(activeTabId)} />
+              <Composer
+                onSend={handleSend}
+                disabled={activeTab.isStreaming}
+                onCancel={() => ipc.chatCancel(activeTabId)}
+                sessionLocked={activeTab.kind === "chat" && activeTab.messages.length > 0}
+              />
             </div>
           </div>
         </div>

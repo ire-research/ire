@@ -166,14 +166,15 @@ pub fn insert_chat_session(
     // Upsert: insert on first save, update mutable fields on subsequent saves.
     // started_at is intentionally excluded from the UPDATE so it stays as the
     // original session start time even as the session grows.
+    // provider/model are intentionally excluded from the UPDATE: they're
+    // frozen once the session's first message is saved (see
+    // `verify_session_identity`), so a later save can't silently change them.
     conn.execute(
         "INSERT INTO chat_sessions \
          (session_uuid, tab_label, provider, model, started_at, ended_at, message_count, first_user_msg, messages_json) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9) \
          ON CONFLICT(session_uuid) DO UPDATE SET \
              tab_label      = excluded.tab_label, \
-             provider       = excluded.provider, \
-             model          = excluded.model, \
              ended_at       = excluded.ended_at, \
              message_count  = excluded.message_count, \
              first_user_msg = excluded.first_user_msg, \
@@ -198,11 +199,14 @@ pub fn upsert_chat_resume_id(
 ) -> Result<()> {
     let conn = open(home_data_dir)?;
     let now = chrono::Local::now().to_rfc3339();
+    // Row only gets created here on the session's first `Init`; on every
+    // later call the row already exists and provider/model are frozen
+    // (see `verify_session_identity`), so a conflict is a no-op.
     conn.execute(
         "INSERT INTO chat_sessions \
          (session_uuid, tab_label, provider, model, started_at, ended_at, message_count, first_user_msg, messages_json) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, NULL, '[]') \
-         ON CONFLICT(session_uuid) DO UPDATE SET provider = excluded.provider",
+         ON CONFLICT(session_uuid) DO NOTHING",
         params![session_uuid, tab_label, provider, model, started_at, now],
     )?;
     conn.execute(
@@ -248,6 +252,29 @@ pub fn get_chat_resume_id(
         .context("get_chat_resume_id")
 }
 
+/// Checks a turn's requested `(provider, model)` against the session's frozen
+/// identity. `Ok(None)` means no row exists yet (brand-new session, nothing to
+/// check). `Ok(Some(true))` means it matches; `Ok(Some(false))` means it was
+/// requested to change after the first message — the caller should reject it.
+pub fn verify_session_identity(
+    home_data_dir: &Path,
+    session_uuid: &str,
+    provider: &str,
+    model: &str,
+) -> Result<Option<bool>> {
+    let conn = open(home_data_dir)?;
+    let mut stmt = conn.prepare("SELECT provider, model FROM chat_sessions WHERE session_uuid = ?1")?;
+    let mut rows = stmt.query(params![session_uuid])?;
+    rows.next()?
+        .map(|r| {
+            let existing_provider: String = r.get(0)?;
+            let existing_model: String = r.get(1)?;
+            Ok::<bool, rusqlite::Error>(existing_provider == provider && existing_model == model)
+        })
+        .transpose()
+        .context("verify_session_identity")
+}
+
 pub fn list_chat_sessions(home_data_dir: &Path, limit: usize) -> Result<Vec<ChatSessionRow>> {
     let conn = open(home_data_dir)?;
     let mut stmt = conn.prepare(
@@ -287,5 +314,78 @@ pub fn delete_chat_session(home_data_dir: &Path, session_uuid: &str) -> Result<(
         params![session_uuid],
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tmp_home() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        crate::db::schema::run(dir.path()).unwrap();
+        dir
+    }
+
+    #[test]
+    fn verify_session_identity_is_none_when_no_row_exists() {
+        let home = tmp_home();
+        let result = verify_session_identity(home.path(), "s1", "claude", "claude-sonnet-5").unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn verify_session_identity_matches_the_row_it_was_created_with() {
+        let home = tmp_home();
+        upsert_chat_resume_id(home.path(), "s1", "tab", "claude", "claude-sonnet-5", "t0", "resume-1").unwrap();
+
+        assert_eq!(
+            verify_session_identity(home.path(), "s1", "claude", "claude-sonnet-5").unwrap(),
+            Some(true)
+        );
+        assert_eq!(
+            verify_session_identity(home.path(), "s1", "codex", "claude-sonnet-5").unwrap(),
+            Some(false)
+        );
+        assert_eq!(
+            verify_session_identity(home.path(), "s1", "claude", "claude-opus-4-8").unwrap(),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn upsert_on_an_existing_session_does_not_change_provider_or_model() {
+        let home = tmp_home();
+        upsert_chat_resume_id(home.path(), "s1", "tab", "claude", "claude-sonnet-5", "t0", "resume-1").unwrap();
+        // A later call for the same session with a different provider/model
+        // (e.g. a stale request that slipped past the frontend guard) must
+        // not be able to change the frozen identity.
+        upsert_chat_resume_id(home.path(), "s1", "tab", "codex", "gpt-5.4", "t0", "resume-1").unwrap();
+
+        assert_eq!(
+            verify_session_identity(home.path(), "s1", "claude", "claude-sonnet-5").unwrap(),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn insert_chat_session_does_not_change_provider_or_model_on_conflict() {
+        let home = tmp_home();
+        insert_chat_session(home.path(), "s1", "tab", "claude", "claude-sonnet-5", "t0", "t1", 1, None, "[]").unwrap();
+        insert_chat_session(home.path(), "s1", "tab", "codex", "gpt-5.4", "t0", "t2", 2, None, "[]").unwrap();
+
+        assert_eq!(
+            verify_session_identity(home.path(), "s1", "claude", "claude-sonnet-5").unwrap(),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn update_chat_resume_id_does_not_create_a_row() {
+        let home = tmp_home();
+        update_chat_resume_id(home.path(), "s1", "claude", "resume-1").unwrap();
+
+        assert_eq!(get_chat_resume_id(home.path(), "s1", "claude").unwrap(), Some("resume-1".to_string()));
+        assert_eq!(verify_session_identity(home.path(), "s1", "claude", "claude-sonnet-5").unwrap(), None);
+    }
 }
 

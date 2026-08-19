@@ -60,7 +60,27 @@ pub enum TurnTransport {
     OpenCodeServer,
 }
 
+/// Context needed to create a session's `chat_sessions` row the first time
+/// its resume id is persisted. `None` on every later persist (the row
+/// already exists — see `verify_session_identity`).
+pub struct SessionMeta<'a> {
+    pub tab_label: &'a str,
+    pub model: &'a str,
+    pub started_at: &'a str,
+}
+
 /// A provider-scoped adapter over one agent (Claude Code, Codex, OpenCode).
+///
+/// Resume-id persistence (`persist_resume_id`) is a default method here
+/// rather than a bare free function. There is no single shared trigger point
+/// across our three adapters — Claude/Codex learn the id mid-stream, from a
+/// `StreamEvent::Init`; OpenCode learns it synchronously before the turn
+/// starts, with no stream to hook into — only a shared write. Putting the
+/// method here makes "does this provider persist a resume id, and how" a
+/// discoverable, overridable part of the interface instead of an implicit
+/// convention each call site has to remember; each adapter still calls it at
+/// its own trigger point (Claude/Codex from `StreamEvent::Init`, OpenCode
+/// synchronously after `session.create`).
 pub trait AgentProvider: Send + Sync {
     /// Stable identity used in tool-card provenance (`ToolCall::provider`).
     fn id(&self) -> ToolProvider;
@@ -90,6 +110,46 @@ pub trait AgentProvider: Send + Sync {
     /// subprocess transport; override only for a server-backed provider.
     fn transport(&self) -> TurnTransport {
         TurnTransport::CliSubprocess
+    }
+
+    /// Persists this provider's resume id for `session_uuid`. Pass `meta`
+    /// the first time a session is seen (creates its `chat_sessions` row);
+    /// pass `None` on every later call, including experiment wake-ups.
+    ///
+    /// `resume_id` is not ours — it's the underlying CLI's own session/thread
+    /// id (Claude Code's `session_id`, Codex's `thread_id`, OpenCode's
+    /// session id), which can rotate on every resume. So this is called on
+    /// every turn, not just the first: each call overwrites the pointer we
+    /// pass back as `--resume` next time, keeping it in sync with whatever
+    /// id the CLI is actually running under right now. Our own identifiers —
+    /// `session_uuid`, `model`, `provider` — are unrelated and frozen after
+    /// the first message (see `verify_session_identity`); only this CLI-side
+    /// id changes turn to turn.
+    ///
+    /// Failure is returned, not swallowed — a dropped resume id means the
+    /// next turn silently starts a new conversation instead of continuing
+    /// it, so callers must fail the turn rather than continue past it.
+    fn persist_resume_id(
+        &self,
+        home_data_dir: &Path,
+        session_uuid: &str,
+        resume_id: &str,
+        meta: Option<SessionMeta<'_>>,
+    ) -> Result<(), AgentError> {
+        let provider = self.name();
+        let result = match meta {
+            Some(m) => crate::db::models::upsert_chat_resume_id(
+                home_data_dir,
+                session_uuid,
+                m.tab_label,
+                provider,
+                m.model,
+                m.started_at,
+                resume_id,
+            ),
+            None => crate::db::models::update_chat_resume_id(home_data_dir, session_uuid, provider, resume_id),
+        };
+        result.map_err(|e| AgentError { message: e.to_string() })
     }
 }
 
@@ -570,6 +630,110 @@ mod tests {
             vec![StreamEvent::Init {
                 session_id: "thread-abc".into()
             }]
+        );
+    }
+
+    fn tmp_home() -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        crate::db::schema::run(dir.path()).unwrap();
+        dir
+    }
+
+    #[test]
+    fn persist_resume_id_with_meta_creates_the_session_row() {
+        let home = tmp_home();
+        ClaudeCodeProvider
+            .persist_resume_id(
+                home.path(),
+                "s1",
+                "resume-1",
+                Some(SessionMeta {
+                    tab_label: "Chat",
+                    model: "claude-sonnet-5",
+                    started_at: "t0",
+                }),
+            )
+            .unwrap();
+
+        assert_eq!(
+            crate::db::models::get_chat_resume_id(home.path(), "s1", "claude").unwrap(),
+            Some("resume-1".to_string())
+        );
+        assert_eq!(
+            crate::db::models::verify_session_identity(home.path(), "s1", "claude", "claude-sonnet-5").unwrap(),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn persist_resume_id_without_meta_only_updates_an_existing_row() {
+        let home = tmp_home();
+        ClaudeCodeProvider
+            .persist_resume_id(
+                home.path(),
+                "s1",
+                "resume-1",
+                Some(SessionMeta {
+                    tab_label: "Chat",
+                    model: "claude-sonnet-5",
+                    started_at: "t0",
+                }),
+            )
+            .unwrap();
+
+        // A later turn (e.g. an experiment wake-up) rotates the resume id
+        // without the row's model/tab_label/started_at to hand — meta is None.
+        ClaudeCodeProvider
+            .persist_resume_id(home.path(), "s1", "resume-2", None)
+            .unwrap();
+
+        assert_eq!(
+            crate::db::models::get_chat_resume_id(home.path(), "s1", "claude").unwrap(),
+            Some("resume-2".to_string())
+        );
+        assert_eq!(
+            crate::db::models::verify_session_identity(home.path(), "s1", "claude", "claude-sonnet-5").unwrap(),
+            Some(true)
+        );
+    }
+
+    #[test]
+    fn persist_resume_id_keys_by_this_providers_name_not_the_callers_string() {
+        let home = tmp_home();
+        ClaudeCodeProvider
+            .persist_resume_id(
+                home.path(),
+                "s1",
+                "resume-1",
+                Some(SessionMeta {
+                    tab_label: "Chat",
+                    model: "claude-sonnet-5",
+                    started_at: "t0",
+                }),
+            )
+            .unwrap();
+        CodexProvider
+            .persist_resume_id(
+                home.path(),
+                "s1",
+                "resume-2",
+                Some(SessionMeta {
+                    tab_label: "Chat",
+                    model: "gpt-5.4",
+                    started_at: "t0",
+                }),
+            )
+            .unwrap();
+
+        // Each provider's resume id lives in its own row, keyed by
+        // (session_uuid, provider) — writing Codex's doesn't touch Claude's.
+        assert_eq!(
+            crate::db::models::get_chat_resume_id(home.path(), "s1", "claude").unwrap(),
+            Some("resume-1".to_string())
+        );
+        assert_eq!(
+            crate::db::models::get_chat_resume_id(home.path(), "s1", "codex").unwrap(),
+            Some("resume-2".to_string())
         );
     }
 }

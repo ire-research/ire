@@ -161,6 +161,7 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
     };
 
     let mut state = StreamState::default();
+    let mut persist_err: Option<String> = None;
     let tab_id_owned = tab_id.to_string();
     session_manager.set_agent_options(tab_id, session_uuid, provider, model, effort);
     let stream_id = format!("{tab_id}:{}", uuid::Uuid::new_v4());
@@ -173,12 +174,9 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         };
         let mut emit_event = |event: StreamEvent| {
             if let StreamEvent::Init { ref session_id } = event {
-                if let Err(e) = crate::db::models::update_chat_resume_id(
-                    &home_data_dir,
-                    session_uuid,
-                    provider,
-                    session_id,
-                ) {
+                // Row already exists — an experiment always resumes a
+                // conversation that already sent a message.
+                if let Err(e) = agent.persist_resume_id(&home_data_dir, session_uuid, session_id, None) {
                     tracing::warn!(session_uuid = %session_uuid, error = %e, "persist resume id failed (wake)");
                     let _ = app.emit(
                         "error",
@@ -187,6 +185,7 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
                             "message": format!("Couldn't save the resume id for the experiment wake-up on session {session_uuid}. ({e})"),
                         }),
                     );
+                    persist_err = Some(e.to_string());
                 }
             }
             event_id += 1;
@@ -204,10 +203,20 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
             }
         };
         cli.dispatch(&json, &mut state, &mut emit_event);
+        if persist_err.is_some() {
+            break;
+        }
     }
 
+    if persist_err.is_some() {
+        let _ = child.kill();
+    }
     let _ = child.wait();
     session_manager.clear_running_if(tab_id, &RunningTurn::Process(pid));
+
+    if persist_err.is_some() {
+        return;
+    }
 
     if !state.emitted_done {
         event_id += 1;

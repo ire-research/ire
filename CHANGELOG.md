@@ -7,8 +7,12 @@ All notable changes to this project are documented in this file.
 - Git-tracked `.ire/experiments/<NNN>-<slug>/` folder per experiment, with an `EXPERIMENT.md` recording the goal, command, and start time (#106)
 - Changes made to `.ire/` outside the app are picked up after each tool call and when the window regains focus (#112)
 
+### Changed
+- Model and provider now lock once a chat session's first message is sent (#115)
+
 ### Fixed
 - Sidebar resize handle no longer gets stuck after dragging a panel closed (#109)
+- Resume-id persistence unified across all turn paths (chat, OpenCode, experiment wake-ups, resource ingestion) — closes remaining cases where a dropped resume id silently started a new conversation (#115)
 
 ## [0.1.8] - 2026-07-24
 ### Added

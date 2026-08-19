@@ -56,6 +56,20 @@ pub async fn chat_send(
         .ok_or_else(|| format!("unsupported provider: {provider}"))?;
 
     let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
+
+    // model/provider are frozen once a session's first message is saved —
+    // reject a turn that tries to change either instead of silently
+    // splitting "what the DB thinks resumed" from what actually ran.
+    if crate::db::models::verify_session_identity(&home_data_dir, &session_uuid, &provider, &options.model)
+        .map_err(|e| e.to_string())?
+        == Some(false)
+    {
+        return Err(format!(
+            "session {session_uuid} is locked to its original provider/model and cannot switch to {provider}/{}",
+            options.model
+        ));
+    }
+
     let system_prompt = build_system_prompt(&workspace_path);
 
     tracing::info!(
@@ -151,20 +165,18 @@ pub async fn chat_send(
 
         let stdout = child.stdout.take().ok_or("no stdout")?;
         let mut state = StreamState::default();
+        let mut persist_err: Option<String> = None;
 
         for line in BufReader::new(stdout).lines().map_while(Result::ok) {
             if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
                 let mut emit_event = |event: StreamEvent| {
                     if let StreamEvent::Init { ref session_id } = event {
-                        if let Err(e) = crate::db::models::upsert_chat_resume_id(
-                            &home_data_dir_cl,
-                            &session_uuid_cl,
-                            &tab_label_cl,
-                            &provider,
-                            &options.model,
-                            &started_at_cl,
-                            session_id,
-                        ) {
+                        let meta = agent_provider::SessionMeta {
+                            tab_label: &tab_label_cl,
+                            model: &options.model,
+                            started_at: &started_at_cl,
+                        };
+                        if let Err(e) = agent.persist_resume_id(&home_data_dir_cl, &session_uuid_cl, session_id, Some(meta)) {
                             tracing::warn!(tab_id = %tab_id, error = %e, "persist resume id failed");
                             let _ = app_handle.emit(
                                 "error",
@@ -175,6 +187,7 @@ pub async fn chat_send(
                                     ),
                                 }),
                             );
+                            persist_err = Some(e.to_string());
                         }
                         tracing::debug!(tab_id = %tab_id, session_id = %session_id, "stream session init");
                     }
@@ -199,12 +212,20 @@ pub async fn chat_send(
                 };
                 cli.dispatch(&json, &mut state, &mut emit_event);
             }
+            if persist_err.is_some() {
+                break;
+            }
         }
 
+        let _ = child.kill();
         let _ = child.wait();
         // Only clear if our PID is still current — fire_wakeup may have already
         // registered the wake-up CC subprocess under the same tab_id.
         session_clone.clear_running_if(&tab_id, &RunningTurn::Process(pid));
+
+        if let Some(e) = persist_err {
+            return Err(format!("couldn't save resume id, turn aborted: {e}"));
+        }
         tracing::info!(tab_id = %tab_id, "chat_send complete");
 
         if !state.emitted_done {
