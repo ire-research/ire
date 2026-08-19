@@ -498,20 +498,21 @@ fn start_resource_summary(
 
             let stdout = child.stdout.take().ok_or("no stdout")?;
             let mut state = StreamState::default();
+            let mut persist_err: Option<String> = None;
 
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) {
                     let mut emit_event = |event: StreamEvent| {
                         if let StreamEvent::Init { ref session_id } = event {
-                            let _ = crate::db::models::upsert_chat_resume_id(
-                                &home_data_dir,
-                                &tab_id_clone,
-                                "Ingest",
-                                &provider,
-                                &model,
-                                &started_at_res,
-                                session_id,
-                            );
+                            let meta = agent_provider::SessionMeta {
+                                tab_label: "Ingest",
+                                model: &model,
+                                started_at: &started_at_res,
+                            };
+                            if let Err(e) = agent.persist_resume_id(&home_data_dir, &tab_id_clone, session_id, Some(meta)) {
+                                tracing::warn!(tab_id = %tab_id_clone, error = %e, "persist resume id failed (resource ingest)");
+                                persist_err = Some(e.to_string());
+                            }
                         }
                         event_id += 1;
                         let _ = app.emit(
@@ -529,10 +530,20 @@ fn start_resource_summary(
                     };
                     cli.dispatch(&json, &mut state, &mut emit_event);
                 }
+                if persist_err.is_some() {
+                    break;
+                }
             }
 
+            if persist_err.is_some() {
+                let _ = child.kill();
+            }
             let _ = child.wait();
             session.clear_running_if(&tab_id_clone, &crate::session::RunningTurn::Process(pid));
+
+            if let Some(e) = persist_err {
+                return Err(format!("couldn't save resume id, turn aborted: {e}"));
+            }
 
             if !state.emitted_done {
                 event_id += 1;

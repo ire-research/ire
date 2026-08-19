@@ -15,12 +15,15 @@ interface ComposerProps {
   onSend?: (text: string) => void;
   disabled?: boolean;
   onCancel?: () => void;
+  /** True once this tab's session has sent its first message — model and
+   * provider are frozen for the life of the session from that point on. */
+  sessionLocked?: boolean;
 }
 
 const COMPOSER_PLACEHOLDER =
   "Ask IRE to brainstorm directions, ingest resources, or run experiments...";
 
-export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
+export function Composer({ onSend, disabled, onCancel, sessionLocked }: ComposerProps) {
   const [text, setText] = useState("");
   const [modelOpen, setModelOpen] = useState(false);
   const [effortOpen, setEffortOpen] = useState(false);
@@ -188,16 +191,17 @@ export function Composer({ onSend, disabled, onCancel }: ComposerProps) {
           <div className="relative" ref={modelRef}>
             <button
               className={`flex items-center gap-1 px-2 py-1 rounded transition-colors text-[11px] border border-outline-variant/50 ${
-                noProvidersAvailable
+                noProvidersAvailable || sessionLocked
                   ? "text-on-surface-variant/50 cursor-not-allowed"
                   : "text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface"
               }`}
               onClick={toggleModelOpen}
-              disabled={noProvidersAvailable}
+              disabled={noProvidersAvailable || sessionLocked}
+              title={sessionLocked ? "Model and provider are locked for this conversation" : undefined}
             >
               <span className="text-[10px] text-on-surface-variant/60 mr-0.5">model</span>
               {modelLabel}
-              {!noProvidersAvailable && <FontAwesomeIcon icon={faChevronDown} className={iconClass.sm} />}
+              {!noProvidersAvailable && !sessionLocked && <FontAwesomeIcon icon={faChevronDown} className={iconClass.sm} />}
             </button>
             <div className={`${modelOpen ? "block" : "hidden"} absolute bottom-full left-0 mb-1 bg-surface-container-high border border-outline-variant rounded shadow-lg shadow-black/30 min-w-[230px] overflow-hidden z-50`}>
               {claudeModels.length > 0 && (

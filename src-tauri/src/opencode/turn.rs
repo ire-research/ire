@@ -42,18 +42,16 @@ fn persist_resume_id(
     model: &str,
     started_at: &str,
     session_id: &str,
-) {
-    if let Err(e) = crate::db::models::upsert_chat_resume_id(
-        home_data_dir,
-        session_uuid,
+) -> Result<(), String> {
+    let provider = agent_provider::provider("opencode").ok_or("opencode provider not registered")?;
+    let meta = agent_provider::SessionMeta {
         tab_label,
-        "opencode",
         model,
         started_at,
-        session_id,
-    ) {
-        tracing::warn!(session_uuid = %session_uuid, error = %e, "persist opencode resume id failed");
-    }
+    };
+    provider
+        .persist_resume_id(home_data_dir, session_uuid, session_id, Some(meta))
+        .map_err(|e| e.to_string())
 }
 
 /// Starts (or continues) one OpenCode turn. Used for chat sends, resource
@@ -97,7 +95,7 @@ pub async fn send(
                 args.model,
                 args.started_at,
                 &s.id,
-            );
+            )?;
             s.id
         }
     };
@@ -134,7 +132,7 @@ pub async fn send(
         args.model,
         args.started_at,
         &fresh.id,
-    );
+    )?;
     if let Some(route) = route {
         inner.sessions.lock().await.insert(fresh.id.clone(), route);
     }
