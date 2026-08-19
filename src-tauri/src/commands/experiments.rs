@@ -13,20 +13,23 @@ pub struct LogsResult {
     pub stderr: String,
 }
 
+/// The open workspace's root path, or `"no workspace open"`.
+fn workspace_path(active: &ActiveWorkspace) -> Result<std::path::PathBuf, String> {
+    let guard = active.0.lock().map_err(|e| e.to_string())?;
+    Ok(guard
+        .as_ref()
+        .ok_or("no workspace open")?
+        .state
+        .path
+        .clone())
+}
+
 #[tauri::command]
 pub fn experiment_list(
     active: State<'_, ActiveWorkspace>,
     limit: Option<usize>,
 ) -> Result<Vec<ExperimentRow>, String> {
-    let workspace_path = {
-        let guard = active.0.lock().map_err(|e| e.to_string())?;
-        guard
-            .as_ref()
-            .ok_or("no workspace open")?
-            .state
-            .path
-            .clone()
-    };
+    let workspace_path = workspace_path(&active)?;
     let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
     db::list_experiments(&home_data_dir, limit.unwrap_or(50)).map_err(|e| e.to_string())
 }
@@ -37,15 +40,7 @@ pub fn experiment_logs(
     uuid: String,
     kb: Option<u64>,
 ) -> Result<LogsResult, String> {
-    let workspace_path = {
-        let guard = active.0.lock().map_err(|e| e.to_string())?;
-        guard
-            .as_ref()
-            .ok_or("no workspace open")?
-            .state
-            .path
-            .clone()
-    };
+    let workspace_path = workspace_path(&active)?;
     let log_dir = workspace_path.join(".ire/cache/experiments").join(&uuid);
     let max_bytes = kb.unwrap_or(64) * 1024;
 
@@ -61,15 +56,7 @@ pub fn experiment_cancel(
     active: State<'_, ActiveWorkspace>,
     uuid: String,
 ) -> Result<(), String> {
-    let workspace_path = {
-        let guard = active.0.lock().map_err(|e| e.to_string())?;
-        guard
-            .as_ref()
-            .ok_or("no workspace open")?
-            .state
-            .path
-            .clone()
-    };
+    let workspace_path = workspace_path(&active)?;
     let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
 
     let row = db::get_experiment(&home_data_dir, &uuid)
@@ -96,15 +83,7 @@ pub fn experiment_delete(
     active: State<'_, ActiveWorkspace>,
     uuid: String,
 ) -> Result<(), String> {
-    let workspace_path = {
-        let guard = active.0.lock().map_err(|e| e.to_string())?;
-        guard
-            .as_ref()
-            .ok_or("no workspace open")?
-            .state
-            .path
-            .clone()
-    };
+    let workspace_path = workspace_path(&active)?;
     let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
     let row = db::get_experiment(&home_data_dir, &uuid)
         .map_err(|e| e.to_string())?
@@ -130,15 +109,7 @@ pub fn experiment_rename(
     uuid: String,
     name: String,
 ) -> Result<(), String> {
-    let workspace_path = {
-        let guard = active.0.lock().map_err(|e| e.to_string())?;
-        guard
-            .as_ref()
-            .ok_or("no workspace open")?
-            .state
-            .path
-            .clone()
-    };
+    let workspace_path = workspace_path(&active)?;
     let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
     db::rename_experiment(&home_data_dir, &uuid, &name).map_err(|e| e.to_string())?;
     if let Ok(Some(row)) = db::get_experiment(&home_data_dir, &uuid) {
@@ -171,4 +142,28 @@ fn kill_process_group(pid: u32) {
     let _ = std::process::Command::new("taskkill")
         .args(["/F", "/T", "/PID", &pid.to_string()])
         .output();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::workspace::lock::WorkspaceLock;
+    use crate::workspace::state::{WorkspaceHandle, WorkspaceState};
+
+    #[test]
+    fn workspace_path_errors_when_no_workspace_is_open() {
+        let active = ActiveWorkspace::default();
+        assert_eq!(workspace_path(&active), Err("no workspace open".to_string()));
+    }
+
+    #[test]
+    fn workspace_path_returns_the_open_workspaces_path() {
+        let tmp = tempfile::tempdir().unwrap();
+        let lock = WorkspaceLock::acquire(tmp.path()).unwrap();
+        let state = WorkspaceState::from_path(tmp.path().to_path_buf(), tmp.path().to_path_buf());
+        let active = ActiveWorkspace::default();
+        *active.0.lock().unwrap() = Some(WorkspaceHandle::new(state, lock));
+
+        assert_eq!(workspace_path(&active).unwrap(), tmp.path());
+    }
 }
