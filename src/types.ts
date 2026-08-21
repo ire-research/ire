@@ -126,7 +126,7 @@ export type StreamEvent =
 
 export interface WikiFile {
   content: string;
-  frontmatter: Record<string, string> | null;
+  frontmatter: Record<string, unknown> | null;
 }
 
 export type TabKind = "chat" | "resource" | "preview" | "experiment";

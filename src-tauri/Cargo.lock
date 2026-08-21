@@ -1966,6 +1966,7 @@ dependencies = [
  "flate2",
  "futures-util",
  "libc",
+ "okf",
  "pdf-extract",
  "reqwest 0.12.28",
  "rmcp",
@@ -2746,6 +2747,12 @@ dependencies = [
  "objc2-core-foundation",
  "objc2-foundation",
 ]
+
+[[package]]
+name = "okf"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09252027b55db2ccb133b9bcf2aec57bf0a99c5a1cdee9e08722bce20d522314"
 
 [[package]]
 name = "once_cell"

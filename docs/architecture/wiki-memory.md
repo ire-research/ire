@@ -11,13 +11,13 @@ The store layer is rooted at `.ire/` (`src-tauri/src/ire/`). There is no longer 
 ```
 .ire/
   _SYSTEM.md            git-tracked  — always-injected framework context
-  ire.json              git-tracked  — notes, focus, ideas, experiments
+  ire.json              git-tracked  — notes, focus, ideas
   long-term.md          git-tracked
   short-term/           git-tracked  — YYYY-MM-DD.md
   resources/            git-tracked
     _index.md           auto-generated (resources only)
     <slug>.md
-  experiments/          git-tracked  — <NNN>-<slug>/EXPERIMENT.md + the run's own artifacts
+  experiments/          git-tracked  — <NNN>-<slug>/EXPERIMENT.md (owns run status) + artifacts
   cache/                gitignored   — ingestion temp + experiments/<uuid>/{stdout,stderr}.log
 ```
 
@@ -47,11 +47,7 @@ The git-tracked record of shareable state. Read/written through `IreStore` (`src
 {
   "notes": "free-form markdown",
   "focus": { "research_question": "", "this_week": "" },
-  "ideas": [ { "text": "an idea" } ],
-  "experiments": [
-    { "uuid": "…", "name": "…", "command": "…", "status": "running",
-      "started_at": "RFC3339", "ended_at": null, "exit_code": null }
-  ]
+  "ideas": [ { "text": "an idea" } ]
 }
 ```
 
@@ -63,7 +59,7 @@ The git-tracked record of shareable state. Read/written through `IreStore` (`src
 - `upsert_experiment` / `remove_experiment` — the experiment runner and commands mirror DB rows into `ire.json` here; these **do not** emit section events (`experiment-changed` is owned by the runner).
 - `ire::reconcile(app)` (`src-tauri/src/ire/reconcile.rs`) — re-reads `ire.json` and `resources/*.md` at safe checkpoints and emits the section and resource events for anything that changed outside the app. Gated on per-file `(mtime, size)` and then on a per-section content hash, so an unchanged pass reads nothing and a change to one section does not re-emit the others; experiments are deliberately not emitted. See [workspace.md](workspace.md#concurrency--data-safety).
 
-Experiment rows are duplicated between `ire.json` and `local.db` — see [experiments.md — Data model](experiments.md#data-model).
+Experiment state is **not** in `ire.json`: each run's `EXPERIMENT.md` owns it, with `local.db` holding only operational fields — see [experiments.md — Data model](experiments.md#data-model).
 
 ---
 
@@ -120,13 +116,13 @@ When IRE spawns an agent turn, the system prompt (`build_system_prompt`) is:
 4. `long-term.md` (full).
 5. The two most recent `short-term/YYYY-MM-DD.md` files.
 
-`notes`, `ideas`, `experiments`, and individual resources are read on demand (via `ire.read` / built-in `Read`); they are not pre-injected. Added via Claude Code's `--append-system-prompt` or Codex's `-c developer_instructions=<TOML string>`.
+`notes`, `ideas`, experiment records, and individual resources are read on demand (via `ire.read` / built-in `Read`); they are not pre-injected. Added via Claude Code's `--append-system-prompt` or Codex's `-c developer_instructions=<TOML string>`.
 
 ---
 
 ## SQLite Schema
 
-Single file at `~/.ire/workspaces/<id>/local.db`, created on workspace open (`src-tauri/src/db/schema.rs`). Greenfield — `CREATE TABLE IF NOT EXISTS`, no `schema_migrations`, no versioned migrations. Only two tables remain: `experiments` (schema in [experiments.md — Data model](experiments.md#data-model)) and:
+Single file at `~/.ire/workspaces/<id>/local.db`, created on workspace open (`src-tauri/src/db/schema.rs`). Versioned via SQLite's `user_version` (`rusqlite_migration`). Only two tables remain: `experiments` (schema in [experiments.md — Data model](experiments.md#data-model)) and:
 
 ```sql
 CREATE TABLE chat_sessions (

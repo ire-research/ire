@@ -147,7 +147,7 @@ fn tool_catalog() -> Vec<Tool> {
     let mut tools = vec![
         tool(
             "ire.read",
-            "Read the workspace's ire.json (notes, focus, ideas, experiments). Returns its raw JSON `content` and a `version` token. You MUST call this before ire.edit.",
+            "Read the workspace's ire.json (notes, focus, ideas). Returns its raw JSON `content` and a `version` token. You MUST call this before ire.edit.",
             json!({ "type": "object", "properties": {} }),
         ),
         tool(

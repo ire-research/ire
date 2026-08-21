@@ -1,8 +1,9 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::Serialize;
 
 // ── Experiments ──────────────────────────────────────────────────────────────
@@ -31,12 +32,49 @@ pub fn insert_experiment(
     session_id: &str,
     tab_id: &str,
     started_at: &str,
+    record_dir: &str,
 ) -> Result<()> {
     let conn = open(home_data_dir)?;
     conn.execute(
-        "INSERT INTO experiments (uuid, name, command, working_dir, status, started_at, wake_prompt, session_id, tab_id) \
-         VALUES (?1, ?2, ?3, ?4, 'running', ?5, ?6, ?7, ?8)",
-        params![uuid, name, command, working_dir, started_at, wake_prompt, session_id, tab_id],
+        "INSERT INTO experiments (uuid, name, command, working_dir, status, started_at, wake_prompt, session_id, tab_id, record_dir) \
+         VALUES (?1, ?2, ?3, ?4, 'running', ?5, ?6, ?7, ?8, ?9)",
+        params![uuid, name, command, working_dir, started_at, wake_prompt, session_id, tab_id, record_dir],
+    )?;
+    Ok(())
+}
+
+/// The workspace-relative folder holding this experiment's `EXPERIMENT.md`.
+/// `None` for rows predating the git-tracked record, or whose backfill found
+/// no folder to point at.
+pub fn get_experiment_record_dir(home_data_dir: &Path, uuid: &str) -> Result<Option<String>> {
+    let conn = open(home_data_dir)?;
+    conn.query_row(
+        "SELECT record_dir FROM experiments WHERE uuid = ?1",
+        params![uuid],
+        |r| r.get::<_, Option<String>>(0),
+    )
+    .optional()
+    .map(Option::flatten)
+    .context("get_experiment_record_dir")
+}
+
+/// Every experiment's record folder, keyed by uuid. One query, so composing a
+/// whole list doesn't cost a lookup per row.
+pub fn experiment_record_dirs(home_data_dir: &Path) -> Result<HashMap<String, String>> {
+    let conn = open(home_data_dir)?;
+    let mut stmt =
+        conn.prepare("SELECT uuid, record_dir FROM experiments WHERE record_dir IS NOT NULL")?;
+    let rows = stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+    rows.collect::<rusqlite::Result<HashMap<String, String>>>()
+        .context("experiment_record_dirs")
+}
+
+/// Point an experiment row at its record folder. Used by the lazy backfill.
+pub fn set_experiment_record_dir(home_data_dir: &Path, uuid: &str, record_dir: &str) -> Result<()> {
+    let conn = open(home_data_dir)?;
+    conn.execute(
+        "UPDATE experiments SET record_dir = ?1 WHERE uuid = ?2",
+        params![record_dir, uuid],
     )?;
     Ok(())
 }
@@ -296,7 +334,10 @@ pub fn list_chat_sessions(home_data_dir: &Path, limit: usize) -> Result<Vec<Chat
     rows.map(|r| r.context("chat session row")).collect()
 }
 
-pub fn get_chat_session_messages(home_data_dir: &Path, session_uuid: &str) -> Result<Option<String>> {
+pub fn get_chat_session_messages(
+    home_data_dir: &Path,
+    session_uuid: &str,
+) -> Result<Option<String>> {
     let conn = open(home_data_dir)?;
     let mut stmt =
         conn.prepare("SELECT messages_json FROM chat_sessions WHERE session_uuid = ?1")?;

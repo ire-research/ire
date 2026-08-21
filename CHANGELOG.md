@@ -4,13 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 ### Added
-- Git-tracked `.ire/experiments/<NNN>-<slug>/` folder per experiment, with an `EXPERIMENT.md` recording the goal, command, and start time (#106)
+- Git-tracked `.ire/experiments/<NNN>-<slug>/` folder per experiment, with an `EXPERIMENT.md` recording the goal, command, and run status in Open Knowledge Format frontmatter (#106, #114)
 - Changes made to `.ire/` outside the app are picked up after each tool call and when the window regains focus (#112)
 
 ### Changed
 - Model and provider now lock once a chat session's first message is sent (#115)
+- `ire.json` no longer tracks experiments — each run's `EXPERIMENT.md` owns its status. Existing workspaces are upgraded automatically on open (#114)
+- Deleting an experiment now removes its whole `.ire/experiments/<NNN>-<slug>/` folder, artifacts included, behind a confirmation dialog (#114)
 
 ### Fixed
+- Cancelling an experiment no longer flips to "failed" when the process exits (#114)
+- Renaming, deleting and cancelling an experiment now work in a workspace cloned from git, where the local database has no record of the run (#114)
 - Sidebar resize handle no longer gets stuck after dragging a panel closed (#109)
 - Resume-id persistence unified across all turn paths (chat, OpenCode, experiment wake-ups, resource ingestion) — closes remaining cases where a dropped resume id silently started a new conversation (#115)
 
