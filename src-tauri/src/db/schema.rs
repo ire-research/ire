@@ -7,8 +7,8 @@ use rusqlite_migration::{Migrations, M};
 /// Versioned schema for `~/.ire/workspaces/<id>/local.db`, tracked via SQLite's
 /// `user_version` (see the `rusqlite_migration` crate). The two tables hold
 /// local-only operational state: detached experiment rows and chat sessions.
-/// (Resources are file-based; the git-tracked experiment *display* record
-/// lives in `ire.json`.)
+/// (Resources are file-based; the git-tracked experiment record lives in
+/// `.ire/experiments/<NNN>-<slug>/EXPERIMENT.md`, which owns status.)
 ///
 /// Every migration's SQL must be safe to run both on a brand-new database and
 /// on a pre-migration one: this schema shipped for a long time as a single
@@ -71,6 +71,8 @@ fn migrations() -> Migrations<'static> {
             ALTER TABLE chat_sessions DROP COLUMN codex_thread_id;",
         )
         .comment("move resume ids off fixed per-provider columns into chat_resume_ids(session_uuid, provider)"),
+        M::up("ALTER TABLE experiments ADD COLUMN record_dir TEXT;")
+            .comment("remember each experiment's git-tracked record folder so status transitions can find it"),
     ])
 }
 

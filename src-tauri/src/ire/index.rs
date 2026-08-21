@@ -29,14 +29,14 @@ pub fn build_resources(resources_dir: &Path) -> Result<String> {
         let (fm, body) = frontmatter::parse(&content);
         let title = fm
             .as_ref()
-            .and_then(|m| m.get("title"))
-            .map(|t| unquote(t))
+            .and_then(|m| frontmatter::field(m, "title"))
             .filter(|t| !t.is_empty())
             .unwrap_or_else(|| name.trim_end_matches(".md").to_string());
         let summary = fm
             .as_ref()
-            .and_then(|m| m.get("TL;DR").or_else(|| m.get("summary")))
-            .map(|s| unquote(s))
+            .and_then(|m| {
+                frontmatter::field(m, "TL;DR").or_else(|| frontmatter::field(m, "summary"))
+            })
             .filter(|s| !s.is_empty())
             .unwrap_or_else(|| first_paragraph(body).unwrap_or_default());
         entries.push((name, title, summary));
@@ -52,10 +52,6 @@ pub fn build_resources(resources_dir: &Path) -> Result<String> {
         }
     }
     Ok(out)
-}
-
-fn unquote(value: &str) -> String {
-    value.trim().trim_matches('"').trim().to_string()
 }
 
 fn first_paragraph(text: &str) -> Option<String> {

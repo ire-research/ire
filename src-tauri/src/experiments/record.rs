@@ -1,22 +1,36 @@
 //! The git-tracked `.ire/experiments/<NNN>-<slug>/` folder created when an
-//! experiment starts. `EXPERIMENT.md` inside it is the durable, human-readable
-//! record of what ran and why — the `wake_prompt` goal/context lives only in
-//! `local.db` otherwise, so it does not survive clearing the cache or reach
-//! anyone reading the repository. The folder is also the home for the
-//! experiment's own artifacts; raw logs stay in `.ire/cache/experiments/<uuid>/`.
+//! experiment starts. `EXPERIMENT.md` inside it is the single source of truth
+//! for what ran, why, and how it ended: an OKF-shaped YAML frontmatter block
+//! owned exclusively by the runner, over a body owned by whoever writes to it.
+//! Status transitions rewrite the block and nothing else, so notes an agent or
+//! a person appends below survive every rewrite. The folder is also the home
+//! for the experiment's own artifacts; raw logs stay in
+//! `.ire/cache/experiments/<uuid>/`.
 
 use std::fs;
 use std::path::Path;
 use std::sync::Mutex;
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 
+use okf::yaml::Value;
+use okf::Frontmatter;
+
+use crate::ire::frontmatter;
 use crate::ire::store::atomic_write;
 
 /// Serializes prefix allocation so two experiments starting at once can't claim
 /// the same number. A workspace is single-instance (see `workspace::lock`), so
 /// an in-process lock covers every writer.
 static ALLOC_LOCK: Mutex<()> = Mutex::new(());
+
+/// Serializes `EXPERIMENT.md` read-modify-write cycles. `atomic_write` makes a
+/// single write atomic, not the read-mutate-write around it: the monitor thread
+/// finishing a run and a UI rename can otherwise both read `run_status:
+/// running`, and whichever writes second silently drops the other's change —
+/// leaving a finished run displayed as running forever, since the monitor has
+/// already stopped. A workspace is single-instance, so an in-process lock is enough.
+static WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 const DIR: &str = ".ire/experiments";
 
@@ -40,7 +54,7 @@ pub fn create(workspace_root: &Path, args: RecordArgs<'_>) -> Result<String> {
     let name = format!("{:03}-{}", next_prefix(&root), slugify(args.name));
     let dir = root.join(&name);
     fs::create_dir(&dir).with_context(|| format!("create {}", dir.display()))?;
-    atomic_write(&dir.join("EXPERIMENT.md"), &render(&args))?;
+    atomic_write(&dir.join(FILE), &render(&args))?;
     Ok(format!("{DIR}/{name}"))
 }
 
@@ -91,24 +105,224 @@ fn slugify(name: &str) -> String {
     }
 }
 
+/// What `EXPERIMENT.md`'s frontmatter says, as the runner last wrote it.
+#[derive(Debug, Clone)]
+pub struct Record {
+    pub uuid: String,
+    pub name: String,
+    pub command: String,
+    pub status: String,
+    pub exit_code: Option<i64>,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+}
+
+/// Read one experiment's record back from disk.
+pub fn read(workspace_root: &Path, rel_dir: &str) -> Result<Record> {
+    let path = workspace_root.join(rel_dir).join(FILE);
+    let content = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    parse_record(&content).ok_or_else(|| anyhow!("no frontmatter in {}", path.display()))
+}
+
+/// Every experiment record in the workspace, newest first. Folders without a
+/// readable record are skipped: this feeds the UI, not a consistency check.
+pub fn list(workspace_root: &Path) -> Vec<(String, Record)> {
+    let root = workspace_root.join(DIR);
+    let Ok(entries) = fs::read_dir(&root) else {
+        return Vec::new();
+    };
+    let mut dirs: Vec<String> = entries
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
+        .filter_map(|e| e.file_name().to_str().map(str::to_string))
+        .collect();
+    // Folder prefixes are allocated in start order, so name order is time order.
+    dirs.sort_unstable_by(|a, b| b.cmp(a));
+    dirs.into_iter()
+        .filter_map(|name| {
+            let rel = format!("{DIR}/{name}");
+            read(workspace_root, &rel).ok().map(|r| (rel, r))
+        })
+        .collect()
+}
+
+/// Rewrite the runner-owned frontmatter for a status transition and return the
+/// record as it was actually persisted. The body is untouched.
+pub fn set_status(
+    workspace_root: &Path,
+    rel_dir: &str,
+    status: &str,
+    exit_code: Option<i64>,
+    ended_at: Option<&str>,
+) -> Result<Record> {
+    rewrite(workspace_root, rel_dir, |r| {
+        r.status = status.to_string();
+        r.exit_code = exit_code;
+        r.ended_at = ended_at.map(str::to_string);
+    })
+}
+
+/// Rewrite the frontmatter `title`. The `# {name}` H1 in the body is left as
+/// written: the body belongs to whoever edits it, not to the runner.
+pub fn set_title(workspace_root: &Path, rel_dir: &str, name: &str) -> Result<Record> {
+    rewrite(workspace_root, rel_dir, |r| r.name = name.to_string())
+}
+
+fn rewrite(
+    workspace_root: &Path,
+    rel_dir: &str,
+    mutate: impl FnOnce(&mut Record),
+) -> Result<Record> {
+    let _guard = WRITE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let path = workspace_root.join(rel_dir).join(FILE);
+    let content = fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
+    let mut fm = frontmatter::parse(&content)
+        .0
+        .ok_or_else(|| anyhow!("no frontmatter in {}", path.display()))?;
+    let mut record =
+        parse_record(&content).ok_or_else(|| anyhow!("no frontmatter in {}", path.display()))?;
+    mutate(&mut record);
+    // Set only the fields the runner owns, on the block as it exists. Rebuilding
+    // it would drop any key someone added (OKF §4.1: preserve unknown keys).
+    apply(&mut fm, &record);
+    atomic_write(&path, &frontmatter::replace(&content, &fm))?;
+    // Report what is on disk, never what we meant to put there.
+    read(workspace_root, rel_dir)
+}
+
+const FILE: &str = "EXPERIMENT.md";
+
+/// Write the runner-owned fields onto an existing block, leaving every other
+/// key — and the order they sit in — alone.
+fn apply(fm: &mut Frontmatter, record: &Record) {
+    fm.set("title", Value::String(record.name.clone()));
+    fm.set("run_status", Value::String(record.status.clone()));
+    fm.set("exit_code", record.exit_code.map_or(Value::Null, Value::Int));
+    fm.set(
+        "ended_at",
+        record.ended_at.clone().map_or(Value::Null, Value::String),
+    );
+}
+
+/// The block a brand-new record starts with, in a fixed field order so a status
+/// transition shows up in `git diff` as the lines that actually changed.
+///
+/// The run state is `run_status`, not `status`: OKF §5.4 gives `status` the
+/// lifecycle meaning `draft | stable | deprecated`, and once claims and
+/// resources share this bundle a single key cannot mean both.
+fn frontmatter_for(record: &Record, working_dir: &str) -> Frontmatter {
+    let mut fm = Frontmatter::new();
+    fm.set("type", Value::String("Experiment".into()));
+    fm.set("title", Value::String(record.name.clone()));
+    fm.set("uuid", Value::String(record.uuid.clone()));
+    fm.set("started_at", Value::String(record.started_at.clone()));
+    fm.set("working_dir", Value::String(working_dir.to_string()));
+    fm.set("run_status", Value::String(record.status.clone()));
+    fm.set("exit_code", record.exit_code.map_or(Value::Null, Value::Int));
+    fm.set(
+        "ended_at",
+        record.ended_at.clone().map_or(Value::Null, Value::String),
+    );
+    fm
+}
+
+/// Write a record that has no frontmatter yet — the lazy upgrade of a
+/// pre-frontmatter `EXPERIMENT.md`. `body` becomes everything below the block.
+pub fn backfill(
+    workspace_root: &Path,
+    rel_dir: &str,
+    record: &Record,
+    working_dir: &str,
+    body: &str,
+) -> Result<()> {
+    let mut content = frontmatter::render(&frontmatter_for(record, working_dir));
+    content.push_str(body);
+    atomic_write(&workspace_root.join(rel_dir).join(FILE), &content)
+}
+
+/// Whether this file already carries a frontmatter block.
+pub fn has_frontmatter(content: &str) -> bool {
+    frontmatter::parse(content).0.is_some()
+}
+
+fn parse_record(content: &str) -> Option<Record> {
+    let (fm, _) = frontmatter::parse(content);
+    let fm = fm?;
+    let get = |k: &str| frontmatter::field(&fm, k).unwrap_or_default();
+    Some(Record {
+        uuid: get("uuid"),
+        name: get("title"),
+        command: body_command(content),
+        status: get("run_status"),
+        exit_code: fm.get("exit_code").and_then(okf::yaml::Value::as_int),
+        started_at: get("started_at"),
+        ended_at: frontmatter::field(&fm, "ended_at").filter(|v| !v.is_empty()),
+    })
+}
+
+/// The command back out of the body's `## Command` fence. It is written once
+/// and never rewritten, so reading it is what keeps the file — not the
+/// database — the record the UI is built from.
+///
+/// Scans the body only, matches the heading exactly, and closes on a fence of
+/// the same backtick run it opened with. A record whose body has been edited
+/// past recognition yields an empty command rather than a swallowed document.
+fn body_command(content: &str) -> String {
+    let body = frontmatter::parse(content).1;
+    let mut lines = body
+        .lines()
+        .skip_while(|l| l.trim_end() != "## Command")
+        .skip(1)
+        .skip_while(|l| l.trim().is_empty());
+
+    let Some(open) = lines.next() else {
+        return String::new();
+    };
+    let fence: String = open.trim_start().chars().take_while(|c| *c == '`').collect();
+    if fence.len() < 3 {
+        return String::new();
+    }
+    let mut out: Vec<&str> = Vec::new();
+    for line in lines {
+        if line.trim_end() == fence {
+            return out.join("\n");
+        }
+        out.push(line);
+    }
+    // Unterminated fence: the command is not recoverable, and returning the
+    // rest of the document as one would be worse than returning nothing.
+    String::new()
+}
+
 fn render(args: &RecordArgs<'_>) -> String {
     let fence = fence_for(args.command);
+    let record = Record {
+        uuid: args.uuid.to_string(),
+        name: args.name.trim().to_string(),
+        command: args.command.to_string(),
+        status: "running".to_string(),
+        exit_code: None,
+        started_at: args.started_at.to_string(),
+        ended_at: None,
+    };
     format!(
-        "# {name}\n\n\
-         - **uuid**: `{uuid}`\n\
-         - **started**: {started_at}\n\
-         - **working dir**: `{working_dir}`\n\n\
+        "{fm}
+\
+         # {name}
+\n\
          ## Goal & context\n\n\
-         {wake_prompt}\n\n\
+         {wake_prompt}
+\n\
          ## Command\n\n\
-         {fence}sh\n{command}\n{fence}\n\n\
+         {fence}sh\n{command}
+{fence}
+\n\
          ---\n\n\
          Artifacts belonging to this experiment — scripts, result files, notes — go in\n\
          this folder. Raw stdout/stderr stay in `.ire/cache/experiments/{uuid}/`.\n",
-        name = args.name.trim(),
+        fm = frontmatter::render(&frontmatter_for(&record, args.working_dir)),
+        name = record.name,
         uuid = args.uuid,
-        started_at = args.started_at,
-        working_dir = args.working_dir,
         wake_prompt = args.wake_prompt.trim(),
         command = args.command,
     )
@@ -193,10 +407,22 @@ mod tests {
         let dir = create(tmp.path(), args("LR ablation", "python run.py --lr 1e-4")).unwrap();
         let md = fs::read_to_string(tmp.path().join(dir).join("EXPERIMENT.md")).unwrap();
 
-        assert!(md.starts_with("# LR ablation\n"));
-        assert!(md.contains("11111111-2222-3333-4444-555555555555"));
-        assert!(md.contains("2026-08-11T10:00:00+02:00"));
-        assert!(md.contains("/tmp/project"));
+        assert!(
+            md.starts_with(
+                "---\n\
+             type: Experiment\n\
+             title: LR ablation\n\
+             uuid: 11111111-2222-3333-4444-555555555555\n\
+             started_at: \"2026-08-11T10:00:00+02:00\"\n\
+             working_dir: /tmp/project\n\
+             run_status: running\n\
+             exit_code: null\n\
+             ended_at: null\n\
+             ---\n\n\
+             # LR ablation\n"
+            ),
+            "{md}"
+        );
         assert!(md.contains("Check whether lr=1e-4 beats the baseline."));
         assert!(md.contains("```sh\npython run.py --lr 1e-4\n```"));
     }
@@ -207,7 +433,8 @@ mod tests {
         let command = "echo ```nested``` && echo $(date)";
         let dir = create(tmp.path(), args("fences", command)).unwrap();
         let md = fs::read_to_string(tmp.path().join(dir).join("EXPERIMENT.md")).unwrap();
-        assert!(md.contains(&format!("````sh\n{command}\n````")));
+        assert!(md.contains(&format!("````sh\n{command}
+````")));
     }
 
     #[test]
@@ -234,7 +461,10 @@ mod tests {
         prefixes.sort_unstable();
         prefixes.dedup();
         assert_eq!(prefixes.len(), 8, "duplicate prefix allocated: {dirs:?}");
-        assert_eq!(prefixes, ["001", "002", "003", "004", "005", "006", "007", "008"]);
+        assert_eq!(
+            prefixes,
+            ["001", "002", "003", "004", "005", "006", "007", "008"]
+        );
     }
 
     #[test]
@@ -246,5 +476,171 @@ mod tests {
         assert!(!tmp.path().join(&dir).exists());
         // The parent survives so the next allocation still sees history.
         assert!(tmp.path().join(DIR).is_dir());
+    }
+
+    #[test]
+    fn a_status_transition_rewrites_only_the_frontmatter() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = create(tmp.path(), args("LR ablation", "python run.py")).unwrap();
+        let path = tmp.path().join(&dir).join(FILE);
+
+        // What an agent or a person adds below the block must survive.
+        let mut appended = fs::read_to_string(&path).unwrap();
+        appended.push_str("\n## Findings\n\nlr=1e-4 wins by 0.4.\n");
+        fs::write(&path, &appended).unwrap();
+        let body_before = frontmatter::parse(&appended).1.to_string();
+
+        let record = set_status(
+            tmp.path(),
+            &dir,
+            "completed",
+            Some(0),
+            Some("2026-08-11T11:00:00+02:00"),
+        )
+        .unwrap();
+
+        assert_eq!(record.status, "completed");
+        assert_eq!(record.exit_code, Some(0));
+        assert_eq!(
+            record.ended_at.as_deref(),
+            Some("2026-08-11T11:00:00+02:00")
+        );
+
+        let after = fs::read_to_string(&path).unwrap();
+        assert_eq!(frontmatter::parse(&after).1, body_before);
+        assert!(after.contains("lr=1e-4 wins by 0.4."));
+        assert!(after.contains("run_status: completed"));
+        assert!(!after.contains("run_status: running"));
+    }
+
+    #[test]
+    fn the_returned_record_is_what_landed_on_disk() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = create(tmp.path(), args("LR ablation", "python run.py")).unwrap();
+        let written = set_status(
+            tmp.path(),
+            &dir,
+            "failed",
+            Some(2),
+            Some("2026-08-11T12:00:00Z"),
+        )
+        .unwrap();
+        let reread = read(tmp.path(), &dir).unwrap();
+        assert_eq!(written.status, reread.status);
+        assert_eq!(written.exit_code, reread.exit_code);
+        assert_eq!(written.ended_at, reread.ended_at);
+    }
+
+    #[test]
+    fn a_title_needing_quotes_round_trips() {
+        let tmp = tempfile::tempdir().unwrap();
+        // A colon would otherwise open a nested mapping; 1e-4 would parse as a float.
+        let dir = create(tmp.path(), args("ablation: lr 1e-4", "echo hi")).unwrap();
+        assert_eq!(read(tmp.path(), &dir).unwrap().name, "ablation: lr 1e-4");
+
+        let renamed = set_title(tmp.path(), &dir, "\"quoted\" title").unwrap();
+        assert_eq!(renamed.name, "\"quoted\" title");
+        assert_eq!(read(tmp.path(), &dir).unwrap().name, "\"quoted\" title");
+    }
+
+    #[test]
+    fn list_returns_records_newest_first() {
+        let tmp = tempfile::tempdir().unwrap();
+        create(tmp.path(), args("first", "echo 1")).unwrap();
+        create(tmp.path(), args("second", "echo 2")).unwrap();
+        let names: Vec<String> = list(tmp.path()).into_iter().map(|(_, r)| r.name).collect();
+        assert_eq!(names, ["second", "first"]);
+    }
+
+    #[test]
+    fn the_command_is_read_back_out_of_the_body() {
+        let tmp = tempfile::tempdir().unwrap();
+        let command = "echo ```nested``` && echo $(date)";
+        let dir = create(tmp.path(), args("fences", command)).unwrap();
+        assert_eq!(read(tmp.path(), &dir).unwrap().command, command);
+    }
+
+    #[test]
+    fn remove_takes_the_artifacts_with_it() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = create(tmp.path(), args("doomed with results", "echo hi")).unwrap();
+        fs::write(tmp.path().join(&dir).join("results.csv"), "loss\n1.8\n").unwrap();
+
+        remove(tmp.path(), &dir);
+
+        assert!(!tmp.path().join(&dir).exists());
+        // Gone from the record list, so hydrate can't resurrect it.
+        assert!(list(tmp.path()).is_empty());
+    }
+
+    #[test]
+    fn keys_a_person_added_survive_a_transition() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = create(tmp.path(), args("LR ablation", "python run.py")).unwrap();
+        let path = tmp.path().join(&dir).join(FILE);
+
+        // OKF §4.1: consumers preserve unknown keys when round-tripping.
+        let content = fs::read_to_string(&path).unwrap();
+        let edited = content.replace(
+            "run_status: running",
+            "tags:\n  - ablation\ndescription: sweeping lr\nrun_status: running",
+        );
+        fs::write(&path, &edited).unwrap();
+
+        set_status(tmp.path(), &dir, "completed", Some(0), Some("2026-08-11T11:00:00+02:00"))
+            .unwrap();
+
+        let after = fs::read_to_string(&path).unwrap();
+        let (fm, _) = frontmatter::parse(&after);
+        let fm = fm.unwrap();
+        assert_eq!(fm.tags(), ["ablation"]);
+        assert_eq!(fm.description().as_deref(), Some("sweeping lr"));
+        assert_eq!(frontmatter::field(&fm, "run_status").as_deref(), Some("completed"));
+    }
+
+    #[test]
+    fn a_rename_and_a_completion_cannot_lose_each_other() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = create(tmp.path(), args("before", "echo hi")).unwrap();
+        let root = tmp.path().to_path_buf();
+
+        // The real race: the monitor thread finishing while the user renames.
+        std::thread::scope(|s| {
+            let (r1, d1) = (root.clone(), dir.clone());
+            s.spawn(move || set_status(&r1, &d1, "completed", Some(0), Some("t1")).unwrap());
+            let (r2, d2) = (root.clone(), dir.clone());
+            s.spawn(move || set_title(&r2, &d2, "after").unwrap());
+        });
+
+        let rec = read(tmp.path(), &dir).unwrap();
+        assert_eq!(rec.name, "after", "the rename was lost");
+        assert_eq!(rec.status, "completed", "the completion was lost");
+    }
+
+    #[test]
+    fn an_edited_body_cannot_swallow_the_document_as_a_command() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = create(tmp.path(), args("edited", "python run.py")).unwrap();
+        let path = tmp.path().join(&dir).join(FILE);
+
+        // A user normalizing the fence language used to make `command` the
+        // entire rest of the file.
+        let content = fs::read_to_string(&path).unwrap();
+        fs::write(&path, content.replace("```sh", "```bash")).unwrap();
+        assert_eq!(read(tmp.path(), &dir).unwrap().command, "python run.py");
+
+        // An unterminated fence yields nothing, not the remainder.
+        let content = fs::read_to_string(&path).unwrap();
+        fs::write(&path, content.replacen("```\n", "\n", 2)).unwrap();
+        assert_eq!(read(tmp.path(), &dir).unwrap().command, "");
+    }
+
+    #[test]
+    fn a_wake_prompt_mentioning_the_heading_does_not_win() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut a = args("tricky", "python run.py");
+        a.wake_prompt = "Read the ## Command section when done.";
+        let dir = create(tmp.path(), a).unwrap();
+        assert_eq!(read(tmp.path(), &dir).unwrap().command, "python run.py");
     }
 }

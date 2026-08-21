@@ -7,9 +7,8 @@ use anyhow::{anyhow, Context, Result};
 use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
-use crate::session::{ActiveSession, SessionManager};
 use crate::db::models as db;
-use crate::events;
+use crate::session::{ActiveSession, SessionManager};
 
 pub fn start_experiment(
     params: &serde_json::Value,
@@ -46,16 +45,14 @@ pub fn start_experiment(
     let uuid = Uuid::new_v4().to_string();
     let home_data_dir = crate::workspace::init::home_data_dir(workspace_root)
         .ok_or_else(|| anyhow!("cannot determine home directory"))?;
-    let exp_dir = workspace_root
-        .join(".ire/cache/experiments")
-        .join(&uuid);
+    let exp_dir = workspace_root.join(".ire/cache/experiments").join(&uuid);
 
     fs::create_dir_all(&exp_dir).context("create experiments dir")?;
 
     let stdout_file = File::create(exp_dir.join("stdout.log")).context("create stdout.log")?;
     let stderr_file = File::create(exp_dir.join("stderr.log")).context("create stderr.log")?;
 
-    // One timestamp for the DB row, ire.json, and EXPERIMENT.md.
+    // One timestamp for the DB row and EXPERIMENT.md.
     let started_at = chrono::Local::now().to_rfc3339();
     let record_dir = super::record::create(
         workspace_root,
@@ -79,6 +76,7 @@ pub fn start_experiment(
         &session_uuid,
         &tab_id,
         &started_at,
+        &record_dir,
     )
     .and_then(|()| spawn_detached(&command, &working_dir, stdout_file, stderr_file));
 
@@ -99,10 +97,7 @@ pub fn start_experiment(
         "experiment-status",
         serde_json::json!({ "uuid": uuid, "status": "running" }),
     );
-    if let Ok(Some(row)) = db::get_experiment(&home_data_dir, &uuid) {
-        super::sync_to_ire(workspace_root, &row);
-        events::emit_experiment_changed(&app, events::EventSource::Mutation, &row);
-    }
+    super::emit_changed(&app, workspace_root, &home_data_dir, &uuid);
     // Bridge event: lets the frontend link this UUID to the pending ToolStart card.
     let _ = app.emit(
         "experiment-starting",
@@ -189,9 +184,7 @@ fn monitor(mut child: Child, args: MonitorArgs) {
         session_manager,
     } = args;
 
-    let exp_dir = workspace_root
-        .join(".ire/cache/experiments")
-        .join(&uuid);
+    let exp_dir = workspace_root.join(".ire/cache/experiments").join(&uuid);
     let mut stdout_pos = 0u64;
     let mut stderr_pos = 0u64;
 
@@ -235,8 +228,6 @@ fn monitor(mut child: Child, args: MonitorArgs) {
                 } else {
                     "failed"
                 };
-                db::update_experiment_completed(&home_data_dir, &uuid, status_str, Some(exit_code)).ok();
-
                 let _ = app.emit(
                     "experiment-status",
                     serde_json::json!({
@@ -245,10 +236,14 @@ fn monitor(mut child: Child, args: MonitorArgs) {
                         "exit_code": exit_code,
                     }),
                 );
-                if let Ok(Some(row)) = db::get_experiment(&home_data_dir, &uuid) {
-                    super::sync_to_ire(&workspace_root, &row);
-                    events::emit_experiment_changed(&app, events::EventSource::Mutation, &row);
-                }
+                super::transition(
+                    &app,
+                    &workspace_root,
+                    &home_data_dir,
+                    &uuid,
+                    status_str,
+                    Some(exit_code),
+                );
                 tracing::info!(uuid = %uuid, exit_code = exit_code, "experiment finished");
 
                 super::wake::fire_wakeup(super::wake::FireWakeupArgs {
@@ -272,15 +267,18 @@ fn monitor(mut child: Child, args: MonitorArgs) {
             }
             Err(e) => {
                 tracing::error!(error = %e, uuid = %uuid, "experiment wait error");
-                db::update_experiment_completed(&home_data_dir, &uuid, "failed", Some(-1)).ok();
                 let _ = app.emit(
                     "experiment-status",
                     serde_json::json!({ "uuid": uuid, "status": "failed" }),
                 );
-                if let Ok(Some(row)) = db::get_experiment(&home_data_dir, &uuid) {
-                    super::sync_to_ire(&workspace_root, &row);
-                    events::emit_experiment_changed(&app, events::EventSource::Mutation, &row);
-                }
+                super::transition(
+                    &app,
+                    &workspace_root,
+                    &home_data_dir,
+                    &uuid,
+                    "failed",
+                    Some(-1),
+                );
                 break;
             }
         }

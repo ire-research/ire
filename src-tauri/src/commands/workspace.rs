@@ -6,11 +6,11 @@ use tauri::{AppHandle, State};
 
 use crate::agent_provider;
 use crate::binary::BinaryStatus;
-use crate::session::SessionManager;
 use crate::db::schema;
 use crate::events::{self, EventSource};
 use crate::mcp::{McpHandle, McpState};
 use crate::opencode::runtime::OpenCodeRuntime;
+use crate::session::SessionManager;
 use crate::tool_cards::ToolProvider;
 use crate::user_config::{self, UserConfig};
 use crate::workspace::init as ws_init;
@@ -125,11 +125,15 @@ fn attach(
     })?;
 
     schema::run(&home_data_dir).map_err(|e| e.to_string())?;
+    // Lazy upgrade for workspaces whose experiment state predates
+    // EXPERIMENT.md owning it. Idempotent, so it just runs on every open.
+    crate::experiments::migrate::run(&path, &home_data_dir);
 
     // Start the MCP RPC server and write the mcp.json config for CC.
     let socket = crate::mcp::rpc::socket_path(&home_data_dir);
     let task = crate::mcp::rpc::start(socket.clone(), path.clone(), session_manager, app.clone());
-    crate::mcp::config::write_mcp_config(&home_data_dir, &path, &socket).map_err(|e| e.to_string())?;
+    crate::mcp::config::write_mcp_config(&home_data_dir, &path, &socket)
+        .map_err(|e| e.to_string())?;
     *mcp.0.lock().map_err(|e| e.to_string())? = Some(McpHandle {
         task,
         socket_path: socket,
@@ -165,10 +169,10 @@ fn emit_initial_state(app: &AppHandle, workspace_root: &Path) {
         events::emit_resource_changed(app, EventSource::Hydrate, &resource);
     }
 
-    // Experiments come from the git-tracked ire.json display record. The
-    // operational tab linkage is re-established live via events, so tab_id is
-    // empty on hydrate.
-    for exp in ire.experiments {
+    // Experiments come from their git-tracked records: EXPERIMENT.md owns
+    // status. The operational tab linkage is re-established live via events,
+    // so tab_id is empty on hydrate.
+    for (_, exp) in crate::experiments::record::list(workspace_root) {
         let payload = json!({
             "uuid": exp.uuid,
             "name": exp.name,

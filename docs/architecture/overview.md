@@ -74,7 +74,7 @@ Two design-driving pain points:
 | State | Zustand | Light, no Redux ceremony. |
 | Markdown | `react-markdown` + `remark-gfm` for preview; `<textarea>` for edit | Toggle-based, not split. |
 | Layout | `react-resizable-panels` | Resizable + collapsible splits. |
-| Persistence | SQLite via `rusqlite` | Single DB file at `~/.ire/workspaces/<id>/local.db` (chat sessions + experiment operational rows). Git-tracked state is `.ire/ire.json`. UI/session state via `tauri-plugin-store` (app-data dir). |
+| Persistence | SQLite via `rusqlite` | Single DB file at `~/.ire/workspaces/<id>/local.db` (chat sessions + experiment operational rows). Git-tracked state is `.ire/ire.json` plus each run's `EXPERIMENT.md`. UI/session state via `tauri-plugin-store` (app-data dir). |
 | MCP server | Rust (`ire --mcp-stdio`) | Stdio transport. Same binary as the app, re-invoked as a subprocess. |
 | PDF extract | `pdf-extract` crate | Pure Rust, no system deps. |
 | HTML extract | `reqwest` + `scraper` + readability | Strip nav/ads; keep article text. |
@@ -95,7 +95,7 @@ my_research_project/
 ├── .gitignore                       # IRE adds: .ire/cache/
 ├── .ire/                            # git-tracked knowledge (plus the local-only cache/)
 │   ├── _SYSTEM.md                   # IRE framework context, injected first into every agent turn (git-tracked)
-│   ├── ire.json                     # notes, focus, ideas, experiments (git-tracked)
+│   ├── ire.json                     # notes, focus, ideas (git-tracked)
 │   ├── long-term.md                 # Agent-written architectural decisions and durable dead ends (git-tracked)
 │   ├── short-term/
 │   │   └── YYYY-MM-DD.md            # Daily agent notes (git-tracked)
@@ -104,7 +104,7 @@ my_research_project/
 │   │   └── <slug>.md                # One file per ingested paper/article (title + sources in frontmatter)
 │   ├── experiments/                 # git-tracked
 │   │   └── <NNN>-<slug>/            # One folder per experiment, created on start
-│   │       ├── EXPERIMENT.md        # Goal/context (wake_prompt) + command, uuid, started_at
+│   │       ├── EXPERIMENT.md        # OKF record: runner-owned frontmatter (run_status) + body
 │   │       └── ...                  # Agent-written scripts, result files, notes
 │   └── cache/                       # ingestion temp + experiments/<uuid>/{stdout,stderr}.log (gitignored)
 └── ... user source code ...
@@ -264,6 +264,6 @@ ire/
 │       │   ├── rpc.rs                  # Unix socket / TCP RPC handler
 │       │   └── stdio_server.rs         # `ire --mcp-stdio` entry point; advertises catalog, relays to rpc over IRE_BACKEND_SOCKET
 │       └── db/
-│           ├── schema.rs               # CREATE TABLE IF NOT EXISTS (experiments, chat_sessions)
+│           ├── schema.rs               # versioned migrations (experiments, chat_sessions)
 │           └── models.rs               # Experiment + chat-session row access
 ```
