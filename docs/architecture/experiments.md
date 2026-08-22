@@ -90,8 +90,9 @@ Experiments live in **two** stores, split by ownership rather than duplicated:
   H1, `## Goal & context` (the `wake_prompt` the agent passed to `experiment.start`,
   kept nowhere else), `## Command` in a fenced block, and anything an agent or user
   appends — is never touched by a transition rewrite. The H1 is kept even though `title` is in
-  frontmatter, since GitHub's markdown renderer does not render YAML specially. The rest
-  of the folder is the run's own home for scripts, result files, and notes.
+  frontmatter, since GitHub's markdown renderer does not render YAML specially. The file
+  ends at the command; the rest of the folder is the run's own home for scripts, result
+  files, and notes.
 
   `<NNN>` is a zero-padded three-digit prefix, allocated as one past the highest already
   present — gaps from deleted folders are never reissued. Allocation and folder creation

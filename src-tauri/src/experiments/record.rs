@@ -344,23 +344,14 @@ fn render(args: &RecordArgs<'_>) -> String {
         ended_at: None,
     };
     format!(
-        "{fm}
-\
-         # {name}
-\n\
+        "{fm}\n\
+         # {name}\n\n\
          ## Goal & context\n\n\
-         {wake_prompt}
-\n\
+         {wake_prompt}\n\n\
          ## Command\n\n\
-         {fence}sh\n{command}
-{fence}
-\n\
-         ---\n\n\
-         Artifacts belonging to this experiment — scripts, result files, notes — go in\n\
-         this folder. Raw stdout/stderr stay in `.ire/cache/experiments/{uuid}/`.\n",
+         {fence}sh\n{command}\n{fence}\n",
         fm = frontmatter::render(&frontmatter_for(&record, args.working_dir)),
         name = record.name,
-        uuid = args.uuid,
         wake_prompt = args.wake_prompt.trim(),
         command = args.command,
     )
@@ -462,7 +453,8 @@ mod tests {
             "{md}"
         );
         assert!(md.contains("Check whether lr=1e-4 beats the baseline."));
-        assert!(md.contains("```sh\npython run.py --lr 1e-4\n```"));
+        // The record ends at the command: no boilerplate footer follows it.
+        assert!(md.ends_with("```sh\npython run.py --lr 1e-4\n```\n"), "{md}");
     }
 
     #[test]
