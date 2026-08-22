@@ -223,4 +223,21 @@ mod tests {
         let settled = row_or_record(workspace.path(), home.path(), uuid).unwrap();
         assert!(TERMINAL.contains(&settled.status.as_str()));
     }
+
+    #[test]
+    fn a_cloned_run_can_be_deleted() {
+        let (workspace, home, dir) = cloned();
+        let uuid = "11111111-2222-3333-4444-555555555555";
+
+        // What experiment_delete does: guard on the composed view, then locate
+        // the record without a database row to go by.
+        let view = row_or_record(workspace.path(), home.path(), uuid).unwrap();
+        assert_eq!(view.status, "completed", "the guard must see a settled run");
+        let found = record_dir(workspace.path(), home.path(), uuid).unwrap();
+        assert_eq!(found, dir);
+
+        record::remove(workspace.path(), &found);
+        assert!(record_dir(workspace.path(), home.path(), uuid).is_none());
+        assert!(row_or_record(workspace.path(), home.path(), uuid).is_none());
+    }
 }
