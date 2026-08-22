@@ -2,7 +2,7 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
-use rusqlite_migration::{Migrations, M};
+use rusqlite_migration::{Migrations, SchemaVersion, M};
 
 /// Versioned schema for `~/.ire/workspaces/<id>/local.db`, tracked via SQLite's
 /// `user_version` (see the `rusqlite_migration` crate). The two tables hold
@@ -80,14 +80,47 @@ fn migrations() -> Migrations<'static> {
     ])
 }
 
+/// The last version that still carries `wake_prompt`. The record backfill
+/// reads it to recover an experiment's goal, and the next migration deletes it.
+const BEFORE_WAKE_PROMPT_DROP: usize = 3;
+
 /// Migrate the local DB to the latest schema version, creating it if needed.
 pub fn run(home_data_dir: &Path) -> Result<()> {
+    migrate(home_data_dir, None)
+}
+
+/// Migrate only as far as the schema the record backfill needs to read.
+///
+/// On workspace open this runs first, then `experiments::migrate`, then
+/// [`run`]. Running the whole thing up front would drop `wake_prompt` before
+/// the backfill could copy an experiment's goal into its record, and that text
+/// exists nowhere else.
+///
+/// A database already past this version is left alone: migrations only move
+/// forward, so this is a no-op rather than an error.
+pub fn run_pre_backfill(home_data_dir: &Path) -> Result<()> {
+    migrate(home_data_dir, Some(BEFORE_WAKE_PROMPT_DROP))
+}
+
+fn migrate(home_data_dir: &Path, version: Option<usize>) -> Result<()> {
     let db_path = home_data_dir.join("local.db");
     let mut conn =
         Connection::open(&db_path).with_context(|| format!("open {}", db_path.display()))?;
-    migrations()
-        .to_latest(&mut conn)
-        .context("apply schema migrations")?;
+    let Some(target) = version else {
+        return migrations()
+            .to_latest(&mut conn)
+            .context("apply schema migrations");
+    };
+    // `to_version` refuses to go backwards, so only call it when there is
+    // something to apply.
+    let current = migrations()
+        .current_version(&conn)
+        .context("read schema version")?;
+    if current < SchemaVersion::Inside(std::num::NonZeroUsize::new(target).unwrap()) {
+        migrations()
+            .to_version(&mut conn, target)
+            .context("apply schema migrations")?;
+    }
     Ok(())
 }
 

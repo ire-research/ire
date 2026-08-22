@@ -8,7 +8,7 @@
 //! upgraded is still openable, and the pass is idempotent, so the next open
 //! simply tries again.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
@@ -29,6 +29,7 @@ pub fn run(workspace_root: &Path, home_data_dir: &Path) {
             all_upgraded = false;
         }
     }
+    all_upgraded &= adopt_orphans(workspace_root, home_data_dir, &legacy);
     // `ire.json` is the fallback the backfill reads statuses out of. Dropping it
     // while a record still needs it would strand that run on `unknown` for good.
     // The pass is idempotent, so leaving it costs only a retry next open.
@@ -39,6 +40,78 @@ pub fn run(workspace_root: &Path, home_data_dir: &Path) {
     if let Err(e) = drop_ire_json_experiments(workspace_root) {
         tracing::warn!(error = %e, "dropping ire.json experiments failed");
     }
+}
+
+/// Give a record folder to every `ire.json` experiment that has none.
+///
+/// Runs predating the git-tracked experiment folder live only in `ire.json`
+/// and `local.db`. Hydrate reads records, so without this they vanish from the
+/// UI — and the array that is their last copy is then dropped. Returns whether
+/// every one of them was adopted; if not, the array has to stay.
+fn adopt_orphans(
+    workspace_root: &Path,
+    home_data_dir: &Path,
+    legacy: &HashMap<String, LegacyStatus>,
+) -> bool {
+    let existing: HashSet<String> = record::list(workspace_root)
+        .into_iter()
+        .map(|(_, r)| r.uuid)
+        .collect();
+
+    let mut all_adopted = true;
+    // Oldest first, so the folder numbers they are given run in the order the
+    // runs actually happened.
+    let mut orphans: Vec<(&String, &LegacyStatus)> = legacy
+        .iter()
+        .filter(|(uuid, _)| !existing.contains(*uuid))
+        .collect();
+    orphans.sort_by(|a, b| a.1.started_at.cmp(&b.1.started_at));
+
+    for (uuid, entry) in orphans {
+        if let Err(e) = adopt(workspace_root, home_data_dir, uuid, entry) {
+            tracing::warn!(error = %e, uuid = %uuid, "adopting experiment into a record failed");
+            all_adopted = false;
+        }
+    }
+    all_adopted
+}
+
+/// Write one orphan out as a record: the folder it never had, carrying what
+/// `ire.json` knew plus the working dir and goal that only `local.db` kept.
+fn adopt(
+    workspace_root: &Path,
+    home_data_dir: &Path,
+    uuid: &str,
+    entry: &LegacyStatus,
+) -> Result<()> {
+    let (working_dir, wake_prompt) = db::legacy_experiment_context(home_data_dir, uuid)
+        .unwrap_or_else(|| (String::new(), None));
+    let goal = wake_prompt.unwrap_or_else(|| {
+        "Recovered from ire.json when experiments moved into their own records; \
+         the original goal and context were not kept."
+            .to_string()
+    });
+
+    let dir = record::create(
+        workspace_root,
+        record::RecordArgs {
+            uuid,
+            name: &entry.name,
+            command: &entry.command,
+            working_dir: &working_dir,
+            wake_prompt: &goal,
+            started_at: &entry.started_at,
+        },
+    )?;
+    record::set_status(
+        workspace_root,
+        &dir,
+        &entry.status,
+        entry.exit_code,
+        entry.ended_at.as_deref(),
+    )?;
+    db::set_experiment_record_dir(home_data_dir, uuid, &dir)?;
+    Ok(())
 }
 
 /// Give one record its frontmatter and point its database row at it. A record
@@ -114,8 +187,11 @@ fn upgrade(
 }
 
 struct LegacyStatus {
+    name: String,
+    command: String,
     status: String,
     exit_code: Option<i64>,
+    started_at: String,
     ended_at: Option<String>,
 }
 
@@ -138,8 +214,23 @@ fn legacy_status_by_uuid(workspace_root: &Path) -> HashMap<String, LegacyStatus>
             Some((
                 uuid,
                 LegacyStatus {
+                    name: e
+                        .get("name")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or("experiment")
+                        .to_string(),
+                    command: e
+                        .get("command")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
                     status: e.get("status")?.as_str()?.to_string(),
                     exit_code: e.get("exit_code").and_then(serde_json::Value::as_i64),
+                    started_at: e
+                        .get("started_at")
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default()
+                        .to_string(),
                     ended_at: e
                         .get("ended_at")
                         .and_then(serde_json::Value::as_str)
@@ -397,5 +488,93 @@ mod tests {
             value.get("experiments").is_some(),
             "the fallback was dropped while a record still needed it"
         );
+    }
+
+    /// `ire.json` as a workspace predating the git-tracked folder has it: runs
+    /// recorded only there, with no `.ire/experiments/` folder of their own.
+    const ORPHANS: &str = "{\"notes\":\"n\",\"ideas\":[],\"experiments\":[\
+        {\"uuid\":\"aaaa\",\"name\":\"first run\",\"command\":\"python a.py\",\
+         \"status\":\"completed\",\"started_at\":\"2026-08-01T10:00:00+02:00\",\
+         \"ended_at\":\"2026-08-01T11:00:00+02:00\",\"exit_code\":0},\
+        {\"uuid\":\"bbbb\",\"name\":\"second run\",\"command\":\"python b.py\",\
+         \"status\":\"failed\",\"started_at\":\"2026-08-02T10:00:00+02:00\",\
+         \"ended_at\":\"2026-08-02T11:00:00+02:00\",\"exit_code\":1}]}\n";
+
+    fn orphan_workspace() -> (tempfile::TempDir, tempfile::TempDir) {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::create_dir_all(tmp.path().join(DIR)).unwrap();
+        fs::write(tmp.path().join(".ire/ire.json"), ORPHANS).unwrap();
+        let home = tempfile::tempdir().unwrap();
+        crate::db::schema::run(home.path()).unwrap();
+        (tmp, home)
+    }
+
+    #[test]
+    fn experiments_with_no_folder_are_given_one() {
+        let (tmp, home) = orphan_workspace();
+        run(tmp.path(), home.path());
+
+        let records = record::list(tmp.path());
+        assert_eq!(records.len(), 2, "both orphans need a record");
+
+        // Newest first, and each keeps the outcome ire.json recorded.
+        let (_, newest) = &records[0];
+        assert_eq!(newest.uuid, "bbbb");
+        assert_eq!(newest.name, "second run");
+        assert_eq!(newest.command, "python b.py");
+        assert_eq!(newest.status, "failed");
+        assert_eq!(newest.exit_code, Some(1));
+        assert_eq!(newest.started_at, "2026-08-02T10:00:00+02:00");
+        assert_eq!(newest.ended_at.as_deref(), Some("2026-08-02T11:00:00+02:00"));
+
+        let (_, oldest) = &records[1];
+        assert_eq!(oldest.uuid, "aaaa");
+        assert_eq!(oldest.status, "completed");
+
+        // Folder numbers follow the order the runs happened.
+        assert_eq!(records[1].0, ".ire/experiments/001-first-run");
+        assert_eq!(records[0].0, ".ire/experiments/002-second-run");
+    }
+
+    #[test]
+    fn adopting_lets_the_ire_json_array_go() {
+        let (tmp, home) = orphan_workspace();
+        run(tmp.path(), home.path());
+
+        let raw = fs::read_to_string(tmp.path().join(".ire/ire.json")).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        assert!(
+            value.get("experiments").is_none(),
+            "the array is only droppable once every entry has a record"
+        );
+        assert_eq!(value["notes"], "n");
+    }
+
+    #[test]
+    fn adoption_does_not_duplicate_on_a_second_open() {
+        let (tmp, home) = orphan_workspace();
+        run(tmp.path(), home.path());
+        run(tmp.path(), home.path());
+        assert_eq!(record::list(tmp.path()).len(), 2, "a second open re-adopted");
+    }
+
+    #[test]
+    fn an_orphan_alongside_an_existing_record_keeps_both() {
+        let (tmp, home) = orphan_workspace();
+        // A run that already has its folder, in the pre-frontmatter format.
+        let dir = tmp.path().join(DIR).join("001-lr-ablation");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(dir.join("EXPERIMENT.md"), LEGACY).unwrap();
+
+        run(tmp.path(), home.path());
+
+        let uuids: Vec<String> = record::list(tmp.path())
+            .into_iter()
+            .map(|(_, r)| r.uuid)
+            .collect();
+        assert_eq!(uuids.len(), 3);
+        assert!(uuids.contains(&"aaaa".to_string()));
+        assert!(uuids.contains(&"bbbb".to_string()));
+        assert!(uuids.contains(&"11111111-2222-3333-4444-555555555555".to_string()));
     }
 }
