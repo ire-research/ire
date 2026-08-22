@@ -70,7 +70,10 @@ pub fn remove(workspace_root: &Path, rel_dir: &str) {
 /// The numeric prefix a record folder was allocated, for ordering. A folder
 /// that doesn't carry one sorts oldest.
 fn prefix_of(name: &str) -> u32 {
-    name.split_once('-')
+    name.rsplit('/')
+        .next()
+        .unwrap_or(name)
+        .split_once('-')
         .and_then(|(prefix, _)| prefix.parse().ok())
         .unwrap_or(0)
 }
@@ -142,21 +145,28 @@ pub fn list(workspace_root: &Path) -> Vec<(String, Record)> {
     let Ok(entries) = fs::read_dir(&root) else {
         return Vec::new();
     };
-    let mut dirs: Vec<String> = entries
+    let dirs: Vec<String> = entries
         .flatten()
         .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
         .filter_map(|e| e.file_name().to_str().map(str::to_string))
         .collect();
-    // Prefixes are allocated in start order, so prefix order is time order.
-    // Sorted numerically, not as strings: past 999 the width changes and
-    // "1000" sorts before "999".
-    dirs.sort_unstable_by(|a, b| prefix_of(b).cmp(&prefix_of(a)).then_with(|| b.cmp(a)));
-    dirs.into_iter()
+    let mut records: Vec<(String, Record)> = dirs
+        .into_iter()
         .filter_map(|name| {
             let rel = format!("{DIR}/{name}");
             read(workspace_root, &rel).ok().map(|r| (rel, r))
         })
-        .collect()
+        .collect();
+    // By start time, not by folder number: a record adopted from `ire.json`
+    // during migration is older than its prefix suggests. The numeric prefix
+    // breaks ties — compared as a number, since past 999 the width changes and
+    // "1000" would sort before "999" as a string.
+    records.sort_unstable_by(|(a_dir, a), (b_dir, b)| {
+        b.started_at
+            .cmp(&a.started_at)
+            .then_with(|| prefix_of(b_dir).cmp(&prefix_of(a_dir)))
+    });
+    records
 }
 
 /// Rewrite the runner-owned frontmatter for a status transition and return the
@@ -733,7 +743,7 @@ mod tests {
                 goal: String::new(),
                 status: "completed".to_string(),
                 exit_code: Some(0),
-                started_at: "t".to_string(),
+                started_at: format!("2026-08-{:02}T00:00:00Z", prefix % 30 + 1),
                 ended_at: None,
             };
             backfill(tmp.path(), &format!("{DIR}/{prefix:03}-{slug}"), &record, "/w", "\n# x\n")

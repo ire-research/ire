@@ -124,10 +124,14 @@ fn attach(
         LockError::Io(io) => io.to_string(),
     })?;
 
-    schema::run(&home_data_dir).map_err(|e| e.to_string())?;
-    // Lazy upgrade for workspaces whose experiment state predates
-    // EXPERIMENT.md owning it. Idempotent, so it just runs on every open.
+    // Three steps, in this order. The backfill copies each experiment's goal
+    // out of local.db's wake_prompt, and the migration after it deletes that
+    // column — so the schema stops just short, the backfill reads what it
+    // needs, and only then does the schema go the rest of the way. Idempotent,
+    // so it all just runs on every open.
+    schema::run_pre_backfill(&home_data_dir).map_err(|e| e.to_string())?;
     crate::experiments::migrate::run(&path, &home_data_dir);
+    schema::run(&home_data_dir).map_err(|e| e.to_string())?;
 
     // Start the MCP RPC server and write the mcp.json config for CC.
     let socket = crate::mcp::rpc::socket_path(&home_data_dir);

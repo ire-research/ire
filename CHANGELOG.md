@@ -8,7 +8,7 @@ All notable changes to this project are documented in this file.
 - Changes made to `.ire/` outside the app are picked up after each tool call and when the window regains focus (#112)
 
 ### Changed
-- `ire.json` no longer tracks experiments — each run's `EXPERIMENT.md` owns its status and its goal/context. Existing workspaces are upgraded automatically on open (#114)
+- `ire.json` no longer tracks experiments — each run's `EXPERIMENT.md` owns its status and its goal/context. Existing workspaces are upgraded automatically on open, including older runs that never had a folder of their own (#114)
 - Deleting an experiment now removes its whole `.ire/experiments/<NNN>-<slug>/` folder, artifacts included, behind a confirmation dialog (#114)
 
 ### Fixed

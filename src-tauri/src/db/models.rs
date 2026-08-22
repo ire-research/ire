@@ -68,6 +68,22 @@ pub fn experiment_record_dirs(home_data_dir: &Path) -> Result<HashMap<String, St
         .context("experiment_record_dirs")
 }
 
+/// The two fields a synthesized record needs that `ire.json` never carried:
+/// where the run was launched, and the goal/context it was started with.
+/// `None` once those columns are gone or the row was never there.
+pub fn legacy_experiment_context(
+    home_data_dir: &Path,
+    uuid: &str,
+) -> Option<(String, Option<String>)> {
+    let conn = open(home_data_dir).ok()?;
+    conn.query_row(
+        "SELECT working_dir, wake_prompt FROM experiments WHERE uuid = ?1",
+        params![uuid],
+        |r| Ok((r.get(0)?, r.get(1)?)),
+    )
+    .ok()
+}
+
 /// Point an experiment row at its record folder. Used by the lazy backfill.
 pub fn set_experiment_record_dir(home_data_dir: &Path, uuid: &str, record_dir: &str) -> Result<()> {
     let conn = open(home_data_dir)?;

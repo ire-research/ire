@@ -150,7 +150,11 @@ it, so added keys (`tags`, `description`, anything else) and their order are pre
 per OKF §4.1. Watching the records live is tracked separately.
 
 **Migration.** `experiments::migrate` (`src-tauri/src/experiments/migrate.rs`) runs on
-workspace open. Records written before the frontmatter existed are backfilled from
+workspace open, between two schema passes: `schema::run_pre_backfill` stops before the
+migration that drops `wake_prompt`, the backfill copies each experiment's goal out of it,
+and `schema::run` then takes the schema the rest of the way. Experiments that exist only
+in `ire.json` — runs predating the git-tracked folder — are given a record folder of their
+own, numbered in start order, so nothing disappears from the sidebar. Records written before the frontmatter existed are backfilled from
 `local.db` (falling back to the outgoing `ire.json` entry, then to `run_status: unknown`),
 the restated `- **uuid**` / `- **started**` / `- **working dir**` header bullets the
 frontmatter replaces are dropped, `record_dir` is filled in, and `ire.json`'s
