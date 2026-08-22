@@ -25,7 +25,7 @@ Runtime/local artifacts live outside the workspace, under `~/.ire/workspaces/<id
 
 ```
 ~/.ire/workspaces/<name>-<8-hex>/
-  local.db    — chat_sessions + experiments (operational) only
+  local.db    — chat_sessions + experiments (pid/session/tab/record_dir) only
   mcp.json    — MCP server config consumed by the agent
   mcp.sock    — Unix socket for the MCP RPC server
   .lock       — single-instance PID guard

@@ -44,8 +44,8 @@ T3  Agent's response to the user: "Started experiment <uuid>; I'll come back
 T4  Backend monitor thread polls the child every 500ms and tails new log
     lines to the frontend — see Spawn & monitor below.
 T5  Process exits. Backend updates the DB row + `EXPERIMENT.md`, then resumes the
-    same agent session with a wake-up message built from `wake_prompt` +
-    exit code + log tail — see Wake-up below.
+    same agent session with a wake-up message built from the record's
+    `## Goal & context` + exit code + log tail — see Wake-up below.
 T6  Agent reads result files, uses memory.write_short_term for daily notes,
     memory.write_long_term for durable conclusions, and ire.read + ire.edit
     to update focus/notes/ideas if the research direction changed.
@@ -87,9 +87,9 @@ Experiments live in **two** stores, split by ownership rather than duplicated:
 
   **Ownership boundary.** The frontmatter block is exclusively runner-owned and
   atomically rewritten on every status transition. Everything below it — the `# {name}`
-  H1, `## Goal & context` (the `wake_prompt`, which otherwise exists only in
-  `local.db`), `## Command` in a fenced block, and anything an agent or user appends —
-  is never touched by a transition rewrite. The H1 is kept even though `title` is in
+  H1, `## Goal & context` (the `wake_prompt` the agent passed to `experiment.start`,
+  kept nowhere else), `## Command` in a fenced block, and anything an agent or user
+  appends — is never touched by a transition rewrite. The H1 is kept even though `title` is in
   frontmatter, since GitHub's markdown renderer does not render YAML specially. The rest
   of the folder is the run's own home for scripts, result files, and notes.
 
@@ -113,7 +113,6 @@ Experiments live in **two** stores, split by ownership rather than duplicated:
     started_at TEXT NOT NULL,
     ended_at TEXT,
     pid INTEGER,
-    wake_prompt TEXT,
     session_id TEXT NOT NULL,         -- chat session_uuid whose resume id the wake-up uses
     tab_id TEXT NOT NULL DEFAULT 'main',
     record_dir TEXT                   -- workspace-relative folder holding EXPERIMENT.md
@@ -124,7 +123,9 @@ Experiments live in **two** stores, split by ownership rather than duplicated:
   ```
 
 `local.db` holds the fields that have no reason to be shared or committed (`pid`,
-`session_id`, `tab_id`, `wake_prompt`, `record_dir`). Its `status`/`exit_code`/`ended_at`
+`session_id`, `tab_id`, `record_dir`). The goal/context is **not** among them: it is
+read back out of the record's `## Goal & context` at wake-up time, so it survives a
+clone or a cleared database, and an edit to that section is what the agent is handed. Its `status`/`exit_code`/`ended_at`
 columns are written first on a transition and then superseded by the file: `experiments::row`
 (`src-tauri/src/experiments/mod.rs`) composes the row the UI sees by overlaying what
 `EXPERIMENT.md` says on top of the database row, so the two can never disagree about how a
@@ -260,7 +261,8 @@ that started the experiment:
 
 1. Reads the last 8KB of `stdout.log`/`stderr.log` (`tail_file`) and composes the
    wake-up message from the seed template `src-tauri/assets/prompts/experiment_wakeup.md`
-   (embeds `wake_prompt`, `uuid`, `exit_code`, the wiki folder path, and both log tails),
+   (embeds the goal read back from the record's `## Goal & context`, `uuid`, `exit_code`,
+   the wiki folder path, and both log tails),
    pointing the agent at `EXPERIMENT.md` and at that folder for result files. On exit code 126/127
    (permission denied / command not found) that template tells the agent not to retry
    `experiment.start` — report to the user and stop instead.

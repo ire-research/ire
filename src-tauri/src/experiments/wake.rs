@@ -20,7 +20,6 @@ pub struct FireWakeupArgs<'a> {
     pub provider: &'a str,
     pub model: &'a str,
     pub effort: Option<&'a str>,
-    pub wake_prompt: &'a str,
     pub record_dir: &'a str,
     pub app: &'a AppHandle,
     pub session_manager: &'a SessionManager,
@@ -36,7 +35,6 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         provider,
         model,
         effort,
-        wake_prompt,
         record_dir,
         app,
         session_manager,
@@ -59,8 +57,19 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
     let stdout_tail = tail_file(&exp_dir.join("stdout.log"), 8192);
     let stderr_tail = tail_file(&exp_dir.join("stderr.log"), 8192);
 
+    // The goal comes back out of the record, the only place it is kept. A run
+    // whose record has gone still wakes the agent, just without its context.
+    let goal = super::record::read(workspace_root, record_dir)
+        .map(|r| r.goal)
+        .unwrap_or_default();
+    let goal = if goal.is_empty() {
+        format!("Experiment {uuid} finished. Its goal and context are in {record_dir}/EXPERIMENT.md.")
+    } else {
+        goal
+    };
+
     let message = prompts::experiment_wakeup(WakeupArgs {
-        wake_prompt,
+        wake_prompt: &goal,
         uuid,
         exit_code,
         record_dir,

@@ -70,6 +70,6 @@ The central file is `ire.json`:
 When asked to run an experiment:
 1. Plan the run and get user agreement.
 2. Verify the setup first (e.g., binary exists, paths resolve) to avoid cluttering with failed experiments.
-3. Call `experiment.start` with `name`, `command`, and a `wake_prompt`. The `wake_prompt` is given back to you when the process finishes — include all relevant context so you know exactly what you were testing and what to do with the results.
+3. Call `experiment.start` with `name`, `command`, and a `wake_prompt`. The `wake_prompt` is written into the record's `## Goal & context` and read back to you when the process finishes — include all relevant context so you know exactly what you were testing and what to do with the results. Editing that section changes what you are handed on wake-up.
 4. End your turn — do **not** wait. IRE resumes this same agent session when the process exits.
-5. On wake-up: read the logs from the `wake_prompt` context (or `experiment.tail_logs`), then proceed accordingly (e.g., report to the user, update ire.json, update memories, propose next steps or whatever action you deem appropriate based on the results).
+5. On wake-up: read the logs from the goal/context you are given (or `experiment.tail_logs`), then proceed accordingly (e.g., report to the user, append findings to the record's body, update memories, propose next steps or whatever action you deem appropriate based on the results).

@@ -78,6 +78,7 @@ fn upgrade(
                 .unwrap_or_else(|| uuid.clone())
         }),
         command: String::new(), // read back from the body, never from the block
+        goal: String::new(),    // likewise: it stays in the body's Goal & context
         status: row
             .as_ref()
             .map(|r| r.status.clone())
@@ -345,7 +346,7 @@ mod tests {
         let uuid = "11111111-2222-3333-4444-555555555555";
         crate::db::models::insert_experiment(
             home.path(), uuid, "LR ablation", "python run.py", "/tmp/project",
-            "wake", "session", "main", "2026-08-11T10:00:00+02:00", "",
+            "session", "main", "2026-08-11T10:00:00+02:00", "",
         )
         .unwrap();
 

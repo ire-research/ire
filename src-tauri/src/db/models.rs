@@ -28,7 +28,6 @@ pub fn insert_experiment(
     name: &str,
     command: &str,
     working_dir: &str,
-    wake_prompt: &str,
     session_id: &str,
     tab_id: &str,
     started_at: &str,
@@ -36,9 +35,9 @@ pub fn insert_experiment(
 ) -> Result<()> {
     let conn = open(home_data_dir)?;
     conn.execute(
-        "INSERT INTO experiments (uuid, name, command, working_dir, status, started_at, wake_prompt, session_id, tab_id, record_dir) \
-         VALUES (?1, ?2, ?3, ?4, 'running', ?5, ?6, ?7, ?8, ?9)",
-        params![uuid, name, command, working_dir, started_at, wake_prompt, session_id, tab_id, record_dir],
+        "INSERT INTO experiments (uuid, name, command, working_dir, status, started_at, session_id, tab_id, record_dir) \
+         VALUES (?1, ?2, ?3, ?4, 'running', ?5, ?6, ?7, ?8)",
+        params![uuid, name, command, working_dir, started_at, session_id, tab_id, record_dir],
     )?;
     Ok(())
 }

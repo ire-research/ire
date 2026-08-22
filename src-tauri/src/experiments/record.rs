@@ -67,6 +67,14 @@ pub fn remove(workspace_root: &Path, rel_dir: &str) {
     }
 }
 
+/// The numeric prefix a record folder was allocated, for ordering. A folder
+/// that doesn't carry one sorts oldest.
+fn prefix_of(name: &str) -> u32 {
+    name.split_once('-')
+        .and_then(|(prefix, _)| prefix.parse().ok())
+        .unwrap_or(0)
+}
+
 /// One past the highest `NNN-` prefix present. Gaps are left alone: numbering
 /// only moves forward, so deleting a folder never reissues its number.
 fn next_prefix(root: &Path) -> u32 {
@@ -111,6 +119,9 @@ pub struct Record {
     pub uuid: String,
     pub name: String,
     pub command: String,
+    /// Goal and context, from the body's `## Goal & context` section. This is
+    /// the wake-up prompt: it is not stored anywhere else.
+    pub goal: String,
     pub status: String,
     pub exit_code: Option<i64>,
     pub started_at: String,
@@ -136,8 +147,10 @@ pub fn list(workspace_root: &Path) -> Vec<(String, Record)> {
         .filter(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false))
         .filter_map(|e| e.file_name().to_str().map(str::to_string))
         .collect();
-    // Folder prefixes are allocated in start order, so name order is time order.
-    dirs.sort_unstable_by(|a, b| b.cmp(a));
+    // Prefixes are allocated in start order, so prefix order is time order.
+    // Sorted numerically, not as strings: past 999 the width changes and
+    // "1000" sorts before "999".
+    dirs.sort_unstable_by(|a, b| prefix_of(b).cmp(&prefix_of(a)).then_with(|| b.cmp(a)));
     dirs.into_iter()
         .filter_map(|name| {
             let rel = format!("{DIR}/{name}");
@@ -253,6 +266,7 @@ fn parse_record(content: &str) -> Option<Record> {
         uuid: get("uuid"),
         name: get("title"),
         command: body_command(content),
+        goal: body_section(content, "## Goal & context"),
         status: get("run_status"),
         exit_code: fm.get("exit_code").and_then(okf::yaml::Value::as_int),
         started_at: get("started_at"),
@@ -267,6 +281,19 @@ fn parse_record(content: &str) -> Option<Record> {
 /// Scans the body only, matches the heading exactly, and closes on a fence of
 /// the same backtick run it opened with. A record whose body has been edited
 /// past recognition yields an empty command rather than a swallowed document.
+/// The prose under a `## ` heading, up to the next heading of any level.
+fn body_section(content: &str, heading: &str) -> String {
+    let body = frontmatter::parse(content).1;
+    body.lines()
+        .skip_while(|l| l.trim_end() != heading)
+        .skip(1)
+        .take_while(|l| !l.trim_start().starts_with('#'))
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
 fn body_command(content: &str) -> String {
     let body = frontmatter::parse(content).1;
     let mut lines = body
@@ -300,6 +327,7 @@ fn render(args: &RecordArgs<'_>) -> String {
         uuid: args.uuid.to_string(),
         name: args.name.trim().to_string(),
         command: args.command.to_string(),
+        goal: args.wake_prompt.trim().to_string(),
         status: "running".to_string(),
         exit_code: None,
         started_at: args.started_at.to_string(),
@@ -642,5 +670,76 @@ mod tests {
         a.wake_prompt = "Read the ## Command section when done.";
         let dir = create(tmp.path(), a).unwrap();
         assert_eq!(read(tmp.path(), &dir).unwrap().command, "python run.py");
+    }
+
+    #[test]
+    fn the_goal_is_read_back_out_of_the_body() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = create(tmp.path(), args("LR ablation", "python run.py")).unwrap();
+        assert_eq!(
+            read(tmp.path(), &dir).unwrap().goal,
+            "Check whether lr=1e-4 beats the baseline."
+        );
+    }
+
+    #[test]
+    fn an_edited_goal_is_what_the_wake_up_gets() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = create(tmp.path(), args("LR ablation", "python run.py")).unwrap();
+        let path = tmp.path().join(&dir).join(FILE);
+
+        // The body belongs to whoever edits it, so a revised goal is deliberate.
+        let content = fs::read_to_string(&path).unwrap();
+        fs::write(
+            &path,
+            content.replace(
+                "Check whether lr=1e-4 beats the baseline.",
+                "Revised: compare against the 1e-3 run too.\n\nSecond paragraph.",
+            ),
+        )
+        .unwrap();
+
+        let rec = read(tmp.path(), &dir).unwrap();
+        assert_eq!(
+            rec.goal,
+            "Revised: compare against the 1e-3 run too.\n\nSecond paragraph."
+        );
+        // A status transition must not disturb it.
+        set_status(tmp.path(), &dir, "completed", Some(0), Some("t1")).unwrap();
+        assert!(read(tmp.path(), &dir).unwrap().goal.starts_with("Revised:"));
+    }
+
+    #[test]
+    fn the_goal_stops_at_the_next_heading() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = create(tmp.path(), args("LR ablation", "python run.py")).unwrap();
+        let goal = read(tmp.path(), &dir).unwrap().goal;
+        assert!(!goal.contains("## Command"), "{goal:?}");
+        assert!(!goal.contains("python run.py"), "{goal:?}");
+    }
+
+    #[test]
+    fn ordering_survives_the_fourth_digit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path().join(DIR);
+        // Past 999 the prefix widens, and "1000" sorts before "999" as a string.
+        for (prefix, slug) in [(998, "early"), (999, "later"), (1000, "latest")] {
+            let dir = root.join(format!("{prefix:03}-{slug}"));
+            fs::create_dir_all(&dir).unwrap();
+            let record = Record {
+                uuid: format!("u{prefix}"),
+                name: slug.to_string(),
+                command: String::new(),
+                goal: String::new(),
+                status: "completed".to_string(),
+                exit_code: Some(0),
+                started_at: "t".to_string(),
+                ended_at: None,
+            };
+            backfill(tmp.path(), &format!("{DIR}/{prefix:03}-{slug}"), &record, "/w", "\n# x\n")
+                .unwrap();
+        }
+        let names: Vec<String> = list(tmp.path()).into_iter().map(|(_, r)| r.name).collect();
+        assert_eq!(names, ["latest", "later", "early"]);
     }
 }

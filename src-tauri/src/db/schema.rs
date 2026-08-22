@@ -7,6 +7,8 @@ use rusqlite_migration::{Migrations, M};
 /// Versioned schema for `~/.ire/workspaces/<id>/local.db`, tracked via SQLite's
 /// `user_version` (see the `rusqlite_migration` crate). The two tables hold
 /// local-only operational state: detached experiment rows and chat sessions.
+/// An experiment's goal/context is not among them — it lives only in its
+/// `EXPERIMENT.md`, which is what survives a clone or a cleared database.
 /// (Resources are file-based; the git-tracked experiment record lives in
 /// `.ire/experiments/<NNN>-<slug>/EXPERIMENT.md`, which owns status.)
 ///
@@ -73,6 +75,8 @@ fn migrations() -> Migrations<'static> {
         .comment("move resume ids off fixed per-provider columns into chat_resume_ids(session_uuid, provider)"),
         M::up("ALTER TABLE experiments ADD COLUMN record_dir TEXT;")
             .comment("remember each experiment's git-tracked record folder so status transitions can find it"),
+        M::up("ALTER TABLE experiments DROP COLUMN wake_prompt;")
+            .comment("drop wake_prompt: EXPERIMENT.md's Goal & context section is the only copy"),
     ])
 }
 
@@ -173,5 +177,20 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         run(tmp.path()).unwrap();
         run(tmp.path()).unwrap(); // re-running an already-latest DB must not error
+    }
+
+    #[test]
+    fn wake_prompt_is_gone_after_migrating() {
+        let tmp = tempfile::tempdir().unwrap();
+        run(tmp.path()).unwrap();
+        let conn = Connection::open(tmp.path().join("local.db")).unwrap();
+        let has_column: bool = conn
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM pragma_table_info('experiments') WHERE name = 'wake_prompt')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(!has_column, "wake_prompt survived the migration");
     }
 }
