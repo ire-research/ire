@@ -88,20 +88,24 @@ pub fn experiment_delete(
 ) -> Result<(), String> {
     let workspace_path = workspace_path(&active)?;
     let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
-    let row = db::get_experiment(&home_data_dir, &uuid)
-        .map_err(|e| e.to_string())?
+    // Composed, not read straight from the DB: the guard has to read the state
+    // the sidebar shows, and on a workspace cloned from git the run exists only
+    // as a record.
+    let row = crate::experiments::row_or_record(&workspace_path, &home_data_dir, &uuid)
         .ok_or_else(|| format!("experiment {uuid} not found"))?;
     if row.status == "running" || row.status == "starting" {
         return Err(format!("experiment {uuid} is still {}", row.status));
     }
 
+    let record = crate::experiments::record_dir(&workspace_path, &home_data_dir, &uuid);
     let log_dir = workspace_path.join(".ire/cache/experiments").join(&uuid);
     if log_dir.exists() {
         fs::remove_dir_all(&log_dir).map_err(|e| e.to_string())?;
     }
-    if let Ok(Some(dir)) = db::get_experiment_record_dir(&home_data_dir, &uuid) {
+    if let Some(dir) = record {
         crate::experiments::record::remove(&workspace_path, &dir);
     }
+    // Tolerates a missing row: a cloned workspace has none to delete.
     db::delete_experiment(&home_data_dir, &uuid).map_err(|e| e.to_string())?;
     events::emit_experiment_deleted(&app, &uuid);
     Ok(())
