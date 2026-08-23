@@ -31,7 +31,8 @@ pub fn experiment_list(
 ) -> Result<Vec<ExperimentRow>, String> {
     let workspace_path = workspace_path(&active)?;
     let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
-    db::list_experiments(&home_data_dir, limit.unwrap_or(50)).map_err(|e| e.to_string())
+    crate::experiments::list(&workspace_path, &home_data_dir, limit.unwrap_or(50))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -59,21 +60,23 @@ pub fn experiment_cancel(
     let workspace_path = workspace_path(&active)?;
     let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
 
-    let row = db::get_experiment(&home_data_dir, &uuid)
-        .map_err(|e| e.to_string())?
+    let row = crate::experiments::row_or_record(&workspace_path, &home_data_dir, &uuid)
         .ok_or_else(|| format!("experiment {uuid} not found"))?;
 
+    // A run with no local row was started on another machine: nothing here to
+    // signal, but the record can still be marked.
     if let Some(pid) = row.pid {
         kill_process_group(pid as u32);
     }
 
-    db::update_experiment_completed(&home_data_dir, &uuid, "cancelled", None)
-        .map_err(|e| e.to_string())?;
-
-    if let Ok(Some(row)) = db::get_experiment(&home_data_dir, &uuid) {
-        crate::experiments::sync_to_ire(&workspace_path, &row);
-        events::emit_experiment_changed(&app, events::EventSource::Mutation, &row);
-    }
+    crate::experiments::transition(
+        &app,
+        &workspace_path,
+        &home_data_dir,
+        &uuid,
+        "cancelled",
+        None,
+    );
     Ok(())
 }
 
@@ -85,19 +88,25 @@ pub fn experiment_delete(
 ) -> Result<(), String> {
     let workspace_path = workspace_path(&active)?;
     let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
-    let row = db::get_experiment(&home_data_dir, &uuid)
-        .map_err(|e| e.to_string())?
+    // Composed, not read straight from the DB: the guard has to read the state
+    // the sidebar shows, and on a workspace cloned from git the run exists only
+    // as a record.
+    let row = crate::experiments::row_or_record(&workspace_path, &home_data_dir, &uuid)
         .ok_or_else(|| format!("experiment {uuid} not found"))?;
     if row.status == "running" || row.status == "starting" {
         return Err(format!("experiment {uuid} is still {}", row.status));
     }
 
+    let record = crate::experiments::record_dir(&workspace_path, &home_data_dir, &uuid);
     let log_dir = workspace_path.join(".ire/cache/experiments").join(&uuid);
     if log_dir.exists() {
         fs::remove_dir_all(&log_dir).map_err(|e| e.to_string())?;
     }
+    if let Some(dir) = record {
+        crate::experiments::record::remove(&workspace_path, &dir);
+    }
+    // Tolerates a missing row: a cloned workspace has none to delete.
     db::delete_experiment(&home_data_dir, &uuid).map_err(|e| e.to_string())?;
-    crate::experiments::remove_from_ire(&workspace_path, &uuid);
     events::emit_experiment_deleted(&app, &uuid);
     Ok(())
 }
@@ -112,10 +121,13 @@ pub fn experiment_rename(
     let workspace_path = workspace_path(&active)?;
     let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
     db::rename_experiment(&home_data_dir, &uuid, &name).map_err(|e| e.to_string())?;
-    if let Ok(Some(row)) = db::get_experiment(&home_data_dir, &uuid) {
-        crate::experiments::sync_to_ire(&workspace_path, &row);
-        events::emit_experiment_changed(&app, events::EventSource::Mutation, &row);
-    }
+    // The record is the source of truth for the title, so failing to write it
+    // is a failed rename — not a warning behind a silent no-op.
+    let dir = crate::experiments::record_dir(&workspace_path, &home_data_dir, &uuid)
+        .ok_or_else(|| format!("experiment {uuid} not found"))?;
+    crate::experiments::record::set_title(&workspace_path, &dir, &name)
+        .map_err(|e| e.to_string())?;
+    crate::experiments::emit_changed(&app, &workspace_path, &home_data_dir, &uuid);
     Ok(())
 }
 

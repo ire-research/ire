@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -33,19 +32,6 @@ pub struct IreIdea {
     pub text: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct IreExperiment {
-    pub uuid: String,
-    pub name: String,
-    pub command: String,
-    pub status: String,
-    pub started_at: String,
-    #[serde(default)]
-    pub ended_at: Option<String>,
-    #[serde(default)]
-    pub exit_code: Option<i64>,
-}
-
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct IreContent {
     #[serde(default)]
@@ -54,12 +40,11 @@ pub struct IreContent {
     pub focus: IreFocus,
     #[serde(default)]
     pub ideas: Vec<IreIdea>,
-    #[serde(default)]
-    pub experiments: Vec<IreExperiment>,
 }
 
-/// The state record rooted at `.ire/`. Owns `ire.json` (notes/focus/ideas/
-/// experiments) and the file-based `resources/` tree.
+/// The state record rooted at `.ire/`. Owns `ire.json` (notes/focus/ideas)
+/// and the file-based `resources/` tree. Experiment state is not here: it
+/// lives in each run's own `EXPERIMENT.md`.
 pub struct IreStore {
     pub ire_dir: PathBuf,
     pub resources_dir: PathBuf,
@@ -80,12 +65,12 @@ impl IreStore {
     }
 
     /// Read a resource markdown file relative to `.ire/resources/`. Returns content and parsed frontmatter.
-    pub fn read_resource(&self, rel_path: &str) -> Result<(String, Option<HashMap<String, String>>)> {
+    pub fn read_resource(&self, rel_path: &str) -> Result<(String, Option<serde_json::Value>)> {
         let path = self.ire_dir.join(rel_path);
         let content =
             fs::read_to_string(&path).with_context(|| format!("read {}", path.display()))?;
         let (fm, _) = frontmatter::parse(&content);
-        Ok((content, fm))
+        Ok((content, fm.as_ref().map(frontmatter::json)))
     }
 
     // ── ire.json ────────────────────────────────────────────────────────────
@@ -130,26 +115,6 @@ impl IreStore {
         self.persist(&content)?;
         emit_sections(app, &content);
         Ok(())
-    }
-
-    /// Insert or replace one experiment in `ire.json` (matched by uuid) without
-    /// emitting section events — `experiment-changed` is owned by the runner.
-    pub fn upsert_experiment(&self, exp: IreExperiment) -> Result<()> {
-        let _guard = IRE_LOCK.lock().unwrap();
-        let mut content = self.read_ire()?;
-        match content.experiments.iter_mut().find(|e| e.uuid == exp.uuid) {
-            Some(slot) => *slot = exp,
-            None => content.experiments.insert(0, exp),
-        }
-        self.persist(&content)
-    }
-
-    /// Remove one experiment from `ire.json` by uuid.
-    pub fn remove_experiment(&self, uuid: &str) -> Result<()> {
-        let _guard = IRE_LOCK.lock().unwrap();
-        let mut content = self.read_ire()?;
-        content.experiments.retain(|e| e.uuid != uuid);
-        self.persist(&content)
     }
 
     fn persist(&self, content: &IreContent) -> Result<()> {
@@ -214,7 +179,10 @@ impl IreStore {
             let Ok(content) = fs::read_to_string(&path) else {
                 continue;
             };
-            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+            let name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or_default();
             let rel = format!("resources/{name}");
             let (title, sources) = resource_meta(&content, &rel);
             out.push(serde_json::json!({ "path": rel, "title": title, "sources": sources }));
@@ -293,8 +261,7 @@ pub(super) fn resource_meta(content: &str, rel_path: &str) -> (String, Vec<Strin
     let (fm, body) = frontmatter::parse(content);
     let title = fm
         .as_ref()
-        .and_then(|m| m.get("title"))
-        .map(|t| unquote(t))
+        .and_then(|m| frontmatter::field(m, "title"))
         .filter(|t| !t.is_empty())
         .or_else(|| {
             body.lines()
@@ -310,29 +277,9 @@ pub(super) fn resource_meta(content: &str, rel_path: &str) -> (String, Vec<Strin
         });
     let sources = fm
         .as_ref()
-        .and_then(|m| m.get("sources"))
-        .map(|s| parse_sources(s))
+        .map(|m| frontmatter::string_list(m, "sources"))
         .unwrap_or_default();
     (title, sources)
-}
-
-/// Frontmatter list values are stored JSON-encoded by `frontmatter::parse`;
-/// fall back to a single scalar source.
-fn parse_sources(value: &str) -> Vec<String> {
-    if let Ok(v) = serde_json::from_str::<Vec<String>>(value.trim()) {
-        return v;
-    }
-    let t = unquote(value);
-    if t.is_empty() {
-        vec![]
-    } else {
-        vec![t]
-    }
-}
-
-/// Strip surrounding double quotes from a scalar frontmatter value.
-fn unquote(value: &str) -> String {
-    value.trim().trim_matches('"').trim().to_string()
 }
 
 pub(crate) fn atomic_write(path: &Path, content: &str) -> Result<()> {

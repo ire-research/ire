@@ -43,9 +43,9 @@ T3  Agent's response to the user: "Started experiment <uuid>; I'll come back
     when it's done." Then this agent turn ENDS naturally.
 T4  Backend monitor thread polls the child every 500ms and tails new log
     lines to the frontend — see Spawn & monitor below.
-T5  Process exits. Backend updates the DB row + `ire.json`, then resumes the
-    same agent session with a wake-up message built from `wake_prompt` +
-    exit code + log tail — see Wake-up below.
+T5  Process exits. Backend updates the DB row + `EXPERIMENT.md`, then resumes the
+    same agent session with a wake-up message built from the record's
+    `## Goal & context` + exit code + log tail — see Wake-up below.
 T6  Agent reads result files, uses memory.write_short_term for daily notes,
     memory.write_long_term for durable conclusions, and ire.read + ire.edit
     to update focus/notes/ideas if the research direction changed.
@@ -60,14 +60,39 @@ Rendering of the running/finished experiment in the UI is covered in
 
 ## Data model
 
-Experiments are **duplicated by design** across three stores:
+Experiments live in **two** stores, split by ownership rather than duplicated:
 
-- **`.ire/experiments/<NNN>-<slug>/`** (git-tracked, the durable human-readable record)
-  — created on start by `experiments::record` (`src-tauri/src/experiments/record.rs`).
-  `EXPERIMENT.md` holds the goal and context (the `wake_prompt`, which otherwise exists
-  only in `local.db`) plus `uuid`, `started_at`, `working_dir`, and the command in a
-  fenced block. The rest of the folder is the run's own home for scripts, result files,
-  and notes.
+- **`.ire/experiments/<NNN>-<slug>/EXPERIMENT.md`** (git-tracked) — the single source of
+  truth for what ran and how it ended, created on start by `experiments::record`
+  (`src-tauri/src/experiments/record.rs`). It is an
+  [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+  concept: a YAML frontmatter block over a markdown body.
+
+  ```yaml
+  ---
+  type: Experiment
+  title: LR ablation
+  uuid: 11111111-2222-3333-4444-555555555555
+  started_at: 2026-08-11T10:00:00+02:00
+  working_dir: /tmp/project
+  run_status: running          # running | completed | failed | cancelled | unknown
+  exit_code: null
+  ended_at: null
+  ---
+  ```
+
+  The run state is `run_status`, **not** `status`: OKF §5.4 reserves `status` for a
+  document's lifecycle (`draft | stable | deprecated`), and one key cannot carry both
+  meanings once other concept types share the bundle.
+
+  **Ownership boundary.** The frontmatter block is exclusively runner-owned and
+  atomically rewritten on every status transition. Everything below it — the `# {name}`
+  H1, `## Goal & context` (the `wake_prompt` the agent passed to `experiment.start`,
+  kept nowhere else), `## Command` in a fenced block, and anything an agent or user
+  appends — is never touched by a transition rewrite. The H1 is kept even though `title` is in
+  frontmatter, since GitHub's markdown renderer does not render YAML specially. The file
+  ends at the command; the rest of the folder is the run's own home for scripts, result
+  files, and notes.
 
   `<NNN>` is a zero-padded three-digit prefix, allocated as one past the highest already
   present — gaps from deleted folders are never reissued. Allocation and folder creation
@@ -76,16 +101,8 @@ Experiments are **duplicated by design** across three stores:
   run of characters collapsed to `-`, capped at 60 characters (`experiment` if nothing
   survives). The folder is created before the subprocess spawns and removed again if the
   DB insert or the spawn fails, so a folder implies a run that actually started.
-- **`ire.json`** (git-tracked, the shareable display subset) — `IreExperiment` in
-  `src-tauri/src/ire/store.rs`:
-  ```json
-  {
-    "uuid": "…", "name": "…", "command": "…", "status": "running",
-    "started_at": "RFC3339", "ended_at": null, "exit_code": null
-  }
-  ```
-- **`local.db` `experiments` table** (SQLite, `~/.ire/workspaces/<id>/local.db`, the
-  operational superset) — `src-tauri/src/db/schema.rs`:
+- **`local.db` `experiments` table** (SQLite, `~/.ire/workspaces/<id>/local.db`, purely
+  ephemeral operational state) — `src-tauri/src/db/schema.rs`:
   ```sql
   CREATE TABLE experiments (
     uuid TEXT PRIMARY KEY,
@@ -97,22 +114,53 @@ Experiments are **duplicated by design** across three stores:
     started_at TEXT NOT NULL,
     ended_at TEXT,
     pid INTEGER,
-    wake_prompt TEXT,
     session_id TEXT NOT NULL,         -- chat session_uuid whose resume id the wake-up uses
-    tab_id TEXT NOT NULL DEFAULT 'main'
+    tab_id TEXT NOT NULL DEFAULT 'main',
+    record_dir TEXT                   -- workspace-relative folder holding EXPERIMENT.md
   );
 
   CREATE INDEX idx_experiments_status ON experiments(status);
   CREATE INDEX idx_experiments_started ON experiments(started_at DESC);
   ```
 
-`local.db` retains the operational fields (`pid`, `working_dir`, `wake_prompt`,
-`session_id`, `tab_id`) that have no reason to be shared/committed; `ire.json` keeps
-only what's meaningful to read on a fresh clone (logs and operational data are absent
-there). `experiments::sync_to_ire` (`src-tauri/src/experiments/mod.rs`) mirrors a DB
-row into `ire.json` on every state transition; `remove_from_ire` does the same for
-deletion. Neither of these emits a `workspace-event` — that's the caller's job (see
-[Spawn & monitor](#spawn--monitor)).
+`local.db` holds the fields that have no reason to be shared or committed (`pid`,
+`session_id`, `tab_id`, `record_dir`). The goal/context is **not** among them: it is
+read back out of the record's `## Goal & context` at wake-up time, so it survives a
+clone or a cleared database, and an edit to that section is what the agent is handed. Its `status`/`exit_code`/`ended_at`
+columns are written first on a transition and then superseded by the file: `experiments::row`
+(`src-tauri/src/experiments/mod.rs`) composes the row the UI sees by overlaying what
+`EXPERIMENT.md` says on top of the database row, so the two can never disagree about how a
+run ended.
+
+**Write path.** `experiments::transition` updates the DB row, rewrites the frontmatter,
+then **re-reads the file** and emits `experiment-changed` from what was actually
+persisted — never from in-process state assembled separately. That read-back is the
+one-source-of-truth guarantee: the event cannot say something the file does not.
+
+**`reconcile()` is unchanged** — experiment records are not watched. Only the
+*frontmatter* is runner-owned; the body and the rest of the folder are explicitly not,
+so both can and do change outside the app (an agent appending findings on a wake-up, a
+user editing notes, a run dropping result files in). Nothing detects those edits live:
+they surface on the next workspace open, when hydrate re-reads every record.
+
+That is a known gap, not a guarantee. What makes it tolerable is that the fields the UI
+renders — `run_status`, `exit_code`, `ended_at` — are the ones only the runner writes,
+so a stale view can never show the wrong outcome. Edits made anywhere else survive a
+transition: `rewrite` parses the existing block and sets only the runner-owned keys on
+it, so added keys (`tags`, `description`, anything else) and their order are preserved,
+per OKF §4.1. Watching the records live is tracked separately.
+
+**Migration.** `experiments::migrate` (`src-tauri/src/experiments/migrate.rs`) runs on
+workspace open, between two schema passes: `schema::run_pre_backfill` stops before the
+migration that drops `wake_prompt`, the backfill copies each experiment's goal out of it,
+and `schema::run` then takes the schema the rest of the way. Experiments that exist only
+in `ire.json` — runs predating the git-tracked folder — are given a record folder of their
+own, numbered in start order, so nothing disappears from the sidebar. Records written before the frontmatter existed are backfilled from
+`local.db` (falling back to the outgoing `ire.json` entry, then to `run_status: unknown`),
+the restated `- **uuid**` / `- **started**` / `- **working dir**` header bullets the
+frontmatter replaces are dropped, `record_dir` is filled in, and `ire.json`'s
+`experiments` array is removed from the file for good. It is idempotent and best-effort:
+a workspace it cannot upgrade still opens, and the next open tries again.
 
 **Frontend type** (`src/types.ts`):
 ```ts
@@ -125,8 +173,8 @@ interface ExperimentRow {
 ```
 `"starting"` is frontend-only — it covers the gap between the agent's tool call
 returning and the `experiment-starting` event linking a `uuid`/`pid` to the pending UI
-card (see [Frontend & UI](#frontend--ui)); it never appears in the DB or `ire.json`,
-whose `status` starts directly at `"running"`.
+card (see [Frontend & UI](#frontend--ui)); it never appears in the DB or in
+`EXPERIMENT.md`, whose run state starts directly at `"running"`.
 
 Logs are not part of any of the three: stdout/stderr stream to
 `.ire/cache/experiments/<uuid>/{stdout,stderr}.log` (gitignored), read on demand by
@@ -134,9 +182,8 @@ Logs are not part of any of the three: stdout/stderr stream to
 record is git-tracked is a deliberate split — see
 [experiment-lifecycle-v2.md](../proposals/experiment-lifecycle-v2.md).
 
-`started_at` is generated once in `start_experiment` and passed to
-`db::insert_experiment`, so the DB row, the `ire.json` mirror, and `EXPERIMENT.md` all
-carry the same timestamp.
+`started_at` is generated once in `start_experiment` and passed to both
+`db::insert_experiment` and `EXPERIMENT.md`, so they carry the same timestamp.
 
 ---
 
@@ -157,7 +204,7 @@ When asked to run an experiment:
    to do with the results.
 4. End your turn — do **not** wait. IRE resumes this same agent session when the process exits.
 5. On wake-up: read the logs from the `wake_prompt` context (or `experiment.tail_logs`), then proceed accordingly
-   (e.g., report to the user, update ire.json, update memories, propose next steps or whatever action you deem
+   (e.g., report to the user, append findings to the experiment's EXPERIMENT.md body, update memories, propose next steps or whatever action you deem
    appropriate based on the results).
 ```
 
@@ -173,7 +220,7 @@ general MCP catalog format in [mcp.md — Tool Catalog](mcp.md#tool-catalog)):
 `experiment.start` requires an active agent turn to attach to — the MCP handler
 (`src-tauri/src/mcp/rpc.rs`) rejects the call with "no active agent session" if none is
 running. There is no `experiment.list` MCP tool; the agent reads experiment history
-from `ire.json` via `ire.read` instead.
+by reading `.ire/experiments/<NNN>-<slug>/EXPERIMENT.md` instead.
 
 ---
 
@@ -193,7 +240,7 @@ from `ire.json` via `ire.read` instead.
 3. Records the `pid` (`db::update_experiment_pid`), emits `experiment-status`
    (`{ uuid, status: "running" }`) and `experiment-starting` (`{ tab_id, uuid, pid }` —
    the bridge event that lets the frontend link this `uuid` to the pending
-   `experiment_start` tool card), then syncs the row to `ire.json` and emits
+   `experiment_start` tool card), then emits
    `experiment-changed`.
 4. Spawns a background `monitor` task (via `spawn_blocking`) that loops every 500ms:
    tails any new bytes written to `stdout.log`/`stderr.log` since the last read,
@@ -206,7 +253,7 @@ On exit, the monitor:
   a `try_wait` error, which is also logged and recorded as exit code `-1`) via
   `db::update_experiment_completed`.
 - Emits `experiment-status` with the final status/exit code, syncs the row to
-  `ire.json`, emits `experiment-changed`.
+  `EXPERIMENT.md`, emits `experiment-changed` from the re-read file.
 - Calls `experiments::wake::fire_wakeup` synchronously, from the same monitor thread —
   see [Wake-up](#wake-up).
 
@@ -219,7 +266,8 @@ that started the experiment:
 
 1. Reads the last 8KB of `stdout.log`/`stderr.log` (`tail_file`) and composes the
    wake-up message from the seed template `src-tauri/assets/prompts/experiment_wakeup.md`
-   (embeds `wake_prompt`, `uuid`, `exit_code`, the wiki folder path, and both log tails),
+   (embeds the goal read back from the record's `## Goal & context`, `uuid`, `exit_code`,
+   the wiki folder path, and both log tails),
    pointing the agent at `EXPERIMENT.md` and at that folder for result files. On exit code 126/127
    (permission denied / command not found) that template tells the agent not to retry
    `experiment.start` — report to the user and stop instead.
@@ -255,18 +303,24 @@ All three are Tauri commands in `src-tauri/src/commands/experiments.rs`, driven 
 UI (not exposed to the agent via MCP):
 
 - **`experiment_cancel({ uuid })`** — sends `SIGTERM` to the whole process group
-  (`killpg` on Unix; `taskkill /F /T /PID` on Windows), marks the DB row
-  `status="cancelled"` immediately (not via the monitor loop), syncs to `ire.json`, and
+  (`killpg` on Unix; `taskkill /F /T /PID` on Windows), marks the run cancelled
+  immediately (not via the monitor loop) in both the DB row and `EXPERIMENT.md`, and
   emits `experiment-changed`. Note the monitor thread spawned in `start_experiment` is
   still running and will separately observe the child exit and call `fire_wakeup` as
-  usual — so the agent still gets woken up, now seeing `status: "cancelled"`.
+  usual — so the agent still gets woken up, still seeing `run_status: cancelled`. That
+  second transition reports a signalled process as `failed` with exit `-1`; it is
+  discarded because `transition` refuses to move a run that already reached a terminal
+  state, which is what keeps the cancellation in git history.
 - **`experiment_delete({ uuid })`** — rejected while `status` is `"running"` or
   `"starting"`. Otherwise removes the `.ire/cache/experiments/<uuid>/` log directory,
-  the DB row, and the `ire.json` entry, and emits `experiment-deleted`. The git-tracked
-  `.ire/experiments/<NNN>-<slug>/` folder is **left in place** — it is wiki content that
-  may hold user- or agent-written artifacts, so removing an experiment from the sidebar
-  does not delete it. Its `<NNN>` is not reissued either.
-- **`experiment_rename({ uuid, name })`** — updates `name` only, re-syncs to `ire.json`,
+  the DB row, and the whole git-tracked `.ire/experiments/<NNN>-<slug>/` folder
+  (`record::remove`), then emits `experiment-deleted`. The folder has to go now that
+  hydrate reads it — leaving the record behind would resurrect the deleted experiment on
+  the next open. Because that also takes the run's scripts and result files, the UI
+  confirms first (`ConfirmDeleteExperimentModal`, see [Frontend & UI](#frontend--ui));
+  git history is what makes it recoverable. Its `<NNN>` is not reissued either.
+- **`experiment_rename({ uuid, name })`** — updates `name` in the DB and `title` in the
+  frontmatter (the body's H1 is left as written, since the body is not runner-owned),
   emits `experiment-changed`.
 
 Read-only commands: `experiment_list({ limit? })` and `experiment_logs({ uuid, kb? })`
@@ -280,9 +334,11 @@ Read-only commands: `experiment_list({ limit? })` and `experiment_logs({ uuid, k
 Covered in full in [frontend.md](frontend.md); summarized here for the experiment-specific
 pieces:
 
-- **`ExperimentsSection`** (left rail) lists experiments via `experiment_list`;
+- **`ExperimentsSection`** (left rail) renders the experiments the `workspaceData` event store holds (`experiment_list` seeds `ExperimentTabView`, not this);
   supports rename/delete but not creation — experiments are only ever started by the
-  agent.
+  agent. The trash button opens **`ConfirmDeleteExperimentModal`** rather than deleting:
+  the delete takes the run's whole folder, artifacts included, so it says so and waits
+  for confirmation.
 - **`ExperimentCard`** — how an `experiment_start` tool call renders inline in chat
   (instead of a generic `ToolCard`): collapsed by default, header has a status dot
   (blinking amber while running, solid green/red on completion), the canonical tool

@@ -4,6 +4,7 @@ import { toastError } from "../../state/toasts";
 import type { ExperimentRow } from "../../types";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFlask, faPencil, faTrash, iconClass } from "../../icons";
+import { ConfirmDeleteExperimentModal } from "./ConfirmDeleteExperimentModal";
 
 interface Props {
   experiments: ExperimentRow[];
@@ -27,12 +28,14 @@ function getStatusPill(status: string): { text: string; textColor: string; borde
 
 export function ExperimentsSection({ experiments, onOpen }: Props) {
   const [deletingUuid, setDeletingUuid] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<ExperimentRow | null>(null);
   const [renamingUuid, setRenamingUuid] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [tooltip, setTooltip] = useState<{ label: string; x: number; y: number } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spanRefs = useRef<Map<string, HTMLSpanElement | null>>(new Map());
+  const deleteInFlight = useRef(false);
 
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
@@ -50,14 +53,28 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
     setTooltip(null);
   };
 
-  const handleDelete = async (e: React.MouseEvent, uuid: string) => {
+  // Deleting takes the whole .ire/experiments/<NNN>-<slug>/ folder, so the
+  // trash button only opens the confirmation.
+  const askDelete = (e: React.MouseEvent, exp: ExperimentRow) => {
     e.stopPropagation();
+    setPendingDelete(exp);
+  };
+
+  const confirmDelete = async () => {
+    // A ref, not `deletingUuid`: setState doesn't disable the button until the
+    // next render, so a fast double-click would fire two deletes and the second
+    // would toast "not found".
+    if (!pendingDelete || deleteInFlight.current) return;
+    const { uuid } = pendingDelete;
+    deleteInFlight.current = true;
     setDeletingUuid(uuid);
     try {
       await ipc.experimentDelete(uuid);
+      setPendingDelete(null);
     } catch (err) {
       toastError("delete experiment", err);
     } finally {
+      deleteInFlight.current = false;
       setDeletingUuid(null);
     }
   };
@@ -149,7 +166,7 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
                       className="app-danger-icon-button opacity-0 group-hover:opacity-100 ml-1 p-0.5 shrink-0"
                       title="Delete experiment"
                       disabled={deletingUuid === exp.uuid}
-                      onClick={(e) => handleDelete(e, exp.uuid)}
+                      onClick={(e) => askDelete(e, exp)}
                     >
                       <FontAwesomeIcon icon={faTrash} className={iconClass.md} />
                     </button>
@@ -162,6 +179,14 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
           <p className="text-[13px] text-on-surface-variant italic">no experiments yet</p>
         )}
       </div>
+      {pendingDelete && (
+        <ConfirmDeleteExperimentModal
+          name={pendingDelete.name}
+          deleting={deletingUuid === pendingDelete.uuid}
+          onConfirm={confirmDelete}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
       {tooltip && (
         <div
           className="fixed z-50 px-2 py-1 bg-surface-container-high border border-outline/30 text-on-surface text-[13px] rounded shadow-md whitespace-nowrap pointer-events-none"

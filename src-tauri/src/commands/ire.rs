@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use serde::Serialize;
 use tauri::State;
 
@@ -9,7 +7,7 @@ use crate::workspace::state::ActiveWorkspace;
 #[derive(Debug, Serialize)]
 pub struct IreFileResult {
     pub content: String,
-    pub frontmatter: Option<HashMap<String, String>>,
+    pub frontmatter: Option<serde_json::Value>,
 }
 
 fn ire_store(active: &State<'_, ActiveWorkspace>) -> Result<IreStore, String> {

@@ -2,13 +2,15 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use rusqlite::Connection;
-use rusqlite_migration::{Migrations, M};
+use rusqlite_migration::{Migrations, SchemaVersion, M};
 
 /// Versioned schema for `~/.ire/workspaces/<id>/local.db`, tracked via SQLite's
 /// `user_version` (see the `rusqlite_migration` crate). The two tables hold
 /// local-only operational state: detached experiment rows and chat sessions.
-/// (Resources are file-based; the git-tracked experiment *display* record
-/// lives in `ire.json`.)
+/// An experiment's goal/context is not among them — it lives only in its
+/// `EXPERIMENT.md`, which is what survives a clone or a cleared database.
+/// (Resources are file-based; the git-tracked experiment record lives in
+/// `.ire/experiments/<NNN>-<slug>/EXPERIMENT.md`, which owns status.)
 ///
 /// Every migration's SQL must be safe to run both on a brand-new database and
 /// on a pre-migration one: this schema shipped for a long time as a single
@@ -71,17 +73,54 @@ fn migrations() -> Migrations<'static> {
             ALTER TABLE chat_sessions DROP COLUMN codex_thread_id;",
         )
         .comment("move resume ids off fixed per-provider columns into chat_resume_ids(session_uuid, provider)"),
+        M::up("ALTER TABLE experiments ADD COLUMN record_dir TEXT;")
+            .comment("remember each experiment's git-tracked record folder so status transitions can find it"),
+        M::up("ALTER TABLE experiments DROP COLUMN wake_prompt;")
+            .comment("drop wake_prompt: EXPERIMENT.md's Goal & context section is the only copy"),
     ])
 }
 
+/// The last version that still carries `wake_prompt`. The record backfill
+/// reads it to recover an experiment's goal, and the next migration deletes it.
+const BEFORE_WAKE_PROMPT_DROP: usize = 3;
+
 /// Migrate the local DB to the latest schema version, creating it if needed.
 pub fn run(home_data_dir: &Path) -> Result<()> {
+    migrate(home_data_dir, None)
+}
+
+/// Migrate only as far as the schema the record backfill needs to read.
+///
+/// On workspace open this runs first, then `experiments::migrate`, then
+/// [`run`]. Running the whole thing up front would drop `wake_prompt` before
+/// the backfill could copy an experiment's goal into its record, and that text
+/// exists nowhere else.
+///
+/// A database already past this version is left alone: migrations only move
+/// forward, so this is a no-op rather than an error.
+pub fn run_pre_backfill(home_data_dir: &Path) -> Result<()> {
+    migrate(home_data_dir, Some(BEFORE_WAKE_PROMPT_DROP))
+}
+
+fn migrate(home_data_dir: &Path, version: Option<usize>) -> Result<()> {
     let db_path = home_data_dir.join("local.db");
     let mut conn =
         Connection::open(&db_path).with_context(|| format!("open {}", db_path.display()))?;
-    migrations()
-        .to_latest(&mut conn)
-        .context("apply schema migrations")?;
+    let Some(target) = version else {
+        return migrations()
+            .to_latest(&mut conn)
+            .context("apply schema migrations");
+    };
+    // `to_version` refuses to go backwards, so only call it when there is
+    // something to apply.
+    let current = migrations()
+        .current_version(&conn)
+        .context("read schema version")?;
+    if current < SchemaVersion::Inside(std::num::NonZeroUsize::new(target).unwrap()) {
+        migrations()
+            .to_version(&mut conn, target)
+            .context("apply schema migrations")?;
+    }
     Ok(())
 }
 
@@ -171,5 +210,20 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         run(tmp.path()).unwrap();
         run(tmp.path()).unwrap(); // re-running an already-latest DB must not error
+    }
+
+    #[test]
+    fn wake_prompt_is_gone_after_migrating() {
+        let tmp = tempfile::tempdir().unwrap();
+        run(tmp.path()).unwrap();
+        let conn = Connection::open(tmp.path().join("local.db")).unwrap();
+        let has_column: bool = conn
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM pragma_table_info('experiments') WHERE name = 'wake_prompt')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(!has_column, "wake_prompt survived the migration");
     }
 }

@@ -650,8 +650,8 @@ pub fn confirm_resource(
     let (fm, _) = crate::ire::frontmatter::parse(&content);
     let title = fm
         .as_ref()
-        .and_then(|m| m.get("title"))
-        .map(|t| sanitize_resource_filename(t))
+        .and_then(|m| crate::ire::frontmatter::field(m, "title"))
+        .map(|t| sanitize_resource_filename(&t))
         .filter(|t| !t.is_empty())
         .unwrap_or_else(|| resource_id[..8.min(resource_id.len())].to_string());
 

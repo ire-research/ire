@@ -15,11 +15,11 @@ Each session, you wake up fresh. `.ire/` is your memory — read it, use it, kee
 The `.ire/` folder lives in the project root and contains:
 ```
 .ire/_SYSTEM.md        — this always-injected framework context
-.ire/ire.json          — notes, focus, ideas, experiments (git-tracked; edit via ire.read/ire.edit)
+.ire/ire.json          — notes, focus, ideas (git-tracked; edit via ire.read/ire.edit)
 .ire/long-term.md      — architectural decisions and durable insights
 .ire/short-term/       — daily agent notes (YYYY-MM-DD.md)
 .ire/resources/        — one markdown file per resource, plus an auto-generated _index.md
-.ire/experiments/      — one folder per experiment (NNN-slug/), created by IRE on start
+.ire/experiments/      — one folder per experiment (NNN-slug/); EXPERIMENT.md owns its status
 .ire/cache/            — local-only: ingestion temp + experiment logs (gitignored)
 ```
 
@@ -29,11 +29,7 @@ The central file is `ire.json`:
 {
   "notes": "free-form markdown the user owns",
   "focus": { "research_question": "", "this_week": "" },
-  "ideas": [ { "text": "an idea" } ],
-  "experiments": [
-    { "uuid": "…", "name": "…", "command": "…", "status": "running",
-      "started_at": "RFC3339", "ended_at": null, "exit_code": null }
-  ]
+  "ideas": [ { "text": "an idea" } ]
 }
 ```
 
@@ -45,9 +41,23 @@ The central file is `ire.json`:
    - **notes**: the user's running notes. Do not interpret or restructure; only append when asked.
    - **focus**: update `research_question` / `this_week` when research direction or weekly focus changes.
    - **ideas**: an ordered array of `{ "text": … }`.
-   - **experiments**: managed by IRE — read-only, do not hand-edit.
 
-   Each experiment also gets a git-tracked folder, `.ire/experiments/<NNN>-<slug>/`, created by IRE when it starts. Its `EXPERIMENT.md` records the goal, command, and start time; IRE owns that file, so leave it alone. The rest of the folder is yours: put the experiment's scripts, result files, and notes there so the run stays legible on its own.
+   Each experiment gets a git-tracked folder, `.ire/experiments/<NNN>-<slug>/`, created by IRE when it starts. Its `EXPERIMENT.md` is the record of that run, in Open Knowledge Format: a YAML frontmatter block, then a body.
+
+   ```yaml
+   ---
+   type: Experiment
+   title: LR ablation
+   uuid: …
+   started_at: RFC3339
+   working_dir: /path
+   run_status: running        # running | completed | failed | cancelled | unknown
+   exit_code: null
+   ended_at: null
+   ---
+   ```
+
+   **The frontmatter block belongs to IRE — never hand-edit it.** It is rewritten atomically on every status change, and it is the single source of truth for how a run ended (`run_status`, not `status`: OKF reserves `status` for a document's lifecycle). The body below it is yours: append findings, link results, add notes. A status change never touches it.
 
 3. **Memory.** Write architectural decisions, pivots, and durable "do not repeat" lessons to `long-term.md` via `memory.write_long_term`. Write daily operational notes, debugging steps, and transient dead ends to today's file via `memory.write_short_term`. Only today and yesterday are auto-injected — promote anything still relevant to long-term before it ages out. Keep entries minimal and functional; only track what is genuinely useful for future sessions.
 
@@ -60,6 +70,6 @@ The central file is `ire.json`:
 When asked to run an experiment:
 1. Plan the run and get user agreement.
 2. Verify the setup first (e.g., binary exists, paths resolve) to avoid cluttering with failed experiments.
-3. Call `experiment.start` with `name`, `command`, and a `wake_prompt`. The `wake_prompt` is given back to you when the process finishes — include all relevant context so you know exactly what you were testing and what to do with the results.
+3. Call `experiment.start` with `name`, `command`, and a `wake_prompt`. The `wake_prompt` is written into the record's `## Goal & context` and read back to you when the process finishes — include all relevant context so you know exactly what you were testing and what to do with the results. Editing that section changes what you are handed on wake-up.
 4. End your turn — do **not** wait. IRE resumes this same agent session when the process exits.
-5. On wake-up: read the logs from the `wake_prompt` context (or `experiment.tail_logs`), then proceed accordingly (e.g., report to the user, update ire.json, update memories, propose next steps or whatever action you deem appropriate based on the results).
+5. On wake-up: read the logs from the goal/context you are given (or `experiment.tail_logs`), then proceed accordingly (e.g., report to the user, append findings to the record's body, update memories, propose next steps or whatever action you deem appropriate based on the results).
