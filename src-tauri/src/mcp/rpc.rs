@@ -8,7 +8,6 @@ use tauri::{AppHandle, Manager};
 
 use crate::session::SessionManager;
 use crate::commands::resources::{add_resource_from_markdown, InflightResources};
-use crate::db::models as db;
 use crate::ire::store::atomic_write;
 use crate::ire::IreStore;
 
@@ -302,7 +301,7 @@ fn experiment_status(
         .ok_or_else(|| anyhow!("missing uuid"))?;
     let home_data_dir = crate::workspace::init::home_data_dir(workspace_root)
         .ok_or_else(|| anyhow!("cannot determine home directory"))?;
-    let row = db::get_experiment(&home_data_dir, uuid)?
+    let row = crate::experiments::row_or_record(workspace_root, &home_data_dir, uuid)
         .ok_or_else(|| anyhow!("experiment {uuid} not found"))?;
     Ok(serde_json::json!({
         "uuid": row.uuid,

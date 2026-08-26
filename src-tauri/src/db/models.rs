@@ -8,15 +8,15 @@ use serde::Serialize;
 
 // ── Experiments ──────────────────────────────────────────────────────────────
 
+/// The operational fields `local.db` still owns. A run's outcome
+/// (status/exit_code/ended_at) lives only in its `EXPERIMENT.md` record now —
+/// see `experiments::ExperimentView`, which composes that in.
 #[derive(Debug, Serialize, Clone)]
 pub struct ExperimentRow {
     pub uuid: String,
     pub name: String,
     pub command: String,
-    pub status: String,
-    pub exit_code: Option<i64>,
     pub started_at: String,
-    pub ended_at: Option<String>,
     pub pid: Option<i64>,
     pub tab_id: String,
 }
@@ -35,8 +35,8 @@ pub fn insert_experiment(
 ) -> Result<()> {
     let conn = open(home_data_dir)?;
     conn.execute(
-        "INSERT INTO experiments (uuid, name, command, working_dir, status, started_at, session_id, tab_id, record_dir) \
-         VALUES (?1, ?2, ?3, ?4, 'running', ?5, ?6, ?7, ?8)",
+        "INSERT INTO experiments (uuid, name, command, working_dir, started_at, session_id, tab_id, record_dir) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
         params![uuid, name, command, working_dir, started_at, session_id, tab_id, record_dir],
     )?;
     Ok(())
@@ -84,6 +84,23 @@ pub fn legacy_experiment_context(
     .ok()
 }
 
+/// The outcome columns a pre-#120 `local.db` still carries, for the legacy
+/// backfill to read before migration 5 drops them for good. `None` once the
+/// row has no such columns — either it was never written, or the schema has
+/// already moved past `BEFORE_BACKFILL_SOURCE_DROP`.
+pub fn legacy_experiment_status(
+    home_data_dir: &Path,
+    uuid: &str,
+) -> Option<(String, Option<i64>, Option<String>)> {
+    let conn = open(home_data_dir).ok()?;
+    conn.query_row(
+        "SELECT status, exit_code, ended_at FROM experiments WHERE uuid = ?1",
+        params![uuid],
+        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+    )
+    .ok()
+}
+
 /// Point an experiment row at its record folder. Used by the lazy backfill.
 pub fn set_experiment_record_dir(home_data_dir: &Path, uuid: &str, record_dir: &str) -> Result<()> {
     let conn = open(home_data_dir)?;
@@ -103,25 +120,10 @@ pub fn update_experiment_pid(home_data_dir: &Path, uuid: &str, pid: u32) -> Resu
     Ok(())
 }
 
-pub fn update_experiment_completed(
-    home_data_dir: &Path,
-    uuid: &str,
-    status: &str,
-    exit_code: Option<i32>,
-) -> Result<()> {
-    let conn = open(home_data_dir)?;
-    let now = chrono::Local::now().to_rfc3339();
-    conn.execute(
-        "UPDATE experiments SET status = ?1, exit_code = ?2, ended_at = ?3 WHERE uuid = ?4",
-        params![status, exit_code, now, uuid],
-    )?;
-    Ok(())
-}
-
 pub fn get_experiment(home_data_dir: &Path, uuid: &str) -> Result<Option<ExperimentRow>> {
     let conn = open(home_data_dir)?;
     let mut stmt = conn.prepare(
-        "SELECT uuid, name, command, status, exit_code, started_at, ended_at, pid, tab_id \
+        "SELECT uuid, name, command, started_at, pid, tab_id \
          FROM experiments WHERE uuid = ?1",
     )?;
     let mut rows = stmt.query(params![uuid])?;
@@ -131,12 +133,9 @@ pub fn get_experiment(home_data_dir: &Path, uuid: &str) -> Result<Option<Experim
                 uuid: r.get(0)?,
                 name: r.get(1)?,
                 command: r.get(2)?,
-                status: r.get(3)?,
-                exit_code: r.get(4)?,
-                started_at: r.get(5)?,
-                ended_at: r.get(6)?,
-                pid: r.get(7)?,
-                tab_id: r.get(8)?,
+                started_at: r.get(3)?,
+                pid: r.get(4)?,
+                tab_id: r.get(5)?,
             })
         })
         .transpose()
@@ -161,7 +160,7 @@ pub fn rename_experiment(home_data_dir: &Path, uuid: &str, name: &str) -> Result
 pub fn list_experiments(home_data_dir: &Path, limit: usize) -> Result<Vec<ExperimentRow>> {
     let conn = open(home_data_dir)?;
     let mut stmt = conn.prepare(
-        "SELECT uuid, name, command, status, exit_code, started_at, ended_at, pid, tab_id \
+        "SELECT uuid, name, command, started_at, pid, tab_id \
          FROM experiments ORDER BY started_at DESC LIMIT ?1",
     )?;
     let rows = stmt.query_map(params![limit as i64], |r| {
@@ -169,12 +168,9 @@ pub fn list_experiments(home_data_dir: &Path, limit: usize) -> Result<Vec<Experi
             uuid: r.get(0)?,
             name: r.get(1)?,
             command: r.get(2)?,
-            status: r.get(3)?,
-            exit_code: r.get(4)?,
-            started_at: r.get(5)?,
-            ended_at: r.get(6)?,
-            pid: r.get(7)?,
-            tab_id: r.get(8)?,
+            started_at: r.get(3)?,
+            pid: r.get(4)?,
+            tab_id: r.get(5)?,
         })
     })?;
     rows.map(|r| r.context("experiment row")).collect()
