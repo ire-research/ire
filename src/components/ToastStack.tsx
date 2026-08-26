@@ -35,7 +35,7 @@ export function ToastStack() {
           key={t.id}
           role="status"
           aria-live="polite"
-          className="fixed bottom-0 inset-x-0 z-50 flex items-center justify-between gap-3 w-full bg-[#4c7ae0] text-[#0a0a0a] px-4 py-1.5 text-[12px] shadow-lg shadow-black/40"
+          className="fixed bottom-0 inset-x-0 z-50 flex items-center justify-between gap-3 w-full bg-info text-on-info px-4 py-1.5 text-[12px] shadow-lg shadow-black/40"
         >
           <span className="leading-snug">
             {t.message}
@@ -54,14 +54,14 @@ export function ToastStack() {
           <div className="flex items-center gap-3 shrink-0">
             {t.action && (
               <button
-                className="border border-black/30 rounded px-2.5 py-0.5 text-[11px] font-medium hover:bg-black/10 transition-colors"
+                className="border border-on-info/30 rounded px-2.5 py-0.5 text-[11px] font-medium hover:bg-on-info/10 transition-colors"
                 onClick={() => t.action!.onClick(t.id)}
               >
                 {t.action.label}
               </button>
             )}
             <button
-              className="text-black/60 hover:text-black leading-none"
+              className="text-on-info/60 hover:text-on-info leading-none"
               onClick={() => dismiss(t.id)}
               aria-label="Dismiss"
             >
