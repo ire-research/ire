@@ -77,12 +77,21 @@ fn migrations() -> Migrations<'static> {
             .comment("remember each experiment's git-tracked record folder so status transitions can find it"),
         M::up("ALTER TABLE experiments DROP COLUMN wake_prompt;")
             .comment("drop wake_prompt: EXPERIMENT.md's Goal & context section is the only copy"),
+        M::up(
+            "DROP INDEX IF EXISTS idx_experiments_status;
+            ALTER TABLE experiments DROP COLUMN status;
+            ALTER TABLE experiments DROP COLUMN exit_code;
+            ALTER TABLE experiments DROP COLUMN ended_at;",
+        )
+        .comment("drop status/exit_code/ended_at: EXPERIMENT.md's record is the only copy"),
     ])
 }
 
-/// The last version that still carries `wake_prompt`. The record backfill
-/// reads it to recover an experiment's goal, and the next migration deletes it.
-const BEFORE_WAKE_PROMPT_DROP: usize = 3;
+/// The last version that still carries the fields the record backfill reads
+/// (`wake_prompt`, then `status`/`exit_code`/`ended_at`). Each backfill runs
+/// against a database frozen at this version before the following migration
+/// deletes what it just read.
+const BEFORE_BACKFILL_SOURCE_DROP: usize = 4;
 
 /// Migrate the local DB to the latest schema version, creating it if needed.
 pub fn run(home_data_dir: &Path) -> Result<()> {
@@ -99,7 +108,7 @@ pub fn run(home_data_dir: &Path) -> Result<()> {
 /// A database already past this version is left alone: migrations only move
 /// forward, so this is a no-op rather than an error.
 pub fn run_pre_backfill(home_data_dir: &Path) -> Result<()> {
-    migrate(home_data_dir, Some(BEFORE_WAKE_PROMPT_DROP))
+    migrate(home_data_dir, Some(BEFORE_BACKFILL_SOURCE_DROP))
 }
 
 fn migrate(home_data_dir: &Path, version: Option<usize>) -> Result<()> {
@@ -225,5 +234,88 @@ mod tests {
             )
             .unwrap();
         assert!(!has_column, "wake_prompt survived the migration");
+    }
+
+    /// Issue #120: status/exit_code/ended_at are vestigial now that
+    /// EXPERIMENT.md is the source of truth for a run's outcome. A fresh
+    /// migration must not leave any of them on the experiments table.
+    #[test]
+    fn status_columns_are_gone_after_migrating() {
+        let tmp = tempfile::tempdir().unwrap();
+        run(tmp.path()).unwrap();
+        let conn = Connection::open(tmp.path().join("local.db")).unwrap();
+        for col in ["status", "exit_code", "ended_at"] {
+            let has_column: bool = conn
+                .query_row(
+                    "SELECT EXISTS (SELECT 1 FROM pragma_table_info('experiments') WHERE name = ?1)",
+                    params![col],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert!(!has_column, "{col} survived the migration");
+        }
+    }
+
+    /// Issue #120: dropping the status columns reuses the same two-phase
+    /// schema pass #114 introduced for `wake_prompt` — `run_pre_backfill` must
+    /// still stop before migration 5 (the status-column drop) so
+    /// `experiments::migrate::run` can still read `status`/`exit_code`/
+    /// `ended_at` off a legacy row before they're gone for good.
+    #[test]
+    fn pre_backfill_still_stops_before_the_status_column_drop() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db_path = tmp.path().join("local.db");
+
+        // Seed a legacy row the way a pre-#120 local.db would have it, with
+        // the eventually-doomed status columns populated.
+        {
+            let conn = Connection::open(&db_path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE experiments (
+                    uuid TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    command TEXT NOT NULL,
+                    working_dir TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    exit_code INTEGER,
+                    started_at TEXT NOT NULL,
+                    ended_at TEXT,
+                    pid INTEGER,
+                    wake_prompt TEXT,
+                    session_id TEXT NOT NULL,
+                    tab_id TEXT NOT NULL DEFAULT 'main'
+                );",
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO experiments \
+                 (uuid, name, command, working_dir, status, exit_code, started_at, ended_at, session_id, tab_id) \
+                 VALUES ('e1', 'exp', 'run.py', '/tmp', 'completed', 0, 't0', 't1', 's1', 'main')",
+                [],
+            )
+            .unwrap();
+        }
+
+        // Running only run_pre_backfill must leave the status columns intact,
+        // so a caller in experiments::migrate::run between the two schema
+        // passes can still read them.
+        run_pre_backfill(tmp.path()).unwrap();
+        let conn = Connection::open(&db_path).unwrap();
+        let status: String = conn
+            .query_row("SELECT status FROM experiments WHERE uuid = 'e1'", [], |r| r.get(0))
+            .expect("status column must still be readable after run_pre_backfill");
+        assert_eq!(status, "completed");
+
+        // Finishing the pass then drops them, same as `run` alone would.
+        run(tmp.path()).unwrap();
+        let conn = Connection::open(&db_path).unwrap();
+        let has_status: bool = conn
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM pragma_table_info('experiments') WHERE name = 'status')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(!has_status, "status must be dropped once the full pass has run");
     }
 }

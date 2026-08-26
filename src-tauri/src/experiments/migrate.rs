@@ -142,6 +142,7 @@ fn upgrade(
         return Ok(());
     };
     let row = db::get_experiment(home_data_dir, &uuid).ok().flatten();
+    let legacy_status = db::legacy_experiment_status(home_data_dir, &uuid);
     let fallback = legacy.get(&uuid);
 
     let record = Record {
@@ -152,24 +153,23 @@ fn upgrade(
         }),
         command: String::new(), // read back from the body, never from the block
         goal: String::new(),    // likewise: it stays in the body's Goal & context
-        status: row
+        status: legacy_status
             .as_ref()
-            .map(|r| r.status.clone())
+            .map(|(status, _, _)| status.clone())
             .or_else(|| fallback.map(|f| f.status.clone()))
             // Predates both stores: say so rather than claiming it still runs.
             .unwrap_or_else(|| "unknown".to_string()),
-        exit_code: row
+        exit_code: legacy_status
             .as_ref()
-            .and_then(|r| r.exit_code)
+            .and_then(|(_, exit_code, _)| *exit_code)
             .or_else(|| fallback.and_then(|f| f.exit_code)),
         started_at: legacy_field(&content, "started").unwrap_or_else(|| {
             row.as_ref()
                 .map(|r| r.started_at.clone())
                 .unwrap_or_default()
         }),
-        ended_at: row
-            .as_ref()
-            .and_then(|r| r.ended_at.clone())
+        ended_at: legacy_status
+            .and_then(|(_, _, ended_at)| ended_at)
             .or_else(|| fallback.and_then(|f| f.ended_at.clone())),
         uuid: uuid.clone(),
     };

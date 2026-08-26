@@ -3,8 +3,9 @@ use std::fs;
 use serde::Serialize;
 use tauri::{AppHandle, State};
 
-use crate::db::models::{self as db, ExperimentRow};
+use crate::db::models::{self as db};
 use crate::events;
+use crate::experiments::ExperimentView;
 use crate::workspace::state::ActiveWorkspace;
 
 #[derive(Debug, Serialize)]
@@ -28,7 +29,7 @@ fn workspace_path(active: &ActiveWorkspace) -> Result<std::path::PathBuf, String
 pub fn experiment_list(
     active: State<'_, ActiveWorkspace>,
     limit: Option<usize>,
-) -> Result<Vec<ExperimentRow>, String> {
+) -> Result<Vec<ExperimentView>, String> {
     let workspace_path = workspace_path(&active)?;
     let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
     crate::experiments::list(&workspace_path, &home_data_dir, limit.unwrap_or(50))
