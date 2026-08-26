@@ -59,6 +59,8 @@ export default {
         "on-error-container": "#ff97a3",
         "warn": "#d97706",
         "ok": "#10b981",
+        "info": "#4c7ae0",
+        "on-info": "#0a0a0a",
         "accent": "#E4E4E7",
         "accent-fg": "#0A0A0A",
       },
