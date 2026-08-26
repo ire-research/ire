@@ -35,7 +35,7 @@ export function ToastStack() {
           key={t.id}
           role="status"
           aria-live="polite"
-          className="fixed bottom-0 inset-x-0 z-50 flex items-center justify-center gap-3 w-full bg-primary text-on-primary px-4 py-2.5 text-[13px] shadow-lg shadow-black/40"
+          className="fixed bottom-0 inset-x-0 z-50 flex items-center justify-between gap-3 w-full bg-[#4c7ae0] text-[#0a0a0a] px-4 py-1.5 text-[12px] shadow-lg shadow-black/40"
         >
           <span className="leading-snug">
             {t.message}
@@ -43,7 +43,7 @@ export function ToastStack() {
               <>
                 {" "}
                 <button
-                  className="underline hover:opacity-80"
+                  className="underline hover:opacity-70"
                   onClick={() => openUrl(t.link!.url).catch((e) => console.error("Failed to open URL:", e))}
                 >
                   {t.link.label}
@@ -51,21 +51,23 @@ export function ToastStack() {
               </>
             )}
           </span>
-          {t.action && (
+          <div className="flex items-center gap-3 shrink-0">
+            {t.action && (
+              <button
+                className="border border-black/30 rounded px-2.5 py-0.5 text-[11px] font-medium hover:bg-black/10 transition-colors"
+                onClick={() => t.action!.onClick(t.id)}
+              >
+                {t.action.label}
+              </button>
+            )}
             <button
-              className="border border-on-primary/40 rounded px-2.5 py-1 text-[12px] font-medium hover:bg-on-primary/10 transition-colors"
-              onClick={() => t.action!.onClick(t.id)}
+              className="text-black/60 hover:text-black leading-none"
+              onClick={() => dismiss(t.id)}
+              aria-label="Dismiss"
             >
-              {t.action.label}
+              ×
             </button>
-          )}
-          <button
-            className="text-on-primary/80 hover:text-on-primary leading-none ml-1"
-            onClick={() => dismiss(t.id)}
-            aria-label="Dismiss"
-          >
-            ×
-          </button>
+          </div>
         </div>
       ))}
       {cards.length > 0 && (
