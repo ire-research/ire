@@ -28,8 +28,14 @@ struct PerTabSession {
 pub struct ActiveSession {
     pub tab_id: String,
     pub session_uuid: String,
+    // Not read by any current caller (experiment wake-up now takes its target
+    // provider/model explicitly from the user's choice, not the originating
+    // session) but kept for symmetry with `PerTabSession` and exercised by tests.
+    #[allow(dead_code)]
     pub provider: String,
+    #[allow(dead_code)]
     pub model: String,
+    #[allow(dead_code)]
     pub effort: Option<String>,
 }
 

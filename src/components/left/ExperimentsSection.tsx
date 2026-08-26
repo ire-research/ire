@@ -159,6 +159,12 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
                     >
                       <FontAwesomeIcon icon={faPencil} className={iconClass.md} />
                     </button>
+                    {!exp.claimed && (
+                      <span
+                        className="h-1.5 w-1.5 rounded-full bg-warn shrink-0 mr-1"
+                        title="Unresolved — result not yet reviewed"
+                      />
+                    )}
                     <span className={`text-[10px] uppercase border ${pill.borderColor} px-1 rounded ${pill.textColor} ${pill.bgColor} shrink-0`}>
                       {pill.text}
                     </span>

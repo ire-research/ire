@@ -124,6 +124,21 @@ export const ipc = {
     invoke("experiment_delete", { uuid }),
   experimentRename: (uuid: string, name: string): Promise<void> =>
     invoke("experiment_rename", { uuid, name }),
+  /** Mark an unclaimed experiment's result acknowledged without opening a chat. */
+  experimentResolve: (uuid: string): Promise<void> =>
+    invoke("experiment_resolve", { uuid }),
+  /** Fire the wake-up message for an experiment into the given tab/session —
+   *  a fresh one for "open in a new chat", an existing one for "open in an
+   *  existing chat". Marks the run claimed. */
+  experimentWake: (
+    uuid: string,
+    tabId: string,
+    sessionUuid: string,
+    provider: string,
+    model: string,
+    effort?: string
+  ): Promise<void> =>
+    invoke("experiment_wake", { uuid, tabId, sessionUuid, provider, model, effort }),
   readUserConfig: (): Promise<UserConfig> => invoke("read_user_config"),
   saveUserConfig: (config: UserConfig): Promise<void> =>
     invoke("save_user_config", { config }),

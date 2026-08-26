@@ -283,13 +283,7 @@ fn experiment_start(
         .get_active_session()
         .ok_or_else(|| anyhow!("no active agent session — cannot start experiment"))?;
 
-    crate::experiments::runner::start_experiment(
-        params,
-        workspace_root,
-        active,
-        session_manager.clone(),
-        app.clone(),
-    )
+    crate::experiments::runner::start_experiment(params, workspace_root, active, app.clone())
 }
 
 fn experiment_status(

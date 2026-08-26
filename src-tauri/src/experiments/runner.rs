@@ -8,21 +8,18 @@ use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
 use crate::db::models as db;
-use crate::session::{ActiveSession, SessionManager};
+use crate::session::ActiveSession;
 
 pub fn start_experiment(
     params: &serde_json::Value,
     workspace_root: &Path,
     active_session: ActiveSession,
-    session_manager: SessionManager,
     app: AppHandle,
 ) -> Result<serde_json::Value> {
     let ActiveSession {
         tab_id,
         session_uuid,
-        provider,
-        model,
-        effort,
+        ..
     } = active_session;
 
     let name = params["name"]
@@ -107,14 +104,7 @@ pub fn start_experiment(
         uuid: uuid.clone(),
         workspace_root: workspace_root.to_path_buf(),
         home_data_dir,
-        tab_id,
-        session_uuid,
-        provider,
-        model,
-        effort,
-        record_dir: record_dir.clone(),
         app: app.clone(),
-        session_manager,
     };
     tauri::async_runtime::spawn(async move {
         let r = tokio::task::spawn_blocking(move || {
@@ -135,14 +125,7 @@ struct MonitorArgs {
     uuid: String,
     workspace_root: PathBuf,
     home_data_dir: PathBuf,
-    tab_id: String,
-    session_uuid: String,
-    provider: String,
-    model: String,
-    effort: Option<String>,
-    record_dir: String,
     app: AppHandle,
-    session_manager: SessionManager,
 }
 
 fn spawn_detached(command: &str, working_dir: &Path, stdout: File, stderr: File) -> Result<Child> {
@@ -170,14 +153,7 @@ fn monitor(mut child: Child, args: MonitorArgs) {
         uuid,
         workspace_root,
         home_data_dir,
-        tab_id,
-        session_uuid,
-        provider,
-        model,
-        effort,
-        record_dir,
         app,
-        session_manager,
     } = args;
 
     let exp_dir = workspace_root.join(".ire/cache/experiments").join(&uuid);
@@ -240,21 +216,7 @@ fn monitor(mut child: Child, args: MonitorArgs) {
                     status_str,
                     Some(exit_code),
                 );
-                tracing::info!(uuid = %uuid, exit_code = exit_code, "experiment finished");
-
-                super::wake::fire_wakeup(super::wake::FireWakeupArgs {
-                    workspace_root: &workspace_root,
-                    uuid: &uuid,
-                    exit_code,
-                    tab_id: &tab_id,
-                    session_uuid: &session_uuid,
-                    provider: &provider,
-                    model: &model,
-                    effort: effort.as_deref(),
-                    record_dir: &record_dir,
-                    app: &app,
-                    session_manager: &session_manager,
-                });
+                tracing::info!(uuid = %uuid, exit_code = exit_code, "experiment finished, left unclaimed");
                 break;
             }
             Ok(None) => {

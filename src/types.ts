@@ -192,6 +192,10 @@ export interface ExperimentRow {
   started_at: string;
   ended_at: string | null;
   tab_id: string;
+  /** Whether the user has acknowledged this run's result. `false` on a
+   *  completed/failed run means it's unresolved — no chat is opened
+   *  automatically any more, so the UI has to surface it. */
+  claimed: boolean;
 }
 
 /** Payload for "experiment-status" Tauri event. */

@@ -6,6 +6,7 @@ use tauri::{AppHandle, State};
 use crate::db::models::{self as db};
 use crate::events;
 use crate::experiments::ExperimentView;
+use crate::session::SessionManager;
 use crate::workspace::state::ActiveWorkspace;
 
 #[derive(Debug, Serialize)]
@@ -129,6 +130,71 @@ pub fn experiment_rename(
     crate::experiments::record::set_title(&workspace_path, &dir, &name)
         .map_err(|e| e.to_string())?;
     crate::experiments::emit_changed(&app, &workspace_path, &home_data_dir, &uuid);
+    Ok(())
+}
+
+/// Mark an unclaimed experiment's result acknowledged without opening a chat —
+/// e.g. the user already read `EXPERIMENT.md` directly.
+#[tauri::command]
+pub fn experiment_resolve(
+    app: AppHandle,
+    active: State<'_, ActiveWorkspace>,
+    uuid: String,
+) -> Result<(), String> {
+    let workspace_path = workspace_path(&active)?;
+    let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
+    db::mark_experiment_claimed(&home_data_dir, &uuid).map_err(|e| e.to_string())?;
+    crate::experiments::emit_changed(&app, &workspace_path, &home_data_dir, &uuid);
+    Ok(())
+}
+
+/// Resolve an unclaimed experiment by discussing it: fires the same wake-up
+/// message `fire_wakeup` used to send automatically, but into whichever chat
+/// tab/session the user chose (a brand-new one or an existing one) rather
+/// than the session that started the run. Marks the run claimed first so a
+/// slow agent turn can't be interrupted by the user resolving it twice.
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub fn experiment_wake(
+    app: AppHandle,
+    active: State<'_, ActiveWorkspace>,
+    session_manager: State<'_, SessionManager>,
+    uuid: String,
+    tab_id: String,
+    session_uuid: String,
+    provider: String,
+    model: String,
+    effort: Option<String>,
+) -> Result<(), String> {
+    let workspace_path = workspace_path(&active)?;
+    let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
+
+    let row = crate::experiments::row_or_record(&workspace_path, &home_data_dir, &uuid)
+        .ok_or_else(|| format!("experiment {uuid} not found"))?;
+    let record_dir = crate::experiments::record_dir(&workspace_path, &home_data_dir, &uuid)
+        .ok_or_else(|| format!("experiment {uuid} has no record"))?;
+    let exit_code = row.exit_code.unwrap_or(-1) as i32;
+
+    db::mark_experiment_claimed(&home_data_dir, &uuid).map_err(|e| e.to_string())?;
+    crate::experiments::emit_changed(&app, &workspace_path, &home_data_dir, &uuid);
+
+    let session_manager = session_manager.inner().clone();
+    let app_for_thread = app.clone();
+    std::thread::spawn(move || {
+        crate::experiments::wake::fire_wakeup(crate::experiments::wake::FireWakeupArgs {
+            workspace_root: &workspace_path,
+            uuid: &uuid,
+            exit_code,
+            tab_id: &tab_id,
+            session_uuid: &session_uuid,
+            provider: &provider,
+            model: &model,
+            effort: effort.as_deref(),
+            record_dir: &record_dir,
+            app: &app_for_thread,
+            session_manager: &session_manager,
+        });
+    });
     Ok(())
 }
 

@@ -43,12 +43,16 @@ T3  Agent's response to the user: "Started experiment <uuid>; I'll come back
     when it's done." Then this agent turn ENDS naturally.
 T4  Backend monitor thread polls the child every 500ms and tails new log
     lines to the frontend — see Spawn & monitor below.
-T5  Process exits. Backend updates the DB row + `EXPERIMENT.md`, then resumes the
-    same agent session with a wake-up message built from the record's
-    `## Goal & context` + exit code + log tail — see Wake-up below.
-T6  Agent reads result files, uses memory.write_short_term for daily notes,
-    memory.write_long_term for durable conclusions, and ire.read + ire.edit
-    to update focus/notes/ideas if the research direction changed.
+T5  Process exits. Backend updates the DB row + `EXPERIMENT.md` and marks the
+    run **unclaimed** — no agent turn fires automatically. The UI surfaces a
+    resolution card: open in a new chat, open in an existing chat, resolve
+    without chat, or dismiss for later — see Wake-up below.
+T6  If the user opens a chat about it (new or existing), that chat's session
+    is resumed with a wake-up message built from the record's
+    `## Goal & context` + exit code + log tail. The agent reads result files,
+    uses memory.write_short_term for daily notes, memory.write_long_term for
+    durable conclusions, and ire.read + ire.edit to update focus/notes/ideas
+    if the research direction changed.
 ```
 
 The user can keep using the chat pane during T3–T5, and can cancel or delete an
@@ -114,9 +118,10 @@ Experiments live in **two** stores, split by ownership rather than duplicated:
     started_at TEXT NOT NULL,
     ended_at TEXT,
     pid INTEGER,
-    session_id TEXT NOT NULL,         -- chat session_uuid whose resume id the wake-up uses
+    session_id TEXT NOT NULL,         -- the chat session that started the run (informational only)
     tab_id TEXT NOT NULL DEFAULT 'main',
-    record_dir TEXT                   -- workspace-relative folder holding EXPERIMENT.md
+    record_dir TEXT,                  -- workspace-relative folder holding EXPERIMENT.md
+    claimed INTEGER NOT NULL DEFAULT 1 -- has the user acknowledged this run's result?
   );
 
   CREATE INDEX idx_experiments_status ON experiments(status);
@@ -124,7 +129,12 @@ Experiments live in **two** stores, split by ownership rather than duplicated:
   ```
 
 `local.db` holds the fields that have no reason to be shared or committed (`pid`,
-`session_id`, `tab_id`, `record_dir`). The goal/context is **not** among them: it is
+`session_id`, `tab_id`, `record_dir`, `claimed`). `claimed` is set to `0` by
+`db::update_experiment_completed` whenever a run transitions to `completed` or
+`failed` — a user-initiated `cancelled` leaves it as it stands, since the user
+already knows why the run ended. It is not among the fields `EXPERIMENT.md`
+carries: whether a result was reviewed is local UI state, not part of the
+run's shareable record. The goal/context is **not** among them either: it is
 read back out of the record's `## Goal & context` at wake-up time, so it survives a
 clone or a cleared database, and an edit to that section is what the agent is handed. Its `status`/`exit_code`/`ended_at`
 columns are written first on a transition and then superseded by the file: `experiments::row`
@@ -253,16 +263,38 @@ On exit, the monitor:
   a `try_wait` error, which is also logged and recorded as exit code `-1`) via
   `db::update_experiment_completed`.
 - Emits `experiment-status` with the final status/exit code, syncs the row to
-  `EXPERIMENT.md`, emits `experiment-changed` from the re-read file.
-- Calls `experiments::wake::fire_wakeup` synchronously, from the same monitor thread —
-  see [Wake-up](#wake-up).
+  `EXPERIMENT.md` (which also marks it `claimed: 0` for `completed`/`failed`),
+  emits `experiment-changed` from the re-read file.
+- Does **not** call `fire_wakeup`. The run just sits unclaimed until the user
+  acts on it — see [Wake-up](#wake-up).
 
 ---
 
 ## Wake-up
 
-`fire_wakeup` (`src-tauri/src/experiments/wake.rs`) resumes the **same provider session**
-that started the experiment:
+There is no more automatic resume on completion: a finished run sits
+**unclaimed** (`claimed: 0` in `local.db`) until the user does something about
+it. The UI's resolution card, driven off `ExperimentRow.claimed`, offers three
+paths, all backed by Tauri commands in `src-tauri/src/commands/experiments.rs`:
+
+- **`experiment_resolve({ uuid })`** — marks it claimed, no chat involved.
+  For when the user already read `EXPERIMENT.md` directly.
+- **`experiment_wake({ uuid, tab_id, session_uuid, provider, model, effort })`**
+  — marks it claimed, then fires the wake-up message into the given
+  tab/session on a background thread. The frontend supplies that session: a
+  freshly minted one for "open in a new chat" (`crypto.randomUUID()` +
+  `setTabHistoryMeta`, mirroring how `ChatPane` seeds a brand-new tab's
+  session before its first send), or an already-open tab's
+  `historySessionUuid` for "open in an existing chat". Unlike the old
+  auto-resume, this is **not** tied to the session that started the run.
+- Dismissing in the UI ("I'll see it later") is purely client-side — it hides
+  the card for this session without calling either command, so the run stays
+  unclaimed and reappears (e.g. in the sidebar's unresolved indicator, or on
+  reload) until one of the two above is used.
+
+`fire_wakeup` (`src-tauri/src/experiments/wake.rs`) itself is unchanged
+plumbing — it just builds and sends the wake-up message into whatever
+tab/session it's given:
 
 1. Reads the last 8KB of `stdout.log`/`stderr.log` (`tail_file`) and composes the
    wake-up message from the seed template `src-tauri/assets/prompts/experiment_wakeup.md`
@@ -306,11 +338,11 @@ UI (not exposed to the agent via MCP):
   (`killpg` on Unix; `taskkill /F /T /PID` on Windows), marks the run cancelled
   immediately (not via the monitor loop) in both the DB row and `EXPERIMENT.md`, and
   emits `experiment-changed`. Note the monitor thread spawned in `start_experiment` is
-  still running and will separately observe the child exit and call `fire_wakeup` as
-  usual — so the agent still gets woken up, still seeing `run_status: cancelled`. That
-  second transition reports a signalled process as `failed` with exit `-1`; it is
+  still running and will separately observe the child exit and attempt its own
+  transition, reporting a signalled process as `failed` with exit `-1`; it is
   discarded because `transition` refuses to move a run that already reached a terminal
-  state, which is what keeps the cancellation in git history.
+  state, which is what keeps the cancellation in git history. `claimed` is left as it
+  was, since `update_experiment_completed` only unclaims on `completed`/`failed`.
 - **`experiment_delete({ uuid })`** — rejected while `status` is `"running"` or
   `"starting"`. Otherwise removes the `.ire/cache/experiments/<uuid>/` log directory,
   the DB row, and the whole git-tracked `.ire/experiments/<NNN>-<slug>/` folder
@@ -338,7 +370,13 @@ pieces:
   supports rename/delete but not creation — experiments are only ever started by the
   agent. The trash button opens **`ConfirmDeleteExperimentModal`** rather than deleting:
   the delete takes the run's whole folder, artifacts included, so it says so and waits
-  for confirmation.
+  for confirmation. Each row shows a small dot when `!claimed`.
+- **`UnclaimedExperiments`** (`src/components/UnclaimedExperiments.tsx`) — a
+  card stack, bottom-right, one per experiment with `claimed: false`. Each
+  card offers "open in a new chat", "open in an existing chat" (a picker over
+  currently open chat tabs), "resolve" (`ipc.experimentResolve`, no chat), and
+  "dismiss" (local-only; the run stays unclaimed). The two chat actions call
+  `ipc.experimentWake` with the target tab's session, then switch to it.
 - **`ExperimentCard`** — how an `experiment_start` tool call renders inline in chat
   (instead of a generic `ToolCard`): collapsed by default, header has a status dot
   (blinking amber while running, solid green/red on completion), the canonical tool

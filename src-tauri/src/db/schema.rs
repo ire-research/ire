@@ -84,6 +84,8 @@ fn migrations() -> Migrations<'static> {
             ALTER TABLE experiments DROP COLUMN ended_at;",
         )
         .comment("drop status/exit_code/ended_at: EXPERIMENT.md's record is the only copy"),
+        M::up("ALTER TABLE experiments ADD COLUMN claimed INTEGER NOT NULL DEFAULT 1;")
+            .comment("track whether a finished run's result has been claimed; no more auto-resume on completion"),
     ])
 }
 

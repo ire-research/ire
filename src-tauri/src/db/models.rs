@@ -19,6 +19,9 @@ pub struct ExperimentRow {
     pub started_at: String,
     pub pid: Option<i64>,
     pub tab_id: String,
+    /// Whether the user has acknowledged this run's result (opened a chat about
+    /// it or explicitly resolved it). Local-only: not carried by `EXPERIMENT.md`.
+    pub claimed: bool,
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -120,10 +123,34 @@ pub fn update_experiment_pid(home_data_dir: &Path, uuid: &str, pid: u32) -> Resu
     Ok(())
 }
 
+/// Mark a run unclaimed on a natural finish. Called by `experiments::transition`
+/// for `completed`/`failed` only — a user-initiated `cancelled` leaves `claimed`
+/// as it is, since the user already knows why the run ended. There is no more
+/// automatic wake-up, so the result waits in the UI until the user opens a chat
+/// about it or resolves it directly.
+pub fn mark_experiment_unclaimed(home_data_dir: &Path, uuid: &str) -> Result<()> {
+    let conn = open(home_data_dir)?;
+    conn.execute(
+        "UPDATE experiments SET claimed = 0 WHERE uuid = ?1",
+        params![uuid],
+    )?;
+    Ok(())
+}
+
+/// Mark a run's result acknowledged, without starting a chat about it.
+pub fn mark_experiment_claimed(home_data_dir: &Path, uuid: &str) -> Result<()> {
+    let conn = open(home_data_dir)?;
+    conn.execute(
+        "UPDATE experiments SET claimed = 1 WHERE uuid = ?1",
+        params![uuid],
+    )?;
+    Ok(())
+}
+
 pub fn get_experiment(home_data_dir: &Path, uuid: &str) -> Result<Option<ExperimentRow>> {
     let conn = open(home_data_dir)?;
     let mut stmt = conn.prepare(
-        "SELECT uuid, name, command, started_at, pid, tab_id \
+        "SELECT uuid, name, command, started_at, pid, tab_id, claimed \
          FROM experiments WHERE uuid = ?1",
     )?;
     let mut rows = stmt.query(params![uuid])?;
@@ -136,6 +163,7 @@ pub fn get_experiment(home_data_dir: &Path, uuid: &str) -> Result<Option<Experim
                 started_at: r.get(3)?,
                 pid: r.get(4)?,
                 tab_id: r.get(5)?,
+                claimed: r.get(6)?,
             })
         })
         .transpose()
@@ -160,7 +188,7 @@ pub fn rename_experiment(home_data_dir: &Path, uuid: &str, name: &str) -> Result
 pub fn list_experiments(home_data_dir: &Path, limit: usize) -> Result<Vec<ExperimentRow>> {
     let conn = open(home_data_dir)?;
     let mut stmt = conn.prepare(
-        "SELECT uuid, name, command, started_at, pid, tab_id \
+        "SELECT uuid, name, command, started_at, pid, tab_id, claimed \
          FROM experiments ORDER BY started_at DESC LIMIT ?1",
     )?;
     let rows = stmt.query_map(params![limit as i64], |r| {
@@ -171,6 +199,7 @@ pub fn list_experiments(home_data_dir: &Path, limit: usize) -> Result<Vec<Experi
             started_at: r.get(3)?,
             pid: r.get(4)?,
             tab_id: r.get(5)?,
+            claimed: r.get(6)?,
         })
     })?;
     rows.map(|r| r.context("experiment row")).collect()
@@ -376,6 +405,32 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         crate::db::schema::run(dir.path()).unwrap();
         dir
+    }
+
+    fn insert_running(home: &Path, uuid: &str) {
+        insert_experiment(
+            home, uuid, "exp", "true", "/tmp", "s1", "tab", "t0", "dir",
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn a_fresh_row_starts_claimed() {
+        let home = tmp_home();
+        insert_running(home.path(), "u1");
+        assert!(get_experiment(home.path(), "u1").unwrap().unwrap().claimed);
+    }
+
+    #[test]
+    fn mark_experiment_unclaimed_then_claimed_round_trips() {
+        let home = tmp_home();
+        insert_running(home.path(), "u1");
+
+        mark_experiment_unclaimed(home.path(), "u1").unwrap();
+        assert!(!get_experiment(home.path(), "u1").unwrap().unwrap().claimed);
+
+        mark_experiment_claimed(home.path(), "u1").unwrap();
+        assert!(get_experiment(home.path(), "u1").unwrap().unwrap().claimed);
     }
 
     #[test]
