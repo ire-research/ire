@@ -216,7 +216,7 @@ fn monitor(mut child: Child, args: MonitorArgs) {
                     status_str,
                     Some(exit_code),
                 );
-                tracing::info!(uuid = %uuid, exit_code = exit_code, "experiment finished, left unclaimed");
+                tracing::info!(uuid = %uuid, exit_code = exit_code, "experiment finished, left unreviewed");
                 break;
             }
             Ok(None) => {

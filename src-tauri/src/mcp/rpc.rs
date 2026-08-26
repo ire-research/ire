@@ -144,6 +144,7 @@ fn dispatch(
         "experiment.start" => experiment_start(params, workspace_root, session_manager, app),
         "experiment.status" => experiment_status(params, workspace_root),
         "experiment.tail_logs" => experiment_tail_logs(params, workspace_root),
+        "experiment.mark_reviewed" => experiment_mark_reviewed(params, workspace_root, app),
         _ => Err(anyhow!("unknown method: {method}")),
     };
     match &result {
@@ -320,6 +321,27 @@ fn experiment_tail_logs(
     let stdout = tail_log(&log_dir.join("stdout.log"), max_bytes);
     let stderr = tail_log(&log_dir.join("stderr.log"), max_bytes);
     Ok(serde_json::json!({ "stdout": stdout, "stderr": stderr }))
+}
+
+/// Let the agent mark a terminal experiment reviewed itself — e.g. it
+/// noticed and discussed an old unreviewed run without the user going
+/// through the UI's resolution card. Mirrors `experiment_resolve`
+/// (`src-tauri/src/commands/experiments.rs`), the human-triggered path.
+fn experiment_mark_reviewed(
+    params: &serde_json::Value,
+    workspace_root: &Path,
+    app: &AppHandle,
+) -> Result<serde_json::Value> {
+    let uuid = params["uuid"]
+        .as_str()
+        .ok_or_else(|| anyhow!("missing uuid"))?;
+    let home_data_dir = crate::workspace::init::home_data_dir(workspace_root)
+        .ok_or_else(|| anyhow!("cannot determine home directory"))?;
+    let dir = crate::experiments::record_dir(workspace_root, &home_data_dir, uuid)
+        .ok_or_else(|| anyhow!("experiment {uuid} not found"))?;
+    let record = crate::experiments::record::mark_reviewed(workspace_root, &dir)?;
+    crate::experiments::emit_changed(app, workspace_root, &home_data_dir, uuid);
+    Ok(serde_json::json!({ "uuid": uuid, "status": record.status }))
 }
 
 fn tail_log(path: &Path, max_bytes: u64) -> String {

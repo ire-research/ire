@@ -21,6 +21,9 @@ function getStatusPill(status: string): { text: string; textColor: string; borde
   if (normalized === "failed" || normalized === "cancelled") {
     return { text: "Fail", textColor: "text-error", borderColor: "border-error/30", bgColor: "bg-error/10" };
   }
+  if (normalized === "reviewed") {
+    return { text: "Reviewed", textColor: "text-info", borderColor: "border-info/30", bgColor: "bg-info/10" };
+  }
   return { text: status, textColor: "text-on-surface-variant", borderColor: "border-on-surface-variant/30", bgColor: "bg-on-surface-variant/10" };
 }
 
@@ -28,6 +31,7 @@ function getStatusColor(status: string): string {
   const normalized = status.toLowerCase();
   if (normalized === "running") return "text-warn";
   if (normalized === "completed") return "text-ok";
+  if (normalized === "reviewed") return "text-info";
   if (normalized === "failed" || normalized === "cancelled") return "text-error";
   return "text-on-surface-variant";
 }

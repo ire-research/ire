@@ -182,7 +182,11 @@ export interface ResourceItem {
   sources: string[];
 }
 
-/** An experiment row returned by experiment_list. */
+/** An experiment row returned by experiment_list. `status` is the whole
+ *  lifecycle: "running" | "completed" | "failed" | "cancelled" | "reviewed"
+ *  | "unknown". A terminal run (completed/failed/cancelled) that hasn't been
+ *  discussed or explicitly resolved sits there until it moves to "reviewed"
+ *  — there is no more automatic wake-up on completion. */
 export interface ExperimentRow {
   uuid: string;
   name: string;
@@ -192,10 +196,6 @@ export interface ExperimentRow {
   started_at: string;
   ended_at: string | null;
   tab_id: string;
-  /** Whether the user has acknowledged this run's result. `false` on a
-   *  completed/failed run means it's unresolved — no chat is opened
-   *  automatically any more, so the UI has to surface it. */
-  claimed: boolean;
 }
 
 /** Payload for "experiment-status" Tauri event. */

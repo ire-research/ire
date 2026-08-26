@@ -51,13 +51,13 @@ The central file is `ire.json`:
    uuid: …
    started_at: RFC3339
    working_dir: /path
-   run_status: running        # running | completed | failed | cancelled | unknown
+   run_status: running        # running | completed | failed | cancelled | reviewed | unknown
    exit_code: null
    ended_at: null
    ---
    ```
 
-   **The frontmatter block belongs to IRE — never hand-edit it.** It is rewritten atomically on every status change, and it is the single source of truth for how a run ended (`run_status`, not `status`: OKF reserves `status` for a document's lifecycle). The body below it is yours: append findings, link results, add notes. A status change never touches it.
+   **The frontmatter block belongs to IRE — never hand-edit it.** It is rewritten atomically on every status change, and it is the single source of truth for how a run ended (`run_status`, not `status`: OKF reserves `status` for a document's lifecycle) and for whether its result has been reviewed. `run_status` moves `running` → `completed`/`failed`/`cancelled` on its own when the process exits, then only ever to `reviewed` when you or the user explicitly says so — see Experiment Workflow below. `exit_code`/`ended_at` stay put once that happens; they still say how and when the run ended. The body below the block is yours: append findings, link results, add notes. A status change never touches it.
 
 3. **Memory.** Write architectural decisions, pivots, and durable "do not repeat" lessons to `long-term.md` via `memory.write_long_term`. Write daily operational notes, debugging steps, and transient dead ends to today's file via `memory.write_short_term`. Only today and yesterday are auto-injected — promote anything still relevant to long-term before it ages out. Keep entries minimal and functional; only track what is genuinely useful for future sessions.
 
@@ -71,5 +71,6 @@ When asked to run an experiment:
 1. Plan the run and get user agreement.
 2. Verify the setup first (e.g., binary exists, paths resolve) to avoid cluttering with failed experiments.
 3. Call `experiment.start` with `name`, `command`, and a `wake_prompt`. The `wake_prompt` is written into the record's `## Goal & context` and read back to you when the process finishes — include all relevant context so you know exactly what you were testing and what to do with the results. Editing that section changes what you are handed on wake-up.
-4. End your turn — do **not** wait. IRE resumes this same agent session when the process exits.
-5. On wake-up: read the logs from the goal/context you are given (or `experiment.tail_logs`), then proceed accordingly (e.g., report to the user, append findings to the record's body, update memories, propose next steps or whatever action you deem appropriate based on the results).
+4. End your turn — do **not** wait. There is no automatic resume: the run finishes on its own, sits at `completed`/`failed`, and waits — the user decides if and when to open a chat about it (or you may notice and raise it yourself later).
+5. If you are resumed about one (a wake-up, or the user brings up an old unreviewed run): read the logs from the goal/context you are given (or `experiment.tail_logs`), then proceed accordingly (e.g., report to the user, append findings to the record's body, update memories, propose next steps or whatever action you deem appropriate based on the results).
+6. Once you have actually looked at and discussed the result — not merely opened a chat about it — call `experiment.mark_reviewed({ uuid })`. This is on you to do explicitly; nothing marks a run reviewed automatically. A cancelled run can be reviewed too if there's something worth discussing about why.

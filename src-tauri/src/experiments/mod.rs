@@ -11,8 +11,9 @@ use crate::db::models::{self as db, ExperimentRow};
 use crate::events;
 
 /// Terminal run states. Once a record says one of these, the run is over and
-/// how it ended is settled.
-const TERMINAL: [&str; 3] = ["completed", "failed", "cancelled"];
+/// how it ended is settled. `reviewed` is terminal too — nothing moves a run
+/// off it.
+const TERMINAL: [&str; 4] = ["completed", "failed", "cancelled", "reviewed"];
 
 /// The row the UI is told about: `local.db`'s operational fields plus the
 /// outcome of a run, which lives only in its `EXPERIMENT.md` record. A row
@@ -29,11 +30,6 @@ pub struct ExperimentView {
     pub ended_at: Option<String>,
     pub pid: Option<i64>,
     pub tab_id: String,
-    /// Whether the user has acknowledged this run's result. `false` on a
-    /// completed/failed run means no chat has been opened about it and it
-    /// has not been explicitly resolved — there is no more automatic
-    /// wake-up, so the UI has to surface it. Local-only, from `local.db`.
-    pub claimed: bool,
 }
 
 /// Apply a terminal status: write it to `local.db`, then to the git-tracked
@@ -68,14 +64,6 @@ pub fn transition(
         exit_code.map(i64::from),
         Some(&ended_at),
     );
-    // No more automatic wake-up: a natural finish leaves the run unclaimed
-    // until the user opens a chat about it or resolves it directly. A
-    // user-initiated cancel leaves `claimed` as it is.
-    if status == "completed" || status == "failed" {
-        if let Err(e) = db::mark_experiment_unclaimed(home_data_dir, uuid) {
-            tracing::warn!(error = %e, uuid = %uuid, "mark experiment unclaimed failed");
-        }
-    }
     emit_changed(app, workspace_root, home_data_dir, uuid);
 }
 
@@ -170,8 +158,6 @@ pub fn row_or_record(
         ended_at: persisted.ended_at,
         pid: None,
         tab_id: String::new(),
-        // No local row means nothing to claim; don't surface a stale popup.
-        claimed: true,
     })
 }
 
@@ -191,7 +177,6 @@ fn overlay(workspace_root: &Path, record_dir: Option<&str>, row: ExperimentRow) 
             ended_at: persisted.ended_at,
             pid: row.pid,
             tab_id: row.tab_id,
-            claimed: row.claimed,
         },
         None => ExperimentView {
             uuid: row.uuid,
@@ -203,7 +188,6 @@ fn overlay(workspace_root: &Path, record_dir: Option<&str>, row: ExperimentRow) 
             ended_at: None,
             pid: row.pid,
             tab_id: row.tab_id,
-            claimed: row.claimed,
         },
     }
 }
@@ -289,6 +273,17 @@ mod tests {
         assert!(row_or_record(workspace.path(), home.path(), uuid).is_none());
     }
 
+    #[test]
+    fn a_reviewed_run_composes_and_stays_terminal() {
+        let (workspace, home, dir) = cloned();
+        let uuid = "11111111-2222-3333-4444-555555555555";
+        record::mark_reviewed(workspace.path(), &dir).unwrap();
+
+        let composed = row_or_record(workspace.path(), home.path(), uuid).unwrap();
+        assert_eq!(composed.status, "reviewed");
+        assert!(TERMINAL.contains(&composed.status.as_str()));
+    }
+
     /// Issue #120: `ExperimentRow` (or its replacement view type) must not
     /// carry `status`/`exit_code`/`ended_at` fields sourced from `local.db`
     /// at all — the record is the only source for a run's outcome.
@@ -310,7 +305,6 @@ mod tests {
             started_at: "t0".to_string(),
             pid: None,
             tab_id: "main".to_string(),
-            claimed: true,
             // Deliberately no status / exit_code / ended_at: a #120-compliant
             // ExperimentRow must not require them.
         };

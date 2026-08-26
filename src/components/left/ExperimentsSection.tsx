@@ -1,10 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
-import type { ExperimentRow } from "../../types";
+import { useChat } from "../../state/chat";
+import { useChatOptions } from "../../state/chatOptions";
+import type { EffortLevel, ExperimentRow, Provider } from "../../types";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFlask, faPencil, faTrash, iconClass } from "../../icons";
 import { ConfirmDeleteExperimentModal } from "./ConfirmDeleteExperimentModal";
+import { ExperimentResolutionModal } from "./ExperimentResolutionModal";
+
+const UNRESOLVED_STATUSES = ["completed", "failed", "cancelled"];
 
 interface Props {
   experiments: ExperimentRow[];
@@ -22,6 +27,9 @@ function getStatusPill(status: string): { text: string; textColor: string; borde
   if (normalized === "failed" || normalized === "cancelled") {
     return { text: "Fail", textColor: "text-error", borderColor: "border-error/30", bgColor: "bg-error/10" };
   }
+  if (normalized === "reviewed") {
+    return { text: "Reviewed", textColor: "text-info", borderColor: "border-info/30", bgColor: "bg-info/10" };
+  }
   const truncated = normalized.slice(0, 4).toUpperCase();
   return { text: truncated, textColor: "text-on-surface-variant", borderColor: "border-on-surface-variant/30", bgColor: "bg-on-surface-variant/10" };
 }
@@ -32,10 +40,14 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
   const [renamingUuid, setRenamingUuid] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [tooltip, setTooltip] = useState<{ label: string; x: number; y: number } | null>(null);
+  const [resolving, setResolving] = useState<ExperimentRow | null>(null);
+  const [resolveBusy, setResolveBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spanRefs = useRef<Map<string, HTMLSpanElement | null>>(new Map());
   const deleteInFlight = useRef(false);
+  const tabs = useChat((s) => s.tabs);
+  const existingChatTabs = tabs.filter((t) => t.kind === "chat" && t.historySessionUuid);
 
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
@@ -109,6 +121,62 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
     }
   };
 
+  const openResolution = (e: React.MouseEvent, exp: ExperimentRow) => {
+    e.stopPropagation();
+    setResolving(exp);
+  };
+
+  const openInNewChat = async (provider: Provider, model: string, effort: EffortLevel | null) => {
+    if (!resolving) return;
+    const uuid = resolving.uuid;
+    setResolveBusy(true);
+    try {
+      const tabId = useChat.getState().createTab("Untitled");
+      useChat.getState().setActiveTab(tabId);
+      const sessionUuid = crypto.randomUUID();
+      const startedAt = new Date().toISOString();
+      useChat.getState().setTabHistoryMeta(tabId, sessionUuid, startedAt);
+      useChat.getState().setTabAgentOptions(tabId, { provider, model, effort });
+      await ipc.experimentWake(uuid, tabId, sessionUuid, provider, model, effort ?? undefined);
+      setResolving(null);
+    } catch (err) {
+      toastError("open experiment in new chat", err);
+    } finally {
+      setResolveBusy(false);
+    }
+  };
+
+  const openInExistingChat = async (tabId: string) => {
+    if (!resolving) return;
+    const uuid = resolving.uuid;
+    const tab = useChat.getState().tabs.find((t) => t.id === tabId);
+    if (!tab?.historySessionUuid) return;
+    const { provider, model, effort } = tab.agentOptions ?? useChatOptions.getState();
+    setResolveBusy(true);
+    try {
+      useChat.getState().setActiveTab(tabId);
+      await ipc.experimentWake(uuid, tabId, tab.historySessionUuid, provider, model, effort ?? undefined);
+      setResolving(null);
+    } catch (err) {
+      toastError("open experiment in existing chat", err);
+    } finally {
+      setResolveBusy(false);
+    }
+  };
+
+  const resolveWithoutChat = async () => {
+    if (!resolving) return;
+    setResolveBusy(true);
+    try {
+      await ipc.experimentResolve(resolving.uuid);
+      setResolving(null);
+    } catch (err) {
+      toastError("resolve experiment", err);
+    } finally {
+      setResolveBusy(false);
+    }
+  };
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
       <div className="px-4 pt-4 shrink-0 flex items-center gap-2 py-1 mb-2 bg-surface-container-low text-on-surface-variant font-mono text-[14px]">
@@ -159,11 +227,14 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
                     >
                       <FontAwesomeIcon icon={faPencil} className={iconClass.md} />
                     </button>
-                    {!exp.claimed && (
-                      <span
-                        className="h-1.5 w-1.5 rounded-full bg-warn shrink-0 mr-1"
-                        title="Unresolved — result not yet reviewed"
-                      />
+                    {UNRESOLVED_STATUSES.includes(exp.status) && (
+                      <button
+                        className="h-3 w-3 flex items-center justify-center shrink-0 mr-1"
+                        title="Unresolved — click to review"
+                        onClick={(e) => openResolution(e, exp)}
+                      >
+                        <span className="h-1.5 w-1.5 rounded-full bg-warn" />
+                      </button>
                     )}
                     <span className={`text-[10px] uppercase border ${pill.borderColor} px-1 rounded ${pill.textColor} ${pill.bgColor} shrink-0`}>
                       {pill.text}
@@ -191,6 +262,17 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
           deleting={deletingUuid === pendingDelete.uuid}
           onConfirm={confirmDelete}
           onCancel={() => setPendingDelete(null)}
+        />
+      )}
+      {resolving && (
+        <ExperimentResolutionModal
+          experiment={resolving}
+          existingChatTabs={existingChatTabs}
+          busy={resolveBusy}
+          onOpenNewChat={openInNewChat}
+          onOpenExistingChat={openInExistingChat}
+          onResolve={resolveWithoutChat}
+          onClose={() => setResolving(null)}
         />
       )}
       {tooltip && (

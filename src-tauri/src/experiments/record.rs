@@ -185,6 +185,23 @@ pub fn set_status(
     })
 }
 
+/// A run's outcomes eligible for review — everything terminal. `running` is
+/// not: there is nothing to review yet.
+const REVIEWABLE: [&str; 3] = ["completed", "failed", "cancelled"];
+
+/// Move a terminal run to `reviewed` — a chat was opened about it, or it was
+/// explicitly resolved without one. `exit_code`/`ended_at` are untouched:
+/// they still say how and when the run ended after its status moves on.
+/// A no-op on a run that isn't in a reviewable state (still running, or
+/// already reviewed) — safe to call more than once.
+pub fn mark_reviewed(workspace_root: &Path, rel_dir: &str) -> Result<Record> {
+    rewrite(workspace_root, rel_dir, |r| {
+        if REVIEWABLE.contains(&r.status.as_str()) {
+            r.status = "reviewed".to_string();
+        }
+    })
+}
+
 /// Rewrite the frontmatter `title`. The `# {name}` H1 in the body is left as
 /// written: the body belongs to whoever edits it, not to the runner.
 pub fn set_title(workspace_root: &Path, rel_dir: &str, name: &str) -> Result<Record> {
@@ -541,6 +558,39 @@ mod tests {
         assert!(after.contains("lr=1e-4 wins by 0.4."));
         assert!(after.contains("run_status: completed"));
         assert!(!after.contains("run_status: running"));
+    }
+
+    #[test]
+    fn mark_reviewed_moves_a_terminal_run_to_reviewed_and_keeps_its_outcome() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = create(tmp.path(), args("LR ablation", "python run.py")).unwrap();
+        set_status(tmp.path(), &dir, "completed", Some(0), Some("t1")).unwrap();
+
+        let record = mark_reviewed(tmp.path(), &dir).unwrap();
+        assert_eq!(record.status, "reviewed");
+        // exit_code/ended_at still say how and when it ended.
+        assert_eq!(record.exit_code, Some(0));
+        assert_eq!(record.ended_at.as_deref(), Some("t1"));
+    }
+
+    #[test]
+    fn mark_reviewed_on_a_still_running_experiment_is_a_no_op() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = create(tmp.path(), args("LR ablation", "python run.py")).unwrap();
+
+        let record = mark_reviewed(tmp.path(), &dir).unwrap();
+        assert_eq!(record.status, "running");
+    }
+
+    #[test]
+    fn mark_reviewed_is_idempotent() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = create(tmp.path(), args("LR ablation", "python run.py")).unwrap();
+        set_status(tmp.path(), &dir, "cancelled", None, Some("t1")).unwrap();
+
+        mark_reviewed(tmp.path(), &dir).unwrap();
+        let record = mark_reviewed(tmp.path(), &dir).unwrap();
+        assert_eq!(record.status, "reviewed");
     }
 
     #[test]

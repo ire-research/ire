@@ -242,7 +242,7 @@ fn tool_catalog() -> Vec<Tool> {
         ),
         tool(
             "experiment.start",
-            "Spawn a detached experiment subprocess. Returns immediately with a uuid and `dir`, the experiment's wiki folder — write scripts, result files, and other artifacts worth keeping there. IRE will wake you up via --resume when the process finishes.",
+            "Spawn a detached experiment subprocess. Returns immediately with a uuid and `dir`, the experiment's wiki folder — write scripts, result files, and other artifacts worth keeping there. There is no automatic wake-up: the run sits unreviewed until a chat is opened about it (by the user, or an agent) or explicitly resolved — call experiment.mark_reviewed once you've actually discussed the result.",
             json!({
                 "type": "object",
                 "properties": {
@@ -273,6 +273,17 @@ fn tool_catalog() -> Vec<Tool> {
                 "properties": {
                     "uuid": { "type": "string", "description": "Experiment uuid" },
                     "kb": { "type": "number", "description": "Kilobytes to tail (default 64)" }
+                },
+                "required": ["uuid"]
+            }),
+        ),
+        tool(
+            "experiment.mark_reviewed",
+            "Mark a finished experiment (completed, failed, or cancelled) as reviewed — call this once you've actually looked at and discussed its result, e.g. after reading its EXPERIMENT.md and logs unprompted, or wrapping up a wake-up. No-op if it's still running or already reviewed.",
+            json!({
+                "type": "object",
+                "properties": {
+                    "uuid": { "type": "string", "description": "Experiment uuid" }
                 },
                 "required": ["uuid"]
             }),

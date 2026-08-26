@@ -133,8 +133,8 @@ pub fn experiment_rename(
     Ok(())
 }
 
-/// Mark an unclaimed experiment's result acknowledged without opening a chat —
-/// e.g. the user already read `EXPERIMENT.md` directly.
+/// Move a terminal, unreviewed experiment straight to `reviewed` without
+/// opening a chat — e.g. the user already read `EXPERIMENT.md` directly.
 #[tauri::command]
 pub fn experiment_resolve(
     app: AppHandle,
@@ -143,16 +143,22 @@ pub fn experiment_resolve(
 ) -> Result<(), String> {
     let workspace_path = workspace_path(&active)?;
     let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
-    db::mark_experiment_claimed(&home_data_dir, &uuid).map_err(|e| e.to_string())?;
+    let dir = crate::experiments::record_dir(&workspace_path, &home_data_dir, &uuid)
+        .ok_or_else(|| format!("experiment {uuid} not found"))?;
+    crate::experiments::record::mark_reviewed(&workspace_path, &dir)
+        .map_err(|e| e.to_string())?;
     crate::experiments::emit_changed(&app, &workspace_path, &home_data_dir, &uuid);
     Ok(())
 }
 
-/// Resolve an unclaimed experiment by discussing it: fires the same wake-up
+/// Open a chat about an unreviewed experiment: fires the same wake-up
 /// message `fire_wakeup` used to send automatically, but into whichever chat
 /// tab/session the user chose (a brand-new one or an existing one) rather
-/// than the session that started the run. Marks the run claimed first so a
-/// slow agent turn can't be interrupted by the user resolving it twice.
+/// than the session that started the run. Does **not** mark it reviewed —
+/// opening the chat isn't the same as having discussed it. The wake-up
+/// prompt tells the agent to call `experiment.mark_reviewed` once it
+/// actually has (see `assets/prompts/experiment_wakeup.md`); a human can
+/// still mark it reviewed directly via `experiment_resolve`.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub fn experiment_wake(
@@ -174,9 +180,6 @@ pub fn experiment_wake(
     let record_dir = crate::experiments::record_dir(&workspace_path, &home_data_dir, &uuid)
         .ok_or_else(|| format!("experiment {uuid} has no record"))?;
     let exit_code = row.exit_code.unwrap_or(-1) as i32;
-
-    db::mark_experiment_claimed(&home_data_dir, &uuid).map_err(|e| e.to_string())?;
-    crate::experiments::emit_changed(&app, &workspace_path, &home_data_dir, &uuid);
 
     let session_manager = session_manager.inner().clone();
     let app_for_thread = app.clone();

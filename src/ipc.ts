@@ -124,12 +124,12 @@ export const ipc = {
     invoke("experiment_delete", { uuid }),
   experimentRename: (uuid: string, name: string): Promise<void> =>
     invoke("experiment_rename", { uuid, name }),
-  /** Mark an unclaimed experiment's result acknowledged without opening a chat. */
+  /** Move a terminal, unreviewed experiment straight to "reviewed" without opening a chat. */
   experimentResolve: (uuid: string): Promise<void> =>
     invoke("experiment_resolve", { uuid }),
   /** Fire the wake-up message for an experiment into the given tab/session —
    *  a fresh one for "open in a new chat", an existing one for "open in an
-   *  existing chat". Marks the run claimed. */
+   *  existing chat". Marks the run reviewed. */
   experimentWake: (
     uuid: string,
     tabId: string,

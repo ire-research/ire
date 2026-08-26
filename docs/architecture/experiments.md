@@ -1,6 +1,6 @@
 # Experiments
 
-An experiment is a detached shell subprocess the agent (Claude Code / Codex / OpenCode) launches on its own initiative to test something, e.g. an ablation run, a build, a script. It gets **woken up** once the process exits. There is no "Run experiment" button; the trigger is conversational (see [Triggering](#triggering-mcp-tools--the-experiment-workflow-rule)), and the whole mechanism exists because CLI-agent sessions don't stay alive waiting on a background job.
+An experiment is a detached shell subprocess the agent (Claude Code / Codex / OpenCode) launches on its own initiative to test something, e.g. an ablation run, a build, a script. There is no "Run experiment" button; the trigger is conversational (see [Triggering](#triggering-mcp-tools--the-experiment-workflow-rule)), and the whole mechanism exists because CLI-agent sessions don't stay alive waiting on a background job. When the process exits it does **not** wake anything up automatically — see [Wake-up](#wake-up) for how a chat gets opened about it, and marked reviewed, instead.
 
 ---
 
@@ -43,10 +43,11 @@ T3  Agent's response to the user: "Started experiment <uuid>; I'll come back
     when it's done." Then this agent turn ENDS naturally.
 T4  Backend monitor thread polls the child every 500ms and tails new log
     lines to the frontend — see Spawn & monitor below.
-T5  Process exits. Backend updates the DB row + `EXPERIMENT.md` and marks the
-    run **unclaimed** — no agent turn fires automatically. The UI surfaces a
-    resolution card: open in a new chat, open in an existing chat, resolve
-    without chat, or dismiss for later — see Wake-up below.
+T5  Process exits. Backend updates the DB row + `EXPERIMENT.md`, leaving
+    `run_status` at `completed`/`failed` — no agent turn fires automatically.
+    The UI surfaces a resolution card: open in a new chat, open in an
+    existing chat, resolve without chat, or dismiss for later — see Wake-up
+    below.
 T6  If the user opens a chat about it (new or existing), that chat's session
     is resumed with a wake-up message built from the record's
     `## Goal & context` + exit code + log tail. The agent reads result files,
@@ -79,7 +80,7 @@ Experiments live in **two** stores, split by ownership rather than duplicated:
   uuid: 11111111-2222-3333-4444-555555555555
   started_at: 2026-08-11T10:00:00+02:00
   working_dir: /tmp/project
-  run_status: running          # running | completed | failed | cancelled | unknown
+  run_status: running          # running | completed | failed | cancelled | reviewed | unknown
   exit_code: null
   ended_at: null
   ---
@@ -88,6 +89,16 @@ Experiments live in **two** stores, split by ownership rather than duplicated:
   The run state is `run_status`, **not** `status`: OKF §5.4 reserves `status` for a
   document's lifecycle (`draft | stable | deprecated`), and one key cannot carry both
   meanings once other concept types share the bundle.
+
+  `run_status` is the **whole** lifecycle, including whether the result has been
+  reviewed — there is no separate flag for that. `running` moves to one of
+  `completed`/`failed`/`cancelled` when the process exits; any of those three moves
+  to `reviewed` once someone has engaged with the result — opened a chat about it,
+  or explicitly resolved it without one. `exit_code`/`ended_at` are untouched by that
+  last move, so they still say how and when the run ended after the status text
+  itself has moved on. See [Wake-up](#wake-up) for how the two transitions differ,
+  and [docs/product/experiment-lifecycle.md](../product/experiment-lifecycle.md) for
+  the product-level framing.
 
   **Ownership boundary.** The frontmatter block is exclusively runner-owned and
   atomically rewritten on every status transition. Everything below it — the `# {name}`
@@ -106,46 +117,39 @@ Experiments live in **two** stores, split by ownership rather than duplicated:
   survives). The folder is created before the subprocess spawns and removed again if the
   DB insert or the spawn fails, so a folder implies a run that actually started.
 - **`local.db` `experiments` table** (SQLite, `~/.ire/workspaces/<id>/local.db`, purely
-  ephemeral operational state) — `src-tauri/src/db/schema.rs`:
+  ephemeral operational state — a run's outcome, including whether it has been
+  reviewed, is not here; see below) — `src-tauri/src/db/schema.rs`:
   ```sql
   CREATE TABLE experiments (
     uuid TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     command TEXT NOT NULL,
     working_dir TEXT NOT NULL,
-    status TEXT NOT NULL,             -- running | completed | failed | cancelled
-    exit_code INTEGER,
     started_at TEXT NOT NULL,
-    ended_at TEXT,
     pid INTEGER,
     session_id TEXT NOT NULL,         -- the chat session that started the run (informational only)
     tab_id TEXT NOT NULL DEFAULT 'main',
-    record_dir TEXT,                  -- workspace-relative folder holding EXPERIMENT.md
-    claimed INTEGER NOT NULL DEFAULT 1 -- has the user acknowledged this run's result?
+    record_dir TEXT                   -- workspace-relative folder holding EXPERIMENT.md
   );
-
-  CREATE INDEX idx_experiments_status ON experiments(status);
-  CREATE INDEX idx_experiments_started ON experiments(started_at DESC);
   ```
 
-`local.db` holds the fields that have no reason to be shared or committed (`pid`,
-`session_id`, `tab_id`, `record_dir`, `claimed`). `claimed` is set to `0` by
-`db::update_experiment_completed` whenever a run transitions to `completed` or
-`failed` — a user-initiated `cancelled` leaves it as it stands, since the user
-already knows why the run ended. It is not among the fields `EXPERIMENT.md`
-carries: whether a result was reviewed is local UI state, not part of the
-run's shareable record. The goal/context is **not** among them either: it is
-read back out of the record's `## Goal & context` at wake-up time, so it survives a
-clone or a cleared database, and an edit to that section is what the agent is handed. Its `status`/`exit_code`/`ended_at`
-columns are written first on a transition and then superseded by the file: `experiments::row`
-(`src-tauri/src/experiments/mod.rs`) composes the row the UI sees by overlaying what
-`EXPERIMENT.md` says on top of the database row, so the two can never disagree about how a
-run ended.
+`local.db` holds only the fields that have no reason to be shared or committed
+(`pid`, `session_id`, `tab_id`, `record_dir`). A run's outcome —
+`run_status`/`exit_code`/`ended_at` — lives exclusively in `EXPERIMENT.md`'s
+frontmatter (`experiments::ExperimentView`, composed by `experiments::overlay`,
+carries it in). Whether a run has been reviewed is part of that same
+`run_status` field, not a separate flag — it is a fact about the run, not
+about which machine or person is looking at it, so it belongs where the rest
+of the run's outcome already lives and git-tracks the same way. The
+goal/context is not in `local.db` either: it is read back out of the record's
+`## Goal & context` at wake-up time, so it survives a clone or a cleared
+database.
 
-**Write path.** `experiments::transition` updates the DB row, rewrites the frontmatter,
-then **re-reads the file** and emits `experiment-changed` from what was actually
-persisted — never from in-process state assembled separately. That read-back is the
-one-source-of-truth guarantee: the event cannot say something the file does not.
+**Write path.** `experiments::transition` rewrites the record's frontmatter (never
+`local.db`, which carries no outcome fields to write), then **re-reads the file** and
+emits `experiment-changed` from what was actually persisted — never from in-process
+state assembled separately. That read-back is the one-source-of-truth guarantee: the
+event cannot say something the file does not.
 
 **`reconcile()` is unchanged** — experiment records are not watched. Only the
 *frontmatter* is runner-owned; the body and the rest of the folder are explicitly not,
@@ -212,13 +216,17 @@ When asked to run an experiment:
 3. Call `experiment.start` with `name`, `command`, and a `wake_prompt`. The `wake_prompt` is given back to you
    when the process finishes — include all relevant context so you know exactly what you were testing and what
    to do with the results.
-4. End your turn — do **not** wait. IRE resumes this same agent session when the process exits.
-5. On wake-up: read the logs from the `wake_prompt` context (or `experiment.tail_logs`), then proceed accordingly
-   (e.g., report to the user, append findings to the experiment's EXPERIMENT.md body, update memories, propose next steps or whatever action you deem
-   appropriate based on the results).
+4. End your turn — do **not** wait. There is no automatic resume: the run finishes on its own and sits
+   unreviewed until a chat is opened about it.
+5. If resumed about one (a wake-up, or the user raises an old unreviewed run): read the logs from the
+   `wake_prompt` context (or `experiment.tail_logs`), then proceed accordingly (e.g., report to the user, append
+   findings to the experiment's EXPERIMENT.md body, update memories, propose next steps or whatever action you
+   deem appropriate based on the results).
+6. Once you've actually looked at and discussed the result, call `experiment.mark_reviewed`. Nothing does this
+   for you — merely opening a chat about a run doesn't mark it reviewed.
 ```
 
-The three MCP tools that back this (schemas from `src-tauri/src/mcp/stdio_server.rs`;
+The four MCP tools that back this (schemas from `src-tauri/src/mcp/stdio_server.rs`;
 general MCP catalog format in [mcp.md — Tool Catalog](mcp.md#tool-catalog)):
 
 | Tool | Params | Notes |
@@ -226,6 +234,7 @@ general MCP catalog format in [mcp.md — Tool Catalog](mcp.md#tool-catalog)):
 | `experiment.start` | `name` (required), `command` (required, `sh -c` string), `working_dir` (optional, defaults to workspace root), `wake_prompt` (required) | Returns `{ uuid, status: "started", dir }` immediately, where `dir` is the workspace-relative wiki folder for the run. |
 | `experiment.status` | `uuid` (required) | Returns `{ status, exit_code?, started_at, ended_at? }`. |
 | `experiment.tail_logs` | `uuid` (required), `kb` (optional, default 64) | Tail of stdout/stderr from `.ire/cache/experiments/<uuid>/`. |
+| `experiment.mark_reviewed` | `uuid` (required) | Moves `run_status` to `reviewed` from any of `completed`/`failed`/`cancelled`; a no-op if still `running` or already `reviewed`. Returns `{ uuid, status }`. |
 
 `experiment.start` requires an active agent turn to attach to — the MCP handler
 (`src-tauri/src/mcp/rpc.rs`) rejects the call with "no active agent session" if none is
@@ -259,38 +268,56 @@ by reading `.ire/experiments/<NNN>-<slug>/EXPERIMENT.md` instead.
 
 On exit, the monitor:
 - Drains any remaining log output.
-- Sets `status` to `"completed"` (exit code 0) or `"failed"` (anything else, including
-  a `try_wait` error, which is also logged and recorded as exit code `-1`) via
-  `db::update_experiment_completed`.
-- Emits `experiment-status` with the final status/exit code, syncs the row to
-  `EXPERIMENT.md` (which also marks it `claimed: 0` for `completed`/`failed`),
-  emits `experiment-changed` from the re-read file.
-- Does **not** call `fire_wakeup`. The run just sits unclaimed until the user
-  acts on it — see [Wake-up](#wake-up).
+- Calls `experiments::transition` with `"completed"` (exit code 0) or `"failed"`
+  (anything else, including a `try_wait` error, which is also logged and recorded
+  as exit code `-1`), which rewrites `EXPERIMENT.md`'s frontmatter — `run_status`,
+  `exit_code`, `ended_at` — and emits `experiment-changed` from the re-read file.
+- Does **not** call `fire_wakeup`. The run just sits at `completed`/`failed`,
+  unreviewed, until the user acts on it — see [Wake-up](#wake-up).
 
 ---
 
 ## Wake-up
 
-There is no more automatic resume on completion: a finished run sits
-**unclaimed** (`claimed: 0` in `local.db`) until the user does something about
-it. The UI's resolution card, driven off `ExperimentRow.claimed`, offers three
-paths, all backed by Tauri commands in `src-tauri/src/commands/experiments.rs`:
+There is no more automatic resume on completion: a finished run sits at
+`run_status: completed`/`failed`/`cancelled` — unreviewed — until the user
+does something about it. The UI's resolution card, driven off any
+`ExperimentView` in one of those three states, offers three paths, all
+backed by Tauri commands in `src-tauri/src/commands/experiments.rs`:
 
-- **`experiment_resolve({ uuid })`** — marks it claimed, no chat involved.
-  For when the user already read `EXPERIMENT.md` directly.
+- **`experiment_resolve({ uuid })`** — calls `record::mark_reviewed`, moving
+  `run_status` straight to `reviewed`, no chat involved. For when the user
+  already read `EXPERIMENT.md` directly.
 - **`experiment_wake({ uuid, tab_id, session_uuid, provider, model, effort })`**
-  — marks it claimed, then fires the wake-up message into the given
-  tab/session on a background thread. The frontend supplies that session: a
-  freshly minted one for "open in a new chat" (`crypto.randomUUID()` +
+  — fires the wake-up message into the given tab/session on a background
+  thread. It does **not** mark the run reviewed: opening a chat about it
+  isn't the same as having discussed it. The frontend supplies that session:
+  a freshly minted one for "open in a new chat" (`crypto.randomUUID()` +
   `setTabHistoryMeta`, mirroring how `ChatPane` seeds a brand-new tab's
   session before its first send), or an already-open tab's
   `historySessionUuid` for "open in an existing chat". Unlike the old
   auto-resume, this is **not** tied to the session that started the run.
 - Dismissing in the UI ("I'll see it later") is purely client-side — it hides
   the card for this session without calling either command, so the run stays
-  unclaimed and reappears (e.g. in the sidebar's unresolved indicator, or on
+  unreviewed and reappears (e.g. in the sidebar's unresolved indicator, or on
   reload) until one of the two above is used.
+
+Marking `reviewed` is always an explicit act, never a side effect of merely
+opening a chat — by a human (`experiment_resolve`, or the UI) or by the agent
+itself, via the MCP tool `experiment.mark_reviewed({ uuid })`
+(`src-tauri/src/mcp/rpc.rs`, `experiment_mark_reviewed`). The wake-up prompt
+(`src-tauri/assets/prompts/experiment_wakeup.md`) tells the agent to call it
+once it has actually looked at and discussed the result — the same tool an
+agent can call unprompted if it notices an old unreviewed run outside any
+wake-up flow at all.
+
+`record::mark_reviewed` (`src-tauri/src/experiments/record.rs`) is a guarded
+transition: it only moves `run_status` to `reviewed` from one of
+`completed`/`failed`/`cancelled` — a still-`running` experiment can't be
+reviewed, and reviewing twice is a safe no-op. `exit_code`/`ended_at` are left
+exactly as they were: they still say how and when the run ended, even once
+the status text has moved past that. A cancelled run can be reviewed too —
+cancelling isn't necessarily the end of the conversation.
 
 `fire_wakeup` (`src-tauri/src/experiments/wake.rs`) itself is unchanged
 plumbing — it just builds and sends the wake-up message into whatever
@@ -341,8 +368,7 @@ UI (not exposed to the agent via MCP):
   still running and will separately observe the child exit and attempt its own
   transition, reporting a signalled process as `failed` with exit `-1`; it is
   discarded because `transition` refuses to move a run that already reached a terminal
-  state, which is what keeps the cancellation in git history. `claimed` is left as it
-  was, since `update_experiment_completed` only unclaims on `completed`/`failed`.
+  state, which is what keeps the cancellation in git history.
 - **`experiment_delete({ uuid })`** — rejected while `status` is `"running"` or
   `"starting"`. Otherwise removes the `.ire/cache/experiments/<uuid>/` log directory,
   the DB row, and the whole git-tracked `.ire/experiments/<NNN>-<slug>/` folder
@@ -370,13 +396,19 @@ pieces:
   supports rename/delete but not creation — experiments are only ever started by the
   agent. The trash button opens **`ConfirmDeleteExperimentModal`** rather than deleting:
   the delete takes the run's whole folder, artifacts included, so it says so and waits
-  for confirmation. Each row shows a small dot when `!claimed`.
-- **`UnclaimedExperiments`** (`src/components/UnclaimedExperiments.tsx`) — a
-  card stack, bottom-right, one per experiment with `claimed: false`. Each
-  card offers "open in a new chat", "open in an existing chat" (a picker over
-  currently open chat tabs), "resolve" (`ipc.experimentResolve`, no chat), and
-  "dismiss" (local-only; the run stays unclaimed). The two chat actions call
-  `ipc.experimentWake` with the target tab's session, then switch to it.
+  for confirmation. Each row shows a small dot when `status` is
+  `completed`/`failed`/`cancelled` (unreviewed) — clicking it, rather than the
+  row itself, opens **`ExperimentResolutionModal`**.
+- **`ExperimentResolutionModal`** (`src/components/left/ExperimentResolutionModal.tsx`)
+  — an on-demand dialog (not a persistent notification), matching
+  `ConfirmDeleteExperimentModal`'s visual language. Offers a provider/model/effort
+  picker (defaults from `useChatOptions`, overridable per-open) plus "open in a
+  new chat", a picker over currently open chat tabs plus "open in an existing
+  chat" (uses that tab's own settings, not the picker), and "resolve without
+  chat" (`ipc.experimentResolve`). Only "resolve without chat" moves
+  `run_status` to `reviewed` here — the two chat actions just call
+  `ipc.experimentWake` and switch to that tab; reviewing is left to whoever
+  (human or agent) actually engages with the result, per [Wake-up](#wake-up).
 - **`ExperimentCard`** — how an `experiment_start` tool call renders inline in chat
   (instead of a generic `ToolCard`): collapsed by default, header has a status dot
   (blinking amber while running, solid green/red on completion), the canonical tool

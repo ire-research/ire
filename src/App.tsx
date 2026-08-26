@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Layout } from "./components/Layout";
 import { SetupScreen } from "./components/setup/SetupScreen";
 import { ToastStack } from "./components/ToastStack";
-import { UnclaimedExperiments } from "./components/UnclaimedExperiments";
 import { AnalyticsConsentModal } from "./components/AnalyticsConsentModal";
 import { useWorkspace } from "./state/workspace";
 import { useWorkspaceData } from "./state/workspaceData";
@@ -120,7 +119,6 @@ export default function App() {
     <>
       <Layout />
       {needsAnalyticsConsent && <AnalyticsConsentModal onAnswer={handleAnalyticsConsent} />}
-      <UnclaimedExperiments />
       <ToastStack />
     </>
   );
