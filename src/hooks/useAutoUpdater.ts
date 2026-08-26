@@ -27,9 +27,10 @@ export function useAutoUpdater() {
         useToasts.getState().push({
           kind: "info",
           scope: "updater",
-          message: "Update available:",
+          message: "A new version of ire is available:",
           link,
           persistent: true,
+          variant: "banner",
           action: {
             label: "Download",
             onClick: (id) => {

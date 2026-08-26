@@ -13,6 +13,8 @@ export interface Toast {
   link?: { label: string; url: string };
   /** Action button; receives this toast's id (e.g. to dismiss itself on click). */
   action?: { label: string; onClick: (id: string) => void };
+  /** Render as a full-width bottom banner instead of a corner toast card. */
+  variant?: "banner";
 }
 
 interface ToastStore {
