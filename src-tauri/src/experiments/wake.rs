@@ -1,18 +1,17 @@
-use std::fs;
 use std::path::Path;
 
 use crate::prompts::{self, WakeupArgs};
 
-/// The message an agent would need to pick a finished experiment back up:
-/// its goal, exit code, and log tails. Purely read-only — composes text,
-/// sends nothing and resumes no session. The user copies or drags this into
-/// whichever chat they want (new or existing); sending it from there is a
-/// normal chat turn like any other, not a special "wake-up" path.
+/// The message an agent needs to pick a finished experiment back up: its
+/// goal, its exit code, and where to read the rest. Deliberately a pointer,
+/// not a dump — the log tails used to be inlined here, but the agent can
+/// read them on demand via the `experiment.tail_logs` MCP tool, and pasting
+/// 16KB of them into the user's composer buried the actual instruction.
+///
+/// Purely read-only: composes text, sends nothing and resumes no session.
+/// The user copies or drags this into whichever chat they want; sending it
+/// from there is a normal chat turn, not a special "wake-up" path.
 pub fn compose_message(workspace_root: &Path, uuid: &str, exit_code: i32, record_dir: &str) -> String {
-    let exp_dir = workspace_root.join(".ire/cache/experiments").join(uuid);
-    let stdout_tail = tail_file(&exp_dir.join("stdout.log"), 8192);
-    let stderr_tail = tail_file(&exp_dir.join("stderr.log"), 8192);
-
     // The goal comes back out of the record, the only place it is kept. A run
     // whose record has gone still composes a message, just without its context.
     let goal = super::record::read(workspace_root, record_dir)
@@ -29,20 +28,41 @@ pub fn compose_message(workspace_root: &Path, uuid: &str, exit_code: i32, record
         uuid,
         exit_code,
         record_dir,
-        stdout_tail: &stdout_tail,
-        stderr_tail: &stderr_tail,
     })
 }
 
-fn tail_file(path: &Path, max_bytes: u64) -> String {
-    let Ok(content) = fs::read(path) else {
-        return String::new();
-    };
-    let len = content.len() as u64;
-    let start = if len > max_bytes {
-        (len - max_bytes) as usize
-    } else {
-        0
-    };
-    String::from_utf8_lossy(&content[start..]).into_owned()
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn message_points_at_the_record_instead_of_inlining_logs() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = super::super::record::create(
+            tmp.path(),
+            super::super::record::RecordArgs {
+                uuid: "abcd",
+                name: "a run",
+                command: "python a.py",
+                working_dir: "/tmp/proj",
+                wake_prompt: "check whether loss drops",
+                started_at: "2026-08-01T10:00:00+02:00",
+            },
+        )
+        .unwrap();
+
+        // Logs exist on disk; the message must still not carry their contents.
+        let logs = tmp.path().join(".ire/cache/experiments/abcd");
+        std::fs::create_dir_all(&logs).unwrap();
+        std::fs::write(logs.join("stdout.log"), "SECRET-LOG-BODY\n").unwrap();
+
+        let msg = compose_message(tmp.path(), "abcd", 0, &dir);
+
+        assert!(msg.contains("check whether loss drops"));
+        assert!(msg.contains(&format!("{dir}/EXPERIMENT.md")));
+        assert!(msg.contains("experiment.tail_logs"));
+        assert!(msg.contains("experiment.mark_reviewed"));
+        assert!(!msg.contains("SECRET-LOG-BODY"), "log bodies must not be inlined");
+        assert!(!msg.contains('{'), "unsubstituted placeholder left in: {msg}");
+    }
 }

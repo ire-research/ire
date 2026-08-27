@@ -15,7 +15,8 @@
         "title": "ire",
         "width": 1280,
         "height": 820,
-        "fullscreen": false
+        "fullscreen": false,
+        "dragDropEnabled": false
       }
     ],
     "security": {

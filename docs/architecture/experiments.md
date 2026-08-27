@@ -51,7 +51,8 @@ T6  The user hands the result to whichever chat they want — copy the restart
     prompt, or drag the sidebar row onto a chat tab (or "+" for a new one),
     which drops the text into that tab's composer. They send it themselves.
     The prompt is built from the record's
-    `## Goal & context` + exit code + log tail. The agent reads result files,
+    `## Goal & context` + exit code + where to read the rest. The agent then
+    pulls output itself via `experiment.tail_logs`, reads result files,
     uses memory.write_short_term for daily notes, memory.write_long_term for
     durable conclusions, and ire.read + ire.edit to update focus/notes/ideas
     if the research direction changed.
@@ -287,7 +288,7 @@ backend surface is one read-only command in
 `src-tauri/src/commands/experiments.rs`:
 
 - **`experiment_wake_prompt({ uuid }) -> String`** — composes the restart
-  message (goal + exit code + log tails) via
+  message (goal + exit code + where to read the rest) via
   `experiments::wake::compose_message` and returns it. It spawns nothing,
   resumes nothing, and does not touch `run_status`.
 
@@ -305,6 +306,14 @@ composer the user still has to press send on:
   it). Sending it is then an ordinary `chat_send` turn — nothing about it is
   a special wake-up path, and it is not tied to the session that started the
   run.
+
+  This requires `"dragDropEnabled": false` on the window in
+  `src-tauri/tauri.conf.json`. Tauri v2 defaults it to `true`, which lets the
+  webview's native OS drag-drop handler swallow the `drop` event — `dragover`
+  still fires, so the cursor shows a drop target and nothing lands. Nothing in
+  the app consumes Tauri's file-drop events, so turning it off costs nothing;
+  it would have to come back (and this drag be reworked) if IRE ever accepts
+  files dragged in from Finder.
 
 The sidebar's amber dot is purely a signal: clicking it opens the
 experiment's tab to read logs and status, and marks nothing.
@@ -326,12 +335,19 @@ the status text has moved past that. A cancelled run can be reviewed too —
 cancelling isn't necessarily the end of the conversation.
 
 `compose_message` (`src-tauri/src/experiments/wake.rs`) is pure text
-assembly: it reads the last 8KB of `stdout.log`/`stderr.log` (`tail_file`)
-and fills the seed template
+assembly: it fills the seed template
 `src-tauri/assets/prompts/experiment_wakeup.md` with the goal read back from
-the record's `## Goal & context`, `uuid`, `exit_code`, the wiki folder path,
-and both log tails — pointing the agent at `EXPERIMENT.md` and at that folder
-for result files. On exit code 126/127 (permission denied / command not
+the record's `## Goal & context`, `uuid`, `exit_code`, and the wiki folder
+path — pointing the agent at `EXPERIMENT.md` and at that folder for result
+files.
+
+It deliberately inlines **no** log output. The tails used to be embedded
+here (8KB of each stream), which made the prompt mostly log and buried the
+instruction under it — and since the text now lands in the user's composer
+for them to read and send, that cost is visible rather than hidden. The
+agent pulls output on demand instead, via the `experiment.tail_logs` MCP
+tool the prompt names; raw logs are still at
+`.ire/cache/experiments/<uuid>/`. On exit code 126/127 (permission denied / command not
 found) that template tells the agent not to retry `experiment.start` — report
 to the user and stop instead. A run whose record has gone still composes a
 message, just without its goal.
