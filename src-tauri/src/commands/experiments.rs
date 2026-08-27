@@ -6,7 +6,6 @@ use tauri::{AppHandle, State};
 use crate::db::models::{self as db};
 use crate::events;
 use crate::experiments::ExperimentView;
-use crate::session::SessionManager;
 use crate::workspace::state::ActiveWorkspace;
 
 #[derive(Debug, Serialize)]
@@ -133,45 +132,19 @@ pub fn experiment_rename(
     Ok(())
 }
 
-/// Move a terminal, unreviewed experiment straight to `reviewed` without
-/// opening a chat — e.g. the user already read `EXPERIMENT.md` directly.
+/// The message text an agent would need to pick this experiment back up:
+/// goal, exit code, log tails. Purely read-only — the frontend copies or
+/// drags this into whichever chat the user picks (new or existing); sending
+/// it is then a normal chat turn, not a special resume. Doesn't mark the
+/// run reviewed: the wake-up prompt itself tells the agent to call
+/// `experiment.mark_reviewed` once it has actually engaged with the result
+/// (there is no UI path to mark it reviewed without that — see
+/// docs/architecture/experiments.md#wake-up).
 #[tauri::command]
-pub fn experiment_resolve(
-    app: AppHandle,
+pub fn experiment_wake_prompt(
     active: State<'_, ActiveWorkspace>,
     uuid: String,
-) -> Result<(), String> {
-    let workspace_path = workspace_path(&active)?;
-    let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
-    let dir = crate::experiments::record_dir(&workspace_path, &home_data_dir, &uuid)
-        .ok_or_else(|| format!("experiment {uuid} not found"))?;
-    crate::experiments::record::mark_reviewed(&workspace_path, &dir)
-        .map_err(|e| e.to_string())?;
-    crate::experiments::emit_changed(&app, &workspace_path, &home_data_dir, &uuid);
-    Ok(())
-}
-
-/// Open a chat about an unreviewed experiment: fires the same wake-up
-/// message `fire_wakeup` used to send automatically, but into whichever chat
-/// tab/session the user chose (a brand-new one or an existing one) rather
-/// than the session that started the run. Does **not** mark it reviewed —
-/// opening the chat isn't the same as having discussed it. The wake-up
-/// prompt tells the agent to call `experiment.mark_reviewed` once it
-/// actually has (see `assets/prompts/experiment_wakeup.md`); a human can
-/// still mark it reviewed directly via `experiment_resolve`.
-#[allow(clippy::too_many_arguments)]
-#[tauri::command]
-pub fn experiment_wake(
-    app: AppHandle,
-    active: State<'_, ActiveWorkspace>,
-    session_manager: State<'_, SessionManager>,
-    uuid: String,
-    tab_id: String,
-    session_uuid: String,
-    provider: String,
-    model: String,
-    effort: Option<String>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     let workspace_path = workspace_path(&active)?;
     let home_data_dir = crate::workspace::init::require_home_data_dir(&workspace_path)?;
 
@@ -181,24 +154,12 @@ pub fn experiment_wake(
         .ok_or_else(|| format!("experiment {uuid} has no record"))?;
     let exit_code = row.exit_code.unwrap_or(-1) as i32;
 
-    let session_manager = session_manager.inner().clone();
-    let app_for_thread = app.clone();
-    std::thread::spawn(move || {
-        crate::experiments::wake::fire_wakeup(crate::experiments::wake::FireWakeupArgs {
-            workspace_root: &workspace_path,
-            uuid: &uuid,
-            exit_code,
-            tab_id: &tab_id,
-            session_uuid: &session_uuid,
-            provider: &provider,
-            model: &model,
-            effort: effort.as_deref(),
-            record_dir: &record_dir,
-            app: &app_for_thread,
-            session_manager: &session_manager,
-        });
-    });
-    Ok(())
+    Ok(crate::experiments::wake::compose_message(
+        &workspace_path,
+        &uuid,
+        exit_code,
+        &record_dir,
+    ))
 }
 
 fn read_tail(path: &std::path::Path, max_bytes: u64) -> String {

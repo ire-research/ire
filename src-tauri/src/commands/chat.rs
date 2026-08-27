@@ -219,8 +219,8 @@ pub async fn chat_send(
 
         let _ = child.kill();
         let _ = child.wait();
-        // Only clear if our PID is still current — fire_wakeup may have already
-        // registered the wake-up CC subprocess under the same tab_id.
+        // Only clear if our PID is still current — a newer turn may have
+        // already registered its own subprocess under the same tab_id.
         session_clone.clear_running_if(&tab_id, &RunningTurn::Process(pid));
 
         if let Some(e) = persist_err {

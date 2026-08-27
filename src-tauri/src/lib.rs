@@ -27,7 +27,7 @@ use commands::chat::{
 };
 use commands::experiments::{
     experiment_cancel, experiment_delete, experiment_list, experiment_logs, experiment_rename,
-    experiment_resolve, experiment_wake,
+    experiment_wake_prompt,
 };
 use commands::feedback::submit_feedback;
 use commands::history::{
@@ -137,8 +137,7 @@ pub fn run() {
             experiment_cancel,
             experiment_delete,
             experiment_rename,
-            experiment_resolve,
-            experiment_wake,
+            experiment_wake_prompt,
             chat_history_save,
             chat_history_list,
             chat_history_get,

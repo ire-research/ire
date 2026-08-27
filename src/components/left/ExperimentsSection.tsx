@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { ipc } from "../../ipc";
 import { toastError } from "../../state/toasts";
-import { useChat } from "../../state/chat";
-import { useChatOptions } from "../../state/chatOptions";
-import type { EffortLevel, ExperimentRow, Provider } from "../../types";
+import type { ExperimentRow } from "../../types";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faFlask, faPencil, faTrash, iconClass } from "../../icons";
+import { faFlask, faPencil, faTrash, faCopy, iconClass } from "../../icons";
 import { ConfirmDeleteExperimentModal } from "./ConfirmDeleteExperimentModal";
-import { ExperimentResolutionModal } from "./ExperimentResolutionModal";
+import { EXPERIMENT_DRAG_MIME } from "../chat/TabBar";
 
 const UNRESOLVED_STATUSES = ["completed", "failed", "cancelled"];
 
@@ -40,14 +38,11 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
   const [renamingUuid, setRenamingUuid] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [tooltip, setTooltip] = useState<{ label: string; x: number; y: number } | null>(null);
-  const [resolving, setResolving] = useState<ExperimentRow | null>(null);
-  const [resolveBusy, setResolveBusy] = useState(false);
+  const [copiedUuid, setCopiedUuid] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const spanRefs = useRef<Map<string, HTMLSpanElement | null>>(new Map());
   const deleteInFlight = useRef(false);
-  const tabs = useChat((s) => s.tabs);
-  const existingChatTabs = tabs.filter((t) => t.kind === "chat" && t.historySessionUuid);
 
   useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
 
@@ -121,60 +116,21 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
     }
   };
 
-  const openResolution = (e: React.MouseEvent, exp: ExperimentRow) => {
+  const copyRestartPrompt = async (e: React.MouseEvent, uuid: string) => {
     e.stopPropagation();
-    setResolving(exp);
-  };
-
-  const openInNewChat = async (provider: Provider, model: string, effort: EffortLevel | null) => {
-    if (!resolving) return;
-    const uuid = resolving.uuid;
-    setResolveBusy(true);
     try {
-      const tabId = useChat.getState().createTab("Untitled");
-      useChat.getState().setActiveTab(tabId);
-      const sessionUuid = crypto.randomUUID();
-      const startedAt = new Date().toISOString();
-      useChat.getState().setTabHistoryMeta(tabId, sessionUuid, startedAt);
-      useChat.getState().setTabAgentOptions(tabId, { provider, model, effort });
-      await ipc.experimentWake(uuid, tabId, sessionUuid, provider, model, effort ?? undefined);
-      setResolving(null);
+      const prompt = await ipc.experimentWakePrompt(uuid);
+      await navigator.clipboard.writeText(prompt);
+      setCopiedUuid(uuid);
+      setTimeout(() => setCopiedUuid((u) => (u === uuid ? null : u)), 1500);
     } catch (err) {
-      toastError("open experiment in new chat", err);
-    } finally {
-      setResolveBusy(false);
+      toastError("copy restart prompt", err);
     }
   };
 
-  const openInExistingChat = async (tabId: string) => {
-    if (!resolving) return;
-    const uuid = resolving.uuid;
-    const tab = useChat.getState().tabs.find((t) => t.id === tabId);
-    if (!tab?.historySessionUuid) return;
-    const { provider, model, effort } = tab.agentOptions ?? useChatOptions.getState();
-    setResolveBusy(true);
-    try {
-      useChat.getState().setActiveTab(tabId);
-      await ipc.experimentWake(uuid, tabId, tab.historySessionUuid, provider, model, effort ?? undefined);
-      setResolving(null);
-    } catch (err) {
-      toastError("open experiment in existing chat", err);
-    } finally {
-      setResolveBusy(false);
-    }
-  };
-
-  const resolveWithoutChat = async () => {
-    if (!resolving) return;
-    setResolveBusy(true);
-    try {
-      await ipc.experimentResolve(resolving.uuid);
-      setResolving(null);
-    } catch (err) {
-      toastError("resolve experiment", err);
-    } finally {
-      setResolveBusy(false);
-    }
+  const handleDragStart = (e: React.DragEvent, uuid: string) => {
+    e.dataTransfer.setData(EXPERIMENT_DRAG_MIME, uuid);
+    e.dataTransfer.effectAllowed = "copy";
   };
 
   return (
@@ -189,10 +145,14 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
           experiments.map((exp) => {
             const pill = getStatusPill(exp.status);
             const isRenaming = renamingUuid === exp.uuid;
+            const isUnresolved = UNRESOLVED_STATUSES.includes(exp.status);
             return (
               <div
                 key={exp.uuid}
-                className="group w-full flex items-center px-2 py-1.5 rounded hover:bg-surface-container-high transition-colors"
+                draggable={isUnresolved}
+                onDragStart={isUnresolved ? (e) => handleDragStart(e, exp.uuid) : undefined}
+                title={isUnresolved ? "Drag onto a chat tab to drop in its restart prompt" : undefined}
+                className={`group w-full flex items-center px-2 py-1.5 rounded hover:bg-surface-container-high transition-colors${isUnresolved ? " cursor-grab active:cursor-grabbing" : ""}`}
                 onMouseLeave={handleMouseLeave}
               >
                 {isRenaming ? (
@@ -227,14 +187,26 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
                     >
                       <FontAwesomeIcon icon={faPencil} className={iconClass.md} />
                     </button>
-                    {UNRESOLVED_STATUSES.includes(exp.status) && (
-                      <button
-                        className="h-3 w-3 flex items-center justify-center shrink-0 mr-1"
-                        title="Unresolved — click to review"
-                        onClick={(e) => openResolution(e, exp)}
-                      >
-                        <span className="h-1.5 w-1.5 rounded-full bg-warn" />
-                      </button>
+                    {isUnresolved && (
+                      <>
+                        <button
+                          className="app-icon-button opacity-0 group-hover:opacity-100 mx-0.5 h-5 w-5 shrink-0"
+                          title="Copy restart prompt"
+                          onClick={(e) => copyRestartPrompt(e, exp.uuid)}
+                        >
+                          <FontAwesomeIcon icon={faCopy} className={iconClass.sm} />
+                        </button>
+                        {copiedUuid === exp.uuid && (
+                          <span className="text-[10px] text-on-surface-variant mr-1">Copied</span>
+                        )}
+                        <button
+                          className="h-3 w-3 flex items-center justify-center shrink-0 mr-1"
+                          title="Unresolved — click to view"
+                          onClick={(e) => { e.stopPropagation(); onOpen(exp.uuid, exp.name); }}
+                        >
+                          <span className="h-1.5 w-1.5 rounded-full bg-warn" />
+                        </button>
+                      </>
                     )}
                     <span className={`text-[10px] uppercase border ${pill.borderColor} px-1 rounded ${pill.textColor} ${pill.bgColor} shrink-0`}>
                       {pill.text}
@@ -262,17 +234,6 @@ export function ExperimentsSection({ experiments, onOpen }: Props) {
           deleting={deletingUuid === pendingDelete.uuid}
           onConfirm={confirmDelete}
           onCancel={() => setPendingDelete(null)}
-        />
-      )}
-      {resolving && (
-        <ExperimentResolutionModal
-          experiment={resolving}
-          existingChatTabs={existingChatTabs}
-          busy={resolveBusy}
-          onOpenNewChat={openInNewChat}
-          onOpenExistingChat={openInExistingChat}
-          onResolve={resolveWithoutChat}
-          onClose={() => setResolving(null)}
         />
       )}
       {tooltip && (

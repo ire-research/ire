@@ -130,9 +130,34 @@ fn upgrade(
         // never had one. Reading the bullet here would make the branch dead and
         // leave `record_dir` NULL forever, silently dropping every later status
         // write for this run.
-        let uuid = record::read(workspace_root, rel_dir)?.uuid;
-        if !uuid.is_empty() {
-            db::set_experiment_record_dir(home_data_dir, &uuid, rel_dir)?;
+        let parsed = record::read(workspace_root, rel_dir)?;
+        if !parsed.uuid.is_empty() {
+            if db::get_experiment(home_data_dir, &parsed.uuid).ok().flatten().is_none() {
+                // No local.db row at all — a fresh clone, or one cleared/lost —
+                // not just a stale pointer. `experiment_list` only ever reads
+                // db rows (unlike the single-item row_or_record lookup, which
+                // falls back to scanning records directly), so without this
+                // the run would silently vanish from the sidebar even though
+                // its record is right there on disk.
+                let (fm, _) = crate::ire::frontmatter::parse(&content);
+                let working_dir = fm
+                    .as_ref()
+                    .and_then(|fm| crate::ire::frontmatter::field(fm, "working_dir"))
+                    .unwrap_or_default();
+                db::insert_experiment(
+                    home_data_dir,
+                    &parsed.uuid,
+                    &parsed.name,
+                    &parsed.command,
+                    &working_dir,
+                    "",
+                    "main",
+                    &parsed.started_at,
+                    rel_dir,
+                )?;
+            } else {
+                db::set_experiment_record_dir(home_data_dir, &parsed.uuid, rel_dir)?;
+            }
         }
         return Ok(());
     }
@@ -452,6 +477,41 @@ mod tests {
         assert_eq!(
             crate::db::models::get_experiment_record_dir(home.path(), uuid).unwrap(),
             Some(".ire/experiments/001-lr-ablation".to_string())
+        );
+    }
+
+    #[test]
+    fn a_record_with_no_db_row_at_all_gets_one_reinserted() {
+        // A workspace whose local.db was cleared or lost entirely (not just a
+        // stale record_dir pointer): the experiments table has zero rows, but
+        // the git-tracked record is intact.
+        let tmp = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        crate::db::schema::run(home.path()).unwrap();
+        let dir = record::create(
+            tmp.path(),
+            record::RecordArgs {
+                uuid: "cccc",
+                name: "third run",
+                command: "python c.py",
+                working_dir: "/tmp/proj",
+                wake_prompt: "check it",
+                started_at: "2026-08-03T10:00:00+02:00",
+            },
+        )
+        .unwrap();
+        record::set_status(tmp.path(), &dir, "completed", Some(0), Some("t1")).unwrap();
+
+        run(tmp.path(), home.path());
+
+        // list_experiments — what experiment_list actually serves — must see it.
+        let rows = crate::db::models::list_experiments(home.path(), 50).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].uuid, "cccc");
+        assert_eq!(rows[0].name, "third run");
+        assert_eq!(
+            crate::db::models::get_experiment_record_dir(home.path(), "cccc").unwrap(),
+            Some(dir)
         );
     }
 

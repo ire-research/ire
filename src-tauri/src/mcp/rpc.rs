@@ -323,10 +323,11 @@ fn experiment_tail_logs(
     Ok(serde_json::json!({ "stdout": stdout, "stderr": stderr }))
 }
 
-/// Let the agent mark a terminal experiment reviewed itself — e.g. it
-/// noticed and discussed an old unreviewed run without the user going
-/// through the UI's resolution card. Mirrors `experiment_resolve`
-/// (`src-tauri/src/commands/experiments.rs`), the human-triggered path.
+/// Mark a terminal experiment reviewed. The only path to `reviewed` there
+/// is: no UI action does it, so an experiment counts as handled exactly
+/// when an agent has engaged with the result and called this — either
+/// prompted by the restart message the user pasted in, or unprompted after
+/// noticing an old unreviewed run.
 fn experiment_mark_reviewed(
     params: &serde_json::Value,
     workspace_root: &Path,

@@ -1,64 +1,20 @@
 use std::fs;
-use std::io::{BufRead, BufReader};
 use std::path::Path;
 
-use tauri::{AppHandle, Emitter, Manager};
-
-use crate::agent_provider::{self, TurnRequest, TurnTransport};
-use crate::commands::chat::build_system_prompt;
-use crate::opencode::runtime::OpenCodeRuntime;
 use crate::prompts::{self, WakeupArgs};
-use crate::session::{RunningTurn, SessionManager};
-use crate::stream_event::{StreamEvent, StreamState};
 
-pub struct FireWakeupArgs<'a> {
-    pub workspace_root: &'a Path,
-    pub uuid: &'a str,
-    pub exit_code: i32,
-    pub tab_id: &'a str,
-    pub session_uuid: &'a str,
-    pub provider: &'a str,
-    pub model: &'a str,
-    pub effort: Option<&'a str>,
-    pub record_dir: &'a str,
-    pub app: &'a AppHandle,
-    pub session_manager: &'a SessionManager,
-}
-
-pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
-    let FireWakeupArgs {
-        workspace_root,
-        uuid,
-        exit_code,
-        tab_id,
-        session_uuid,
-        provider,
-        model,
-        effort,
-        record_dir,
-        app,
-        session_manager,
-    } = args;
-
-    let Some(home_data_dir) = crate::workspace::init::home_data_dir(workspace_root) else {
-        tracing::warn!("cannot determine home directory for experiment wake-up");
-        return;
-    };
-
-    let Some(agent) = agent_provider::provider(provider) else {
-        tracing::error!(provider = %provider, "wake-up: unsupported provider");
-        return;
-    };
-
-    let exp_dir = workspace_root
-        .join(".ire/cache/experiments")
-        .join(uuid);
-
+/// The message an agent would need to pick a finished experiment back up:
+/// its goal, exit code, and log tails. Purely read-only — composes text,
+/// sends nothing and resumes no session. The user copies or drags this into
+/// whichever chat they want (new or existing); sending it from there is a
+/// normal chat turn like any other, not a special "wake-up" path.
+pub fn compose_message(workspace_root: &Path, uuid: &str, exit_code: i32, record_dir: &str) -> String {
+    let exp_dir = workspace_root.join(".ire/cache/experiments").join(uuid);
     let stdout_tail = tail_file(&exp_dir.join("stdout.log"), 8192);
     let stderr_tail = tail_file(&exp_dir.join("stderr.log"), 8192);
 
     // The goal comes back out of the record, the only place it is kept. A run
-    // whose record has gone still wakes the agent, just without its context.
+    // whose record has gone still composes a message, just without its context.
     let goal = super::record::read(workspace_root, record_dir)
         .map(|r| r.goal)
         .unwrap_or_default();
@@ -68,177 +24,14 @@ pub fn fire_wakeup(args: FireWakeupArgs<'_>) {
         goal
     };
 
-    let message = prompts::experiment_wakeup(WakeupArgs {
+    prompts::experiment_wakeup(WakeupArgs {
         wake_prompt: &goal,
         uuid,
         exit_code,
         record_dir,
         stdout_tail: &stdout_tail,
         stderr_tail: &stderr_tail,
-    });
-
-    let mcp_config = home_data_dir.join("mcp.json");
-    let mcp_config = if mcp_config.exists() {
-        Some(mcp_config)
-    } else {
-        None
-    };
-    let system_prompt = build_system_prompt(workspace_root);
-
-    tracing::info!(uuid = %uuid, tab_id = %tab_id, provider = %provider, "firing experiment wake-up");
-
-    if agent.transport() == TurnTransport::OpenCodeServer {
-        let runtime = app.state::<OpenCodeRuntime>();
-        let result = tauri::async_runtime::block_on(crate::opencode::turn::send(
-            app,
-            &runtime,
-            session_manager,
-            workspace_root,
-            &home_data_dir,
-            crate::opencode::turn::SendArgs {
-                tab_id,
-                session_uuid,
-                tab_label: "Wake-up",
-                started_at: &chrono::Local::now().to_rfc3339(),
-                model,
-                effort,
-                message: &message,
-                system_prompt: Some(&system_prompt),
-            },
-        ));
-        if let Err(e) = result {
-            tracing::error!(uuid = %uuid, tab_id = %tab_id, error = %e, "wake-up: opencode turn failed");
-        }
-        return;
-    }
-
-    let cli = match agent_provider::cli_turn(provider) {
-        Some(c) => c,
-        None => {
-            tracing::error!(provider = %provider, "wake-up: provider has no CLI turn support");
-            return;
-        }
-    };
-
-    let bin = match agent.discover() {
-        Ok(b) => b.path,
-        Err(e) => {
-            tracing::error!(error = %e, provider = %provider, "wake-up: binary not found");
-            return;
-        }
-    };
-
-    let resume_id = match crate::db::models::get_chat_resume_id(&home_data_dir, session_uuid, provider) {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!(error = %e, session_uuid = %session_uuid, provider = %provider, "wake-up: load resume id failed");
-            None
-        }
-    };
-
-    let mut cmd = cli.build_command(
-        &bin,
-        &TurnRequest {
-            workspace: workspace_root,
-            message: &message,
-            model,
-            effort,
-            resume_id: resume_id.as_deref(),
-            mcp_config: mcp_config.as_deref(),
-            system_prompt: Some(&system_prompt),
-        },
-    );
-
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!(error = %cli.normalize_spawn_error(&e), provider = %provider, "wake-up: failed to spawn agent");
-            return;
-        }
-    };
-
-    let pid = child.id();
-    session_manager.set_pid(tab_id, pid);
-    tracing::debug!(pid = pid, tab_id = %tab_id, provider = %provider, "wake-up agent spawned");
-
-    let stdout = match child.stdout.take() {
-        Some(s) => s,
-        None => {
-            tracing::error!("wake-up: no stdout");
-            return;
-        }
-    };
-
-    let mut state = StreamState::default();
-    let mut persist_err: Option<String> = None;
-    let tab_id_owned = tab_id.to_string();
-    session_manager.set_agent_options(tab_id, session_uuid, provider, model, effort);
-    let stream_id = format!("{tab_id}:{}", uuid::Uuid::new_v4());
-    let mut event_id = 0_u64;
-
-    for line in BufReader::new(stdout).lines() {
-        let Ok(line) = line else { continue };
-        let Ok(json) = serde_json::from_str::<serde_json::Value>(&line) else {
-            continue;
-        };
-        let mut emit_event = |event: StreamEvent| {
-            if let StreamEvent::Init { ref session_id } = event {
-                // Row already exists — an experiment always resumes a
-                // conversation that already sent a message.
-                if let Err(e) = agent.persist_resume_id(&home_data_dir, session_uuid, session_id, None) {
-                    tracing::warn!(session_uuid = %session_uuid, error = %e, "persist resume id failed (wake)");
-                    let _ = app.emit(
-                        "error",
-                        serde_json::json!({
-                            "scope": "resume id",
-                            "message": format!("Couldn't save the resume id for the experiment wake-up on session {session_uuid}. ({e})"),
-                        }),
-                    );
-                    persist_err = Some(e.to_string());
-                }
-            }
-            event_id += 1;
-            let _ = app.emit(
-                "chat-stream",
-                serde_json::json!({
-                    "tab_id": &tab_id_owned,
-                    "stream_id": &stream_id,
-                    "event_id": event_id,
-                    "event": &event,
-                }),
-            );
-            if matches!(event, StreamEvent::ToolDone { .. }) {
-                crate::ire::reconcile(app);
-            }
-        };
-        cli.dispatch(&json, &mut state, &mut emit_event);
-        if persist_err.is_some() {
-            break;
-        }
-    }
-
-    if persist_err.is_some() {
-        let _ = child.kill();
-    }
-    let _ = child.wait();
-    session_manager.clear_running_if(tab_id, &RunningTurn::Process(pid));
-
-    if persist_err.is_some() {
-        return;
-    }
-
-    if !state.emitted_done {
-        event_id += 1;
-        let _ = app.emit(
-            "chat-stream",
-            serde_json::json!({
-                "tab_id": tab_id,
-                "stream_id": &stream_id,
-                "event_id": event_id,
-                "event": &StreamEvent::Done,
-            }),
-        );
-    }
+    })
 }
 
 fn tail_file(path: &Path, max_bytes: u64) -> String {

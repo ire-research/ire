@@ -360,6 +360,20 @@ export function ChatPane() {
     createTab();
   };
 
+  // An experiment dropped onto a chat tab (or "+" for a new one): fetch its
+  // restart prompt and hand it to that tab's composer — the same as copying
+  // it and pasting it in yourself, just without the clipboard round-trip.
+  const handleExperimentDrop = async (target: { tabId: string } | { new: true }, uuid: string) => {
+    try {
+      const prompt = await ipc.experimentWakePrompt(uuid);
+      const targetTabId = "new" in target ? createTab() : target.tabId;
+      setActiveTab(targetTabId);
+      useChat.getState().setPendingComposerText(targetTabId, prompt);
+    } catch (err) {
+      toastError("get experiment restart prompt", err);
+    }
+  };
+
   const handleCloseTab = async (tabId: string) => {
     if (activeTab.isStreaming && tabId === activeTabId) {
       ipc.chatCancel(tabId);
@@ -448,6 +462,7 @@ export function ChatPane() {
       onClose={handleCloseTab}
       onNew={handleNewTab}
       onRename={renameTab}
+      onExperimentDrop={handleExperimentDrop}
       rightSlot={
         <>
           <button
@@ -601,6 +616,7 @@ export function ChatPane() {
             )}
             <div className="pointer-events-auto">
               <Composer
+                tabId={activeTabId}
                 onSend={handleSend}
                 disabled={activeTab.isStreaming}
                 onCancel={() => ipc.chatCancel(activeTabId)}

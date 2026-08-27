@@ -21,6 +21,7 @@ import { faChevronRight } from "@fortawesome/free-solid-svg-icons/faChevronRight
 import { faCircleExclamation } from "@fortawesome/free-solid-svg-icons/faCircleExclamation";
 import { faCircleInfo } from "@fortawesome/free-solid-svg-icons/faCircleInfo";
 import { faClockRotateLeft } from "@fortawesome/free-solid-svg-icons/faClockRotateLeft";
+import { faCopy } from "@fortawesome/free-solid-svg-icons/faCopy";
 import { faCrosshairs } from "@fortawesome/free-solid-svg-icons/faCrosshairs";
 import { faDatabase } from "@fortawesome/free-solid-svg-icons/faDatabase";
 import { faFlask } from "@fortawesome/free-solid-svg-icons/faFlask";
@@ -80,6 +81,7 @@ export {
   faCircleExclamation,
   faCircleInfo,
   faClockRotateLeft,
+  faCopy,
   faCrosshairs,
   faDatabase,
   faFlask,

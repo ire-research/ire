@@ -4,8 +4,8 @@ Walkthrough for wiring in a third agent CLI (Claude Code and Codex are the
 two existing ones) alongside the current pair, without touching any of the
 call sites that already resolve providers through `agent_provider` —
 `commands/chat.rs`'s `chat_send`/`generate_chat_title`/`chat_cancel`,
-`commands/resources.rs`'s `start_resource_summary`, `experiments/wake.rs`'s
-`fire_wakeup`, `commands/system.rs`'s readiness checks and
+`commands/resources.rs`'s `start_resource_summary`, `commands/system.rs`'s
+readiness checks and
 `list_agent_models`, and `commands/workspace.rs`'s `setup_status`. See
 [docs/architecture/chat-agents.md — the `AgentProvider` trait](../architecture/chat-agents.md#the-agentprovider-trait-agent_providerrs)
 for what the trait looks like and how it's already wired in; this file is
@@ -123,7 +123,7 @@ static REGISTRY: &[Registered] = &[
 ```
 
 That one array entry is what makes `chat_send`, `generate_chat_title`,
-`chat_cancel`, `start_resource_summary`, `fire_wakeup`, `setup_status`,
+`chat_cancel`, `start_resource_summary`, `setup_status`,
 `get_system_metrics`, and `list_agent_models` all pick the new provider
 up — none of those call sites need editing, and there's no second list
 (match arms, a name array, anything else) to keep in sync by hand.

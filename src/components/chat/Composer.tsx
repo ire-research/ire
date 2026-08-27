@@ -7,11 +7,15 @@ import {
   useChatOptions,
 } from "../../state/chatOptions";
 import { useOpenCodeModal } from "../../state/opencodeModal";
+import { useChat } from "../../state/chat";
 import { ipc, type UserConfig } from "../../ipc";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faChevronDown, faArrowUp, faAnglesRight, faClaude, faOpenai, iconClass } from "../../icons";
 
 interface ComposerProps {
+  /** This tab's id — used to pick up text dropped onto it (see
+   *  pendingComposerText in the chat store) without prop-drilling a value. */
+  tabId: string;
   onSend?: (text: string) => void;
   disabled?: boolean;
   onCancel?: () => void;
@@ -23,13 +27,25 @@ interface ComposerProps {
 const COMPOSER_PLACEHOLDER =
   "Ask IRE to brainstorm directions, ingest resources, or run experiments...";
 
-export function Composer({ onSend, disabled, onCancel, sessionLocked }: ComposerProps) {
+export function Composer({ tabId, onSend, disabled, onCancel, sessionLocked }: ComposerProps) {
   const [text, setText] = useState("");
+  const pendingText = useChat((s) => s.pendingComposerText[tabId]);
   const [modelOpen, setModelOpen] = useState(false);
   const [effortOpen, setEffortOpen] = useState(false);
   const modelRef = useRef<HTMLDivElement>(null);
   const effortRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // An experiment dropped onto this tab: pick up its restart prompt and add
+  // it to the composer (if the tab had unsent text, append after it rather
+  // than clobbering — dropping is additive, not destructive).
+  useEffect(() => {
+    if (pendingText === undefined) return;
+    setText((prev) => (prev.trim() ? `${prev}\n\n${pendingText}` : pendingText));
+    useChat.getState().consumePendingComposerText(tabId);
+    textareaRef.current?.focus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingText, tabId]);
 
   const { model, provider, effort, availableProviders, setModel, setEffort } = useChatOptions();
   const openOpenCodeProviders = useOpenCodeModal((s) => s.openModal);

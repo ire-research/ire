@@ -7,6 +7,13 @@ interface ChatStore {
   tabs: Tab[];
   activeTabId: string;
   previousTabId: string | null;
+  /** Text waiting to be dropped into a tab's composer — set by dragging an
+   *  experiment onto a chat tab (or the copy affordance, indirectly, via the
+   *  clipboard instead). Composer consumes and clears its own tab's entry
+   *  the moment it mounts/updates for that tab. */
+  pendingComposerText: Record<string, string>;
+  setPendingComposerText: (tabId: string, text: string) => void;
+  consumePendingComposerText: (tabId: string) => string | undefined;
 
   addTab: (tab: Tab) => void;
   createTab: (label?: string) => string;
@@ -130,10 +137,25 @@ export const MAIN_TAB: Tab = {
 // Used to compute runtime when finishMessage is called. Not persisted.
 const messageStartTimes = new Map<string, number>();
 
-export const useChat = create<ChatStore>((set) => ({
+export const useChat = create<ChatStore>((set, get) => ({
   tabs: [MAIN_TAB],
   activeTabId: MAIN_TAB_ID,
   previousTabId: null,
+  pendingComposerText: {},
+
+  setPendingComposerText: (tabId, text) =>
+    set((s) => ({ pendingComposerText: { ...s.pendingComposerText, [tabId]: text } })),
+
+  consumePendingComposerText: (tabId) => {
+    const text = get().pendingComposerText[tabId];
+    if (text === undefined) return undefined;
+    set((s) => {
+      const next = { ...s.pendingComposerText };
+      delete next[tabId];
+      return { pendingComposerText: next };
+    });
+    return text;
+  },
 
   addTab: (tab) =>
     set((s) => (s.tabs.some((t) => t.id === tab.id) ? s : { tabs: [...s.tabs, tab] })),
@@ -215,6 +237,7 @@ export const useChat = create<ChatStore>((set) => ({
       tabs: [{ ...MAIN_TAB, messages: [] }],
       activeTabId: MAIN_TAB_ID,
       previousTabId: null,
+      pendingComposerText: {},
     }),
 
   addUserMessage: (tabId, text) => {

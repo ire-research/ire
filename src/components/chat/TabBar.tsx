@@ -13,7 +13,13 @@ interface Props {
   onNew: () => void;
   onRename: (tabId: string, newName: string) => void;
   rightSlot?: ReactNode;
+  /** An experiment (by uuid) was dropped on a chat tab, or on "+" for a new one. */
+  onExperimentDrop?: (target: { tabId: string } | { new: true }, uuid: string) => void;
 }
+
+/** Drag payload mime for an experiment card dropped onto a chat tab — see
+ *  ExperimentsSection's onDragStart. */
+export const EXPERIMENT_DRAG_MIME = "application/x-ire-experiment-uuid";
 
 function tabIcon(tab: Tab): { icon: IconDefinition; spin: boolean } {
   if (tab.kind === "chat") return { icon: faMessage, spin: false };
@@ -50,10 +56,14 @@ function TabLabel({ label }: { label: string }) {
   return <span className="font-mono flex-1 truncate min-w-0">{display}</span>;
 }
 
-export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename, rightSlot }: Props) {
+export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename, rightSlot, onExperimentDrop }: Props) {
   const [renamingTabId, setRenamingTabId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  const [dragOverTabId, setDragOverTabId] = useState<string | null>(null);
+  const [dragOverNew, setDragOverNew] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const isExperimentDrag = (e: React.DragEvent) => e.dataTransfer.types.includes(EXPERIMENT_DRAG_MIME);
 
   const startRename = (e: React.MouseEvent, tab: Tab) => {
     e.stopPropagation();
@@ -87,11 +97,25 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename, 
             <div
               key={tab.id}
               className={
-                isActive
+                (isActive
                   ? "group relative flex items-center px-3 border-r border-outline-variant bg-surface-container-highest text-on-surface text-xs w-32 shrink-0 cursor-pointer border-t border-t-primary overflow-hidden"
-                  : "group relative flex items-center px-3 border-r border-outline-variant text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors text-xs w-32 shrink-0 cursor-pointer overflow-hidden"
+                  : "group relative flex items-center px-3 border-r border-outline-variant text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors text-xs w-32 shrink-0 cursor-pointer overflow-hidden") +
+                (dragOverTabId === tab.id ? " ring-1 ring-inset ring-info bg-info/10" : "")
               }
               onClick={() => !isRenaming && onSelect(tab.id)}
+              onDragOver={(e) => {
+                if (tab.kind !== "chat" || !isExperimentDrag(e)) return;
+                e.preventDefault();
+                setDragOverTabId(tab.id);
+              }}
+              onDragLeave={() => setDragOverTabId((id) => (id === tab.id ? null : id))}
+              onDrop={(e) => {
+                if (tab.kind !== "chat" || !isExperimentDrag(e)) return;
+                e.preventDefault();
+                const uuid = e.dataTransfer.getData(EXPERIMENT_DRAG_MIME);
+                setDragOverTabId(null);
+                if (uuid) onExperimentDrop?.({ tabId: tab.id }, uuid);
+              }}
             >
               <FontAwesomeIcon icon={icon} className={`${iconClass.sm} mr-1.5${spin ? " animate-spin" : ""}`} />
               {isRenaming ? (
@@ -135,10 +159,24 @@ export function TabBar({ tabs, activeTabId, onSelect, onClose, onNew, onRename, 
           );
         })}
         <div
-          className="app-icon-button w-8 cursor-pointer shrink-0"
+          className={`app-icon-button w-8 cursor-pointer shrink-0${dragOverNew ? " ring-1 ring-inset ring-info bg-info/10" : ""}`}
           onClick={onNew}
           role="button"
           aria-label="New tab"
+          title="Drop an experiment here to discuss it in a new chat"
+          onDragOver={(e) => {
+            if (!isExperimentDrag(e)) return;
+            e.preventDefault();
+            setDragOverNew(true);
+          }}
+          onDragLeave={() => setDragOverNew(false)}
+          onDrop={(e) => {
+            if (!isExperimentDrag(e)) return;
+            e.preventDefault();
+            const uuid = e.dataTransfer.getData(EXPERIMENT_DRAG_MIME);
+            setDragOverNew(false);
+            if (uuid) onExperimentDrop?.({ new: true }, uuid);
+          }}
         >
           <span className="flex items-center justify-center w-6 h-6 rounded text-on-surface-variant hover:bg-surface-container-highest hover:text-on-surface transition-colors">
             <FontAwesomeIcon icon={faPlus} className={iconClass.md} />

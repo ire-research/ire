@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { ipc, onExperimentLogLine } from "../../ipc";
+import { ipc, onExperimentLogLine, onWorkspaceEvent } from "../../ipc";
 import { toastError } from "../../state/toasts";
 import type { ExperimentRow } from "../../types";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPencil, iconClass } from "../../icons";
+import { faPencil, faCopy, iconClass } from "../../icons";
+
+const UNRESOLVED_STATUSES = ["completed", "failed", "cancelled"];
 
 interface Props {
   uuid: string;
@@ -52,6 +54,7 @@ export function ExperimentTabView({ uuid, name }: Props) {
   const [displayName, setDisplayName] = useState(name);
   const [isRenaming, setIsRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(name);
+  const [copied, setCopied] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
 
   // Load experiment data and initial logs
@@ -65,6 +68,25 @@ export function ExperimentTabView({ uuid, name }: Props) {
       const lines = stdout.split("\n").filter((l) => l.length > 0);
       setLogs(lines);
     });
+  }, [uuid]);
+
+  // Stay in sync with status changes made elsewhere (the agent calling
+  // experiment.mark_reviewed once it's actually discussed the result).
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | null = null;
+    onWorkspaceEvent((event) => {
+      if (event.kind === "experiment-changed" && event.experiment.uuid === uuid) {
+        setExperiment(event.experiment);
+      }
+    }).then((u) => {
+      if (cancelled) u();
+      else unlisten = u;
+    });
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
   }, [uuid]);
 
   // Auto-scroll on new log lines
@@ -137,6 +159,17 @@ export function ExperimentTabView({ uuid, name }: Props) {
     }
   };
 
+  const copyRestartPrompt = async () => {
+    try {
+      const prompt = await ipc.experimentWakePrompt(uuid);
+      await navigator.clipboard.writeText(prompt);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (err) {
+      toastError("copy restart prompt", err);
+    }
+  };
+
   if (!experiment) {
     return (
       <div className="text-on-surface-variant text-[12px] p-4">Loading…</div>
@@ -146,6 +179,7 @@ export function ExperimentTabView({ uuid, name }: Props) {
   const pill = getStatusPill(experiment.status);
   const statusColor = getStatusColor(experiment.status);
   const isRunning = experiment.status.toLowerCase() === "running";
+  const isUnresolved = UNRESOLVED_STATUSES.includes(experiment.status);
 
   return (
     <>
@@ -177,6 +211,16 @@ export function ExperimentTabView({ uuid, name }: Props) {
         <span className={`text-[10px] uppercase border ${pill.borderColor} px-1.5 py-0.5 rounded ${pill.bgColor} ${pill.textColor}`}>
           {pill.text}
         </span>
+        {isUnresolved && (
+          <button
+            className="ml-auto flex items-center gap-1.5 text-[11px] text-on-surface-variant hover:text-on-surface transition-colors"
+            title="Copy the restart prompt to paste into a chat"
+            onClick={copyRestartPrompt}
+          >
+            <FontAwesomeIcon icon={faCopy} className={iconClass.sm} />
+            {copied ? "Copied" : "Copy restart prompt"}
+          </button>
+        )}
       </div>
 
       {/* Metadata grid */}
